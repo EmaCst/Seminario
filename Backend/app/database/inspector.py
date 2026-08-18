@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import inspect
 
 from app.database.connection import engine
@@ -9,6 +11,7 @@ from app.database.schema import (
 )
 
 
+# Tablas que no forman parte de los datos empresariales
 IGNORED_TABLES = {
     "sysdiagrams"
 }
@@ -37,7 +40,9 @@ def inspect_database() -> DatabaseSchema:
             name=table_name
         )
 
-        # Columnas
+        # --------------------------------------
+        # COLUMNAS
+        # --------------------------------------
 
         columns = inspector.get_columns(table_name)
 
@@ -51,7 +56,9 @@ def inspect_database() -> DatabaseSchema:
                 )
             )
 
-        # Primary Key
+        # --------------------------------------
+        # PRIMARY KEY
+        # --------------------------------------
 
         primary_key = inspector.get_pk_constraint(
             table_name
@@ -67,7 +74,7 @@ def inspect_database() -> DatabaseSchema:
         schema.tables[table_name] = table_schema
 
     # ==========================================
-    # FOREIGN KEYS
+    # FOREIGN KEYS / RELACIONES
     # ==========================================
 
     for table_name in schema.tables:
@@ -110,9 +117,17 @@ def inspect_database() -> DatabaseSchema:
     return schema
 
 
+# ==========================================
+# PRUEBA DEL INSPECTOR
+# ==========================================
+
 if __name__ == "__main__":
 
     schema = inspect_database()
+
+    # ======================================
+    # INFORMACIÓN NORMAL
+    # ======================================
 
     print("\n===== BASE DE DATOS =====")
     print(schema.database)
@@ -136,6 +151,10 @@ if __name__ == "__main__":
                 f"Nullable: {column.nullable}"
             )
 
+    # ======================================
+    # RELACIONES
+    # ======================================
+
     print("\n===== RELACIONES =====")
 
     for relationship in schema.relationships:
@@ -147,3 +166,19 @@ if __name__ == "__main__":
             f"{relationship.references_table}."
             f"{relationship.references_column}"
         )
+
+    # ======================================
+    # JSON
+    # ======================================
+
+    print("\n===== JSON SCHEMA =====")
+
+    json_schema = schema.to_dict()
+
+    print(
+        json.dumps(
+            json_schema,
+            indent=4,
+            ensure_ascii=False
+        )
+    )
