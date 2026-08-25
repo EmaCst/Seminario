@@ -95,7 +95,7 @@ REGLAS OBLIGATORIAS:
     calcula SUM(detalle_ventas.cantidad).
 20. Usa únicamente las tablas necesarias para responder la pregunta.
     No agregues JOINs que no aporten información necesaria.
-    21. Si una tabla ya contiene una columna total que representa el total final
+21. Si una tabla ya contiene una columna total que representa el total final
     de la transacción, usa esa columna en lugar de reconstruir el total.
 22. Nunca sumes descuentos como si aumentaran el total; un descuento reduce el total.
 23. Usa alias consistentes con el nombre de la tabla:
@@ -104,6 +104,13 @@ REGLAS OBLIGATORIAS:
     c para clientes,
     e para empleados,
     p para productos.
+24. Cuando la pregunta solicite un ranking, incluye en el SELECT la métrica
+    utilizada para ordenar los resultados.
+25. Si ordenas productos por cantidad vendida, devuelve también
+    SUM(detalle_ventas.cantidad) con un alias descriptivo.
+26. Si ordenas clientes por dinero gastado, devuelve también SUM(ventas.total).
+27. No devuelvas únicamente nombres si existe una métrica numérica relevante
+    para responder la pregunta.
 
 PREGUNTA:
 
@@ -125,3 +132,45 @@ RESPUESTA:
         sql = sql[:-3]
 
     return normalize_sql(sql)
+
+def explain_results(
+    question: str,
+    sql: str,
+    results: list[dict]
+) -> str:
+
+    prompt = f"""
+Eres un asistente empresarial especializado en análisis de datos.
+
+El usuario realizó la siguiente pregunta:
+
+{question}
+
+Para responderla se ejecutó esta consulta SQL:
+
+{sql}
+
+La base de datos devolvió estos resultados:
+
+{results}
+
+Explica los resultados al usuario de manera clara y breve.
+
+REGLAS OBLIGATORIAS:
+
+- Responde en español.
+- Basa tu respuesta EXCLUSIVAMENTE en los valores presentes en los resultados.
+- No inventes datos, porcentajes, cantidades, tendencias ni comparaciones.
+- No calcules porcentajes si los valores necesarios para calcularlos no aparecen en los resultados.
+- No afirmes que algo representa un porcentaje del total si el total no aparece en los resultados.
+- No supongas cuántos registros existen fuera de los resultados recibidos.
+- Si los resultados solo contienen nombres, limita tu respuesta a esos nombres y al orden en que aparecen.
+- Si los resultados contienen una métrica numérica, puedes citarla y compararla.
+- Si falta información para responder completamente la pregunta, indícalo claramente.
+- Si no existen resultados, indícalo claramente.
+- No inventes causas ni explicaciones que los datos no demuestren.
+- Utiliza lenguaje empresarial comprensible.
+- No muestres SQL salvo que el usuario lo solicite.
+"""
+
+    return ask_gemma(prompt)

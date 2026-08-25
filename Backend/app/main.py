@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from app.services.assistant_service import ask_database
 
 from app.ai.gemma import ask_gemma
 
@@ -32,3 +33,12 @@ def ask(question: Question):
         "question": question.question,
         "response": response
     }
+
+@app.post("/ask-db")
+def ask_database_endpoint(question: Question):
+
+    result = ask_database(
+        question.question
+    )
+
+    return result
