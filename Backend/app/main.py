@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from app.analysis.dashboard_service import get_dashboard_summary
 
 from app.services.assistant_service import ask_database
 from app.ai.gemma import ask_gemma
@@ -68,3 +69,7 @@ def ask_database_endpoint(question: Question):
     )
 
     return result
+
+@app.get("/api/dashboard")
+def dashboard():
+    return get_dashboard_summary()
