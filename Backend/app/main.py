@@ -1,7 +1,8 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from app.services.assistant_service import ask_database
 
+from app.services.assistant_service import ask_database
 from app.ai.gemma import ask_gemma
 
 
@@ -12,9 +13,33 @@ app = FastAPI(
 )
 
 
+# ==========================================
+# CORS
+# ==========================================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ==========================================
+# MODELOS
+# ==========================================
+
 class Question(BaseModel):
     question: str
 
+
+# ==========================================
+# ENDPOINTS
+# ==========================================
 
 @app.get("/")
 def root():
@@ -33,6 +58,7 @@ def ask(question: Question):
         "question": question.question,
         "response": response
     }
+
 
 @app.post("/ask-db")
 def ask_database_endpoint(question: Question):
