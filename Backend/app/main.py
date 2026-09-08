@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.analysis.business_domain_detector import inspect_business_domains
 from app.analysis.capability_detector import inspect_capabilities
 from app.analysis.dashboard_service import get_dashboard_summary
 from app.analysis.semantic_mapper import inspect_semantic_map
@@ -14,7 +15,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.2.0"
+    version="0.3.0"
 )
 
 
@@ -76,6 +77,17 @@ def database_status():
     return database_manager.status()
 
 
+@app.get("/api/database/domain")
+def database_domain():
+    try:
+        return inspect_business_domains()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible analizar el dominio de la base de datos: {exc}"
+        ) from exc
+
+
 @app.post("/api/database/test")
 def test_database_connection(config: DatabaseConnectionRequest):
     try:
@@ -97,6 +109,7 @@ def connect_database(config: DatabaseConnectionRequest):
         schema = inspect_database()
         capabilities = inspect_capabilities()
         semantic_map = inspect_semantic_map()
+        domain_analysis = inspect_business_domains()
 
         return {
             "connected": True,
@@ -104,6 +117,12 @@ def connect_database(config: DatabaseConnectionRequest):
             "database": schema.database,
             "tables": list(schema.tables.keys()),
             "relationships": len(schema.relationships),
+            "business_domain": {
+                "primary": domain_analysis["primary_domain"],
+                "confidence": domain_analysis["primary_confidence"],
+                "ambiguous": domain_analysis["ambiguous"],
+                "candidates": domain_analysis["candidates"],
+            },
             "capabilities": capabilities["capabilities"],
             "semantic_map": semantic_map["semantic_map"],
         }
