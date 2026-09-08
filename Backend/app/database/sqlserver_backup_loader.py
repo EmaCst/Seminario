@@ -357,6 +357,14 @@ def _wait_until_online(system_engine, database_name: str, timeout_seconds: int =
 
 
 def _prepare_restored_database_access(system_engine, database_name: str, username: str | None) -> None:
+    """Verifica ONLINE y repara, solo si hace falta, el usuario del login SQL.
+
+    Los backups conservan usuarios de base de datos. No debemos convertir el login que
+    cargó el archivo en propietario de la base: si ya existe un usuario con ese nombre,
+    SQL Server devuelve 15110. Primero comprobamos si el usuario ya está correctamente
+    mapeado al SID del login. Si está huérfano, usamos ALTER USER ... WITH LOGIN para
+    conservar sus permisos originales y únicamente reparar el vínculo.
+    """
     state, diagnostics = _wait_until_online(system_engine, database_name, timeout_seconds=60)
 
     if state != "ONLINE":
@@ -370,16 +378,44 @@ def _prepare_restored_database_access(system_engine, database_name: str, usernam
 
     db = _quote_identifier(database_name)
     login = _quote_identifier(username)
+    escaped_username = _escape_sql_literal(username)
+
     try:
         with system_engine.connect() as connection:
+            server_sid = connection.exec_driver_sql(
+                "SELECT sid FROM sys.server_principals WHERE name = ?",
+                (username,),
+            ).scalar_one_or_none()
+
+            if server_sid is None:
+                raise RuntimeError(
+                    f"El login SQL Server '{username}' no existe en la instancia actual."
+                )
+
+            db_user = connection.exec_driver_sql(
+                f"SELECT name, sid FROM {db}.sys.database_principals WHERE name = ?",
+                (username,),
+            ).mappings().first()
+
+            if db_user is not None and db_user.get("sid") == server_sid:
+                return
+
+            if db_user is not None:
+                connection.exec_driver_sql(
+                    f"USE {db}; ALTER USER {login} WITH LOGIN = {login};"
+                )
+                return
+
             connection.exec_driver_sql(
-                f"ALTER AUTHORIZATION ON DATABASE::{db} TO {login}"
+                f"USE {db}; CREATE USER {login} FOR LOGIN {login}; "
+                f"ALTER ROLE [db_datareader] ADD MEMBER {login};"
             )
     except Exception as exc:
         raise RuntimeError(
-            f"La base '{database_name}' se restauró y quedó ONLINE, pero el login '{username}' "
-            "no pudo recibir acceso. En desarrollo usa una cuenta con permisos suficientes "
-            f"(por ejemplo sysadmin). Detalle original: {exc}"
+            f"La base '{database_name}' se restauró y quedó ONLINE, pero no fue posible "
+            f"vincular el login '{escaped_username}' con un usuario de la base restaurada. "
+            "El RESTORE sí terminó correctamente; falló únicamente la preparación de acceso. "
+            f"Detalle original: {exc}"
         ) from exc
 
 
