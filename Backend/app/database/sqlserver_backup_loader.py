@@ -27,71 +27,41 @@ def _quote_identifier(value: str) -> str:
     return "[" + value.replace("]", "]]" ) + "]"
 
 
-def _prepare_writable_directory(path: Path, create: bool = False) -> Path | None:
-    """Devuelve la ruta si el backend puede escribir en ella.
-
-    Para RESTORE necesitamos una carpeta compartida por dos actores:
-    1) el proceso FastAPI debe poder guardar el .bak;
-    2) el servicio de SQL Server debe poder leer ese mismo archivo.
-
-    La comprobación de lectura de SQL Server se realiza después mediante
-    RESTORE FILELISTONLY, por lo que aquí solo validamos la escritura local.
-    """
-    try:
-        if create:
-            path.mkdir(parents=True, exist_ok=True)
-        elif not path.exists():
-            return None
-
-        probe = path / f".kenneth_write_test_{uuid.uuid4().hex}.tmp"
-        probe.write_bytes(b"ok")
-        probe.unlink(missing_ok=True)
-        return path.resolve()
-    except OSError:
-        return None
-
-
 def _get_restore_directory(connection) -> Path:
-    # 1. Una ruta configurada explícitamente siempre tiene prioridad.
     configured = os.getenv("DB_RESTORE_DIR")
+    candidates: list[Path] = []
+
     if configured:
-        configured_path = _prepare_writable_directory(
-            Path(configured).expanduser(),
-            create=True,
-        )
-        if configured_path is None:
-            raise RuntimeError(
-                f"DB_RESTORE_DIR apunta a una carpeta donde el backend no puede escribir: {configured}"
-            )
-        return configured_path
+        candidates.append(Path(configured).expanduser())
 
-    # 2. En Windows usamos primero una carpeta neutral fuera de Program Files.
-    # Es especialmente útil con SQL Server Express, cuyo directorio Backup
-    # predeterminado normalmente requiere privilegios elevados para FastAPI.
+    # Ruta simple y controlable para desarrollo local en Windows.
     if os.name == "nt":
-        shared_windows_path = _prepare_writable_directory(
-            Path(r"C:\SQLBackups"),
-            create=True,
-        )
-        if shared_windows_path is not None:
-            return shared_windows_path
+        candidates.append(Path(r"C:\SQLBackups"))
 
-    # 3. Como último recurso intentamos la carpeta que reporta SQL Server,
-    # pero solo si el proceso del backend también puede escribir ahí.
     row = connection.execute(
         text("SELECT CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS NVARCHAR(4000)) AS backup_path")
     ).mappings().first()
-
     backup_path = row["backup_path"] if row else None
     if backup_path:
-        server_path = _prepare_writable_directory(Path(backup_path), create=False)
-        if server_path is not None:
-            return server_path
+        candidates.append(Path(backup_path))
+
+    errors: list[str] = []
+    for candidate in candidates:
+        try:
+            path = candidate.resolve()
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / f".kenneth_write_test_{uuid.uuid4().hex[:8]}"
+            probe.write_bytes(b"ok")
+            probe.unlink(missing_ok=True)
+            return path
+        except OSError as exc:
+            errors.append(f"{candidate}: {exc}")
 
     raise RuntimeError(
-        "No existe una carpeta compartida escribible para restaurar el backup. "
-        "Crea C:\\SQLBackups o define DB_RESTORE_DIR en .env con una ruta donde "
-        "el backend pueda escribir y el servicio de SQL Server pueda leer."
+        "No se encontró una carpeta donde el backend pueda guardar el .bak. "
+        "Define DB_RESTORE_DIR en el .env (por ejemplo C:\\SQLBackups) y asegúrate "
+        "de que tanto el usuario que ejecuta FastAPI como el servicio SQL Server tengan acceso. "
+        f"Intentos: {' | '.join(errors)}"
     )
 
 
@@ -155,9 +125,9 @@ def _read_file_list(connection, backup_path: Path) -> list[dict]:
         ).mappings().all()
     except Exception as exc:
         raise RuntimeError(
-            "El backend pudo guardar el .bak, pero SQL Server no pudo leerlo. "
-            f"Ruta usada: {backup_path}. Verifica permisos de lectura para el servicio de SQL Server. "
-            f"Detalle: {exc}"
+            f"El backend guardó el backup en '{backup_path}', pero SQL Server no pudo leerlo. "
+            "Da permiso de lectura a la cuenta del servicio SQL Server sobre DB_RESTORE_DIR. "
+            f"Detalle original: {exc}"
         ) from exc
 
     if not rows:
@@ -210,6 +180,44 @@ def _build_restore_sql(
     )
 
 
+def _prepare_restored_database_access(connection, database_name: str, username: str | None) -> None:
+    """Deja la base restaurada ONLINE y accesible para el login que hizo la carga.
+
+    Un .bak puede venir de otra instancia y conservar usuarios/SID que no coinciden con
+    los logins del servidor actual. Eso provoca el típico error 4060 justo después de
+    restaurar aunque el RESTORE haya terminado correctamente.
+    """
+    db = _quote_identifier(database_name)
+
+    state = connection.exec_driver_sql(
+        "SELECT state_desc FROM sys.databases WHERE name = ?",
+        (database_name,),
+    ).scalar_one_or_none()
+
+    if state != "ONLINE":
+        raise RuntimeError(
+            f"SQL Server restauró la base '{database_name}', pero quedó en estado {state or 'desconocido'}."
+        )
+
+    if not username:
+        return
+
+    login = _quote_identifier(username)
+    try:
+        # El propietario de la BD siempre puede entrar como dbo. Esto evita usuarios
+        # huérfanos cuando el backup fue creado en otra instancia SQL Server.
+        connection.exec_driver_sql(
+            f"ALTER AUTHORIZATION ON DATABASE::{db} TO {login}"
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"La base '{database_name}' se restauró correctamente, pero el login '{username}' "
+            "no pudo recibir acceso a la base restaurada. La cuenta usada para cargar backups "
+            "debe poder cambiar el propietario de la base (por ejemplo, sysadmin en desarrollo). "
+            f"Detalle original: {exc}"
+        ) from exc
+
+
 async def restore_sqlserver_backup(upload: UploadFile) -> dict:
     filename = upload.filename or "database.bak"
     if not filename.lower().endswith(".bak"):
@@ -238,7 +246,13 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
 
             connection.exec_driver_sql(restore_sql)
 
-        active = database_manager.get_active_config()
+            active = database_manager.get_active_config()
+            _prepare_restored_database_access(
+                connection,
+                database_name,
+                active.get("username"),
+            )
+
         database_manager.configure(
             server=active["server"],
             database=database_name,
@@ -252,7 +266,6 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
             "database": database_name,
             "original_filename": filename,
             "size_bytes": size_bytes,
-            "restore_directory": str(restore_dir),
         }
     finally:
         system_engine.dispose()
