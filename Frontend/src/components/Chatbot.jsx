@@ -11,7 +11,7 @@ export const Chatbot = () => {
     {
       from: 'bot',
       text: language === 'es'
-        ? 'Hola. Soy el asistente del sistema. ¿En qué puedo ayudarte?'
+        ? 'Hola. Soy Kenneth el asistente del sistema. ¿En qué puedo ayudarte?'
         : 'Hello. I am the system assistant. How can I help you?',
     },
   ]);
@@ -79,11 +79,15 @@ export const Chatbot = () => {
         >
           <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: theme.primary, color: '#fff' }}>
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
-                <Bot size={20} />
-              </div>
+            <div className="w-12 h-12 rounded-full overflow-hidden bg-white/15 flex items-center justify-center">
+              <img
+                src="https://raw.githubusercontent.com/EmaCst/Fotos/main/Kenett.jpeg"
+                alt="Kenneth"
+                className="w-full h-full rounded-full object-cover"
+              />
+            </div>
               <div>
-                <p className="font-bold">Chatbot</p>
+                <p className="font-bold">Kenneth</p>
                 <p className="text-xs opacity-80">{language === 'es' ? 'Asistente del sistema' : 'System assistant'}</p>
               </div>
             </div>

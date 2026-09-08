@@ -117,6 +117,7 @@ def build_semantic_map(
         "payments": {},
         "purchases": {},
         "suppliers": {},
+        "categories": {},
     }
 
     # ==========================================
@@ -471,6 +472,35 @@ def build_semantic_map(
         )
 
     # ==========================================
+    # CATEGORIES
+    # ==========================================
+
+    category_table = find_table_by_priority(
+        schema,
+        [
+            "categorias",
+            "categoria",
+            "categories",
+            "category",
+        ]
+    )
+
+    if category_table:
+
+        semantic_map["categories"]["table"] = category_table
+
+        semantic_map["categories"]["name_column"] = (
+            find_column_by_priority(
+                schema,
+                category_table,
+                [
+                    "nombre",
+                    "name"
+                ]
+            )
+        )
+
+    # ==========================================
     # RELACIONES
     # ==========================================
 
@@ -528,6 +558,17 @@ def build_semantic_map(
 
         if relation:
             semantic_map["inventory"]["product_relationship"] = relation
+
+    if product_table and category_table:
+
+        relation = find_relationship(
+            schema,
+            product_table,
+            category_table
+        )
+
+        if relation:
+            semantic_map["products"]["category_relationship"] = relation
 
     return semantic_map
 
