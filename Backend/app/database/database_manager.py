@@ -10,11 +10,7 @@ load_dotenv()
 
 
 class DatabaseManager:
-    """Administra la conexión activa a SQL Server.
-
-    La conexión definida en .env funciona como fallback de desarrollo,
-    pero puede sustituirse en tiempo de ejecución desde la API.
-    """
+    """Administra la conexión SQL Server activa en tiempo de ejecución."""
 
     def __init__(self) -> None:
         self._lock = RLock()
@@ -39,6 +35,7 @@ class DatabaseManager:
         username: str | None = None,
         password: str | None = None,
         driver: str = "ODBC Driver 18 for SQL Server",
+        autocommit: bool = False,
     ) -> Engine:
         query = {
             "driver": driver,
@@ -63,6 +60,8 @@ class DatabaseManager:
                 query=query,
             )
 
+        connect_args = {"autocommit": True} if autocommit else {}
+
         return create_engine(
             connection_url,
             pool_size=5,
@@ -70,6 +69,7 @@ class DatabaseManager:
             pool_timeout=30,
             pool_recycle=1800,
             pool_pre_ping=True,
+            connect_args=connect_args,
         )
 
     def test_connection(
@@ -130,6 +130,7 @@ class DatabaseManager:
                 "server": server,
                 "database": row["database_name"] if row else database,
                 "username": username,
+                "password": password,
                 "driver": driver,
                 "auth": "sql" if username else "windows",
             }
@@ -149,6 +150,30 @@ class DatabaseManager:
 
     def get_connection(self):
         return self.get_engine().connect()
+
+    def get_active_config(self) -> dict:
+        """Devuelve una copia privada de la configuración activa, incluida la clave.
+
+        Este método es únicamente para servicios internos. `status()` nunca expone
+        la contraseña hacia la API.
+        """
+        with self._lock:
+            if self._config is None:
+                raise RuntimeError(
+                    "No hay una conexión SQL Server configurada para restaurar backups."
+                )
+            return dict(self._config)
+
+    def create_system_engine(self, database: str = "master") -> Engine:
+        config = self.get_active_config()
+        return self._build_engine(
+            server=config["server"],
+            database=database,
+            username=config.get("username"),
+            password=config.get("password"),
+            driver=config.get("driver") or "ODBC Driver 18 for SQL Server",
+            autocommit=True,
+        )
 
     def status(self) -> dict:
         with self._lock:
