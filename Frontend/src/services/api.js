@@ -14,17 +14,19 @@ async function parseResponse(response) {
 export async function askDatabase(question) {
   const response = await fetch(`${API_URL}/ask-db`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
   });
-
   return parseResponse(response);
 }
 
 export async function getDashboard() {
   const response = await fetch(`${API_URL}/api/dashboard`);
+  return parseResponse(response);
+}
+
+export async function getAdaptiveDashboard() {
+  const response = await fetch(`${API_URL}/api/dashboard/adaptive`);
   return parseResponse(response);
 }
 
@@ -36,24 +38,18 @@ export async function getDatabaseStatus() {
 export async function testDatabaseConnection(config) {
   const response = await fetch(`${API_URL}/api/database/test`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
-
   return parseResponse(response);
 }
 
 export async function connectDatabase(config) {
   const response = await fetch(`${API_URL}/api/database/connect`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
-
   return parseResponse(response);
 }
 
