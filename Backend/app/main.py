@@ -6,6 +6,7 @@ from app.analysis.business_domain_detector import inspect_business_domains
 from app.analysis.capability_detector import inspect_capabilities
 from app.analysis.dashboard_service import get_dashboard_summary
 from app.analysis.semantic_mapper import inspect_semantic_map
+from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
 from app.database.inspector import inspect_database
@@ -15,7 +16,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.3.0"
+    version="0.4.0"
 )
 
 
@@ -88,6 +89,17 @@ def database_domain():
         ) from exc
 
 
+@app.get("/api/database/semantic-model")
+def database_semantic_model():
+    try:
+        return inspect_semantic_model()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible construir el modelo semántico: {exc}"
+        ) from exc
+
+
 @app.post("/api/database/test")
 def test_database_connection(config: DatabaseConnectionRequest):
     try:
@@ -110,6 +122,7 @@ def connect_database(config: DatabaseConnectionRequest):
         capabilities = inspect_capabilities()
         semantic_map = inspect_semantic_map()
         domain_analysis = inspect_business_domains()
+        semantic_model = inspect_semantic_model()
 
         return {
             "connected": True,
@@ -125,6 +138,7 @@ def connect_database(config: DatabaseConnectionRequest):
             },
             "capabilities": capabilities["capabilities"],
             "semantic_map": semantic_map["semantic_map"],
+            "semantic_model_v2": semantic_model["semantic_model"],
         }
     except Exception as exc:
         raise HTTPException(
