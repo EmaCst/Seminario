@@ -160,7 +160,6 @@ def _select_full_backup_set(connection, backup_path: Path) -> dict:
             "Crea en SSMS un backup con Backup type = Full y vuelve a cargarlo."
         )
 
-    # Si el archivo contiene varios juegos de backup, usamos el Full más reciente.
     full_backups.sort(
         key=lambda row: (
             row.get("BackupFinishDate") is not None,
@@ -180,6 +179,10 @@ def _select_full_backup_set(connection, backup_path: Path) -> dict:
         "database_name": selected.get("DatabaseName"),
         "backup_finish_date": selected.get("BackupFinishDate"),
         "backup_type": int(selected.get("BackupType") or 0),
+        "recovery_model": selected.get("RecoveryModel"),
+        "is_copy_only": bool(selected.get("IsCopyOnly")),
+        "has_backup_checksums": bool(selected.get("HasBackupChecksums")),
+        "is_damaged": bool(selected.get("IsDamaged")),
     }
 
 
@@ -199,6 +202,16 @@ def _read_file_list(connection, backup_path: Path, file_number: int) -> list[dic
         raise RuntimeError("El backup Full seleccionado no contiene archivos restaurables.")
 
     return [dict(row) for row in rows]
+
+
+def _verify_backup_raw(system_engine, backup_path: Path, file_number: int) -> None:
+    """Valida el set exacto que será restaurado usando pyodbc directamente."""
+    escaped = _escape_sql_literal(str(backup_path))
+    sql = (
+        f"RESTORE VERIFYONLY FROM DISK = N'{escaped}' "
+        f"WITH FILE = {file_number}, CHECKSUM"
+    )
+    _execute_raw_sql_and_drain(system_engine, sql, operation="VERIFYONLY")
 
 
 def _build_restore_sql(
@@ -242,8 +255,50 @@ def _build_restore_sql(
     return (
         f"RESTORE DATABASE {_quote_identifier(database_name)} "
         f"FROM DISK = N'{_escape_sql_literal(str(backup_path))}' "
-        f"WITH FILE = {file_number}, {', '.join(moves)}, RECOVERY"
+        f"WITH FILE = {file_number}, {', '.join(moves)}, RECOVERY, CHECKSUM"
     )
+
+
+def _execute_raw_sql_and_drain(system_engine, sql: str, operation: str) -> None:
+    """Ejecuta RESTORE fuera de SQLAlchemy y consume todos los result sets de ODBC.
+
+    RESTORE es una operación administrativa especial. Usar el cursor pyodbc directo,
+    con autocommit real, evita que el estado transaccional/lifecycle de CursorResult de
+    SQLAlchemy interfiera y garantiza que no seguimos hasta que ODBC terminó de procesar
+    todos los resultados del comando.
+    """
+    raw = system_engine.raw_connection()
+    cursor = None
+    try:
+        try:
+            raw.autocommit = True
+        except Exception:
+            pass
+
+        cursor = raw.cursor()
+        cursor.execute(sql)
+
+        while True:
+            try:
+                has_more = cursor.nextset()
+            except Exception:
+                has_more = False
+            if not has_more:
+                break
+    except Exception as exc:
+        raise RuntimeError(
+            f"SQL Server falló durante {operation}. Detalle original: {exc}"
+        ) from exc
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        try:
+            raw.close()
+        except Exception:
+            pass
 
 
 def _database_state(connection, database_name: str) -> str | None:
@@ -253,56 +308,94 @@ def _database_state(connection, database_name: str) -> str | None:
     ).scalar_one_or_none()
 
 
-def _wait_until_online(connection, database_name: str, timeout_seconds: int = 45) -> str | None:
+def _restore_diagnostics(connection, database_name: str) -> dict:
+    state_row = connection.exec_driver_sql(
+        """
+        SELECT name, state_desc, user_access_desc, recovery_model_desc,
+               log_reuse_wait_desc, is_read_only
+        FROM sys.databases
+        WHERE name = ?
+        """,
+        (database_name,),
+    ).mappings().first()
+
+    request_row = connection.exec_driver_sql(
+        """
+        SELECT TOP 1 command, status, percent_complete,
+               estimated_completion_time, wait_type, wait_resource
+        FROM sys.dm_exec_requests
+        WHERE command LIKE 'RESTORE%'
+          AND database_id = DB_ID(?)
+        ORDER BY start_time DESC
+        """,
+        (database_name,),
+    ).mappings().first()
+
+    return {
+        "database": dict(state_row) if state_row else None,
+        "active_restore_request": dict(request_row) if request_row else None,
+    }
+
+
+def _wait_until_online(system_engine, database_name: str, timeout_seconds: int = 60) -> tuple[str | None, dict]:
     deadline = time.monotonic() + timeout_seconds
     state: str | None = None
+    diagnostics: dict = {}
 
     while time.monotonic() < deadline:
-        state = _database_state(connection, database_name)
+        with system_engine.connect() as connection:
+            state = _database_state(connection, database_name)
+            diagnostics = _restore_diagnostics(connection, database_name)
+
         if state == "ONLINE":
-            return state
+            return state, diagnostics
         if state in {"SUSPECT", "EMERGENCY", "RECOVERY_PENDING", "OFFLINE"}:
-            return state
+            return state, diagnostics
         time.sleep(1)
 
-    return state
+    return state, diagnostics
 
 
-def _prepare_restored_database_access(connection, database_name: str, username: str | None) -> None:
-    db = _quote_identifier(database_name)
-    state = _wait_until_online(connection, database_name, timeout_seconds=45)
+def _prepare_restored_database_access(system_engine, database_name: str, username: str | None) -> None:
+    state, diagnostics = _wait_until_online(system_engine, database_name, timeout_seconds=60)
 
     if state != "ONLINE":
         raise RuntimeError(
-            f"El RESTORE del backup Full terminó, pero la base '{database_name}' quedó en estado "
-            f"{state or 'desconocido'}. No se intentará aplicar logs automáticamente."
+            f"El RESTORE finalizó pero la base '{database_name}' quedó en estado "
+            f"{state or 'desconocido'}. Diagnóstico SQL Server: {diagnostics}"
         )
 
     if not username:
         return
 
+    db = _quote_identifier(database_name)
     login = _quote_identifier(username)
     try:
-        connection.exec_driver_sql(
-            f"ALTER AUTHORIZATION ON DATABASE::{db} TO {login}"
-        )
+        with system_engine.connect() as connection:
+            connection.exec_driver_sql(
+                f"ALTER AUTHORIZATION ON DATABASE::{db} TO {login}"
+            )
     except Exception as exc:
         raise RuntimeError(
-            f"La base '{database_name}' se restauró, pero el login '{username}' no pudo recibir acceso. "
-            "En desarrollo usa una cuenta con permisos suficientes (por ejemplo sysadmin). "
-            f"Detalle original: {exc}"
+            f"La base '{database_name}' se restauró y quedó ONLINE, pero el login '{username}' "
+            "no pudo recibir acceso. En desarrollo usa una cuenta con permisos suficientes "
+            f"(por ejemplo sysadmin). Detalle original: {exc}"
         ) from exc
 
 
-def _cleanup_failed_restore(connection, database_name: str) -> None:
+def _cleanup_failed_restore(system_engine, database_name: str) -> None:
     try:
-        state = _database_state(connection, database_name)
-        if state is None:
-            return
+        with system_engine.connect() as connection:
+            state = _database_state(connection, database_name)
+            if state is None:
+                return
         db = _quote_identifier(database_name)
-        connection.exec_driver_sql(f"DROP DATABASE {db}")
+        _execute_raw_sql_and_drain(
+            system_engine,
+            f"DROP DATABASE {db}",
+            operation="limpieza de base temporal",
+        )
     except Exception:
-        # La limpieza es best-effort: no debe ocultar el error original.
         pass
 
 
@@ -314,7 +407,6 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
     system_engine = database_manager.create_system_engine("master")
     staged_backup: Path | None = None
     database_name: str | None = None
-    activated = False
 
     try:
         with system_engine.connect() as connection:
@@ -329,23 +421,29 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
             file_number = backup_set["file_number"]
             file_list = _read_file_list(connection, staged_backup, file_number)
 
-            restore_sql = _build_restore_sql(
-                database_name=database_name,
-                backup_path=staged_backup,
-                file_number=file_number,
-                file_list=file_list,
-                data_dir=data_dir,
-                log_dir=log_dir,
-            )
+        _verify_backup_raw(system_engine, staged_backup, file_number)
 
-            connection.exec_driver_sql(restore_sql)
+        restore_sql = _build_restore_sql(
+            database_name=database_name,
+            backup_path=staged_backup,
+            file_number=file_number,
+            file_list=file_list,
+            data_dir=data_dir,
+            log_dir=log_dir,
+        )
 
-            active = database_manager.get_active_config()
-            _prepare_restored_database_access(
-                connection,
-                database_name,
-                active.get("username"),
-            )
+        _execute_raw_sql_and_drain(
+            system_engine,
+            restore_sql,
+            operation="RESTORE DATABASE",
+        )
+
+        active = database_manager.get_active_config()
+        _prepare_restored_database_access(
+            system_engine,
+            database_name,
+            active.get("username"),
+        )
 
         database_manager.configure(
             server=active["server"],
@@ -354,23 +452,21 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
             password=active.get("password"),
             driver=active.get("driver") or "ODBC Driver 18 for SQL Server",
         )
-        activated = True
 
         return {
             "restored": True,
             "database": database_name,
             "source_database": backup_set.get("database_name"),
             "backup_file_number": file_number,
+            "backup_recovery_model": backup_set.get("recovery_model"),
+            "backup_copy_only": backup_set.get("is_copy_only"),
+            "backup_has_checksums": backup_set.get("has_backup_checksums"),
             "original_filename": filename,
             "size_bytes": size_bytes,
         }
     except Exception:
         if database_name:
-            try:
-                with system_engine.connect() as cleanup_connection:
-                    _cleanup_failed_restore(cleanup_connection, database_name)
-            except Exception:
-                pass
+            _cleanup_failed_restore(system_engine, database_name)
         raise
     finally:
         system_engine.dispose()
