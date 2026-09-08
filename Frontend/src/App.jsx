@@ -1,7 +1,7 @@
 import { useContext } from 'react';
 import { DashboardProvider, DashboardContext } from './context/DashboardContext';
 import { Sidebar } from './components/Sidebar';
-import { DashboardView } from './components/DashboardView';
+import { UniversalDashboard } from './components/UniversalDashboard';
 import { SettingsView } from './components/SettingsView';
 import { Header } from './components/Header';
 import { BarChart3, FileText } from 'lucide-react';
@@ -45,7 +45,7 @@ const MainLayout = () => {
         <div className="min-w-0 flex-1 flex flex-col">
           <Header />
           <main className="flex-1 overflow-y-auto p-5 sm:p-6 lg:p-8">
-            {activeTab === 'dashboard' && <DashboardView />}
+            {activeTab === 'dashboard' && <UniversalDashboard />}
             {activeTab === 'settings' && <SettingsView />}
             {activeTab === 'analytics' && <PlaceholderView type="analytics" />}
             {activeTab === 'reports' && <PlaceholderView type="reports" />}
