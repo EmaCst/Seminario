@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import uuid
 from pathlib import Path
 
@@ -34,7 +35,6 @@ def _get_restore_directory(connection) -> Path:
     if configured:
         candidates.append(Path(configured).expanduser())
 
-    # Ruta simple y controlable para desarrollo local en Windows.
     if os.name == "nt":
         candidates.append(Path(r"C:\SQLBackups"))
 
@@ -176,27 +176,65 @@ def _build_restore_sql(
     return (
         f"RESTORE DATABASE {_quote_identifier(database_name)} "
         f"FROM DISK = N'{_escape_sql_literal(str(backup_path))}' "
-        f"WITH {', '.join(moves)}, RECOVERY, STATS = 5"
+        f"WITH {', '.join(moves)}, RECOVERY"
     )
 
 
-def _prepare_restored_database_access(connection, database_name: str, username: str | None) -> None:
-    """Deja la base restaurada ONLINE y accesible para el login que hizo la carga.
-
-    Un .bak puede venir de otra instancia y conservar usuarios/SID que no coinciden con
-    los logins del servidor actual. Eso provoca el típico error 4060 justo después de
-    restaurar aunque el RESTORE haya terminado correctamente.
-    """
-    db = _quote_identifier(database_name)
-
-    state = connection.exec_driver_sql(
+def _database_state(connection, database_name: str) -> str | None:
+    return connection.exec_driver_sql(
         "SELECT state_desc FROM sys.databases WHERE name = ?",
         (database_name,),
     ).scalar_one_or_none()
 
+
+def _wait_until_online(connection, database_name: str, timeout_seconds: int = 45) -> str | None:
+    """Espera a que SQL Server complete la fase de recovery.
+
+    En algunas instalaciones el RESTORE termina de copiar los archivos y la base puede
+    permanecer brevemente en RESTORING/RECOVERING antes de pasar a ONLINE.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    state: str | None = None
+
+    while time.monotonic() < deadline:
+        state = _database_state(connection, database_name)
+        if state == "ONLINE":
+            return state
+        if state in {"SUSPECT", "EMERGENCY", "RECOVERY_PENDING", "OFFLINE"}:
+            return state
+        time.sleep(1)
+
+    return state
+
+
+def _finish_recovery_if_needed(connection, database_name: str) -> str | None:
+    state = _wait_until_online(connection, database_name, timeout_seconds=10)
+    if state == "ONLINE":
+        return state
+
+    if state in {"RESTORING", "RECOVERING"}:
+        db = _quote_identifier(database_name)
+        try:
+            connection.exec_driver_sql(f"RESTORE DATABASE {db} WITH RECOVERY")
+        except Exception as exc:
+            raise RuntimeError(
+                f"SQL Server copió la base '{database_name}', pero no pudo finalizar RECOVERY. "
+                f"Estado actual: {state}. Detalle original: {exc}"
+            ) from exc
+
+        state = _wait_until_online(connection, database_name, timeout_seconds=45)
+
+    return state
+
+
+def _prepare_restored_database_access(connection, database_name: str, username: str | None) -> None:
+    db = _quote_identifier(database_name)
+
+    state = _finish_recovery_if_needed(connection, database_name)
     if state != "ONLINE":
         raise RuntimeError(
-            f"SQL Server restauró la base '{database_name}', pero quedó en estado {state or 'desconocido'}."
+            f"SQL Server restauró la base '{database_name}', pero quedó en estado {state or 'desconocido'} "
+            "después de esperar y solicitar WITH RECOVERY."
         )
 
     if not username:
@@ -204,8 +242,6 @@ def _prepare_restored_database_access(connection, database_name: str, username: 
 
     login = _quote_identifier(username)
     try:
-        # El propietario de la BD siempre puede entrar como dbo. Esto evita usuarios
-        # huérfanos cuando el backup fue creado en otra instancia SQL Server.
         connection.exec_driver_sql(
             f"ALTER AUTHORIZATION ON DATABASE::{db} TO {login}"
         )
