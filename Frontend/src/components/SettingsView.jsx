@@ -2,6 +2,7 @@ import { useContext } from 'react';
 import { DashboardContext } from '../context/DashboardContext';
 import { Check, Moon, Sun, Languages, Palette, ChartNoAxesCombined } from 'lucide-react';
 import { DatabaseConfig } from './DatabaseConfig';
+import { DatabaseUpload } from './DatabaseUpload';
 
 export const SettingsView = () => {
   const {
@@ -129,6 +130,7 @@ export const SettingsView = () => {
         </section>
       </div>
 
+      <DatabaseUpload />
       <DatabaseConfig />
 
       <section className="p-5 sm:p-6 rounded-2xl border shadow-sm" style={cardStyle}>
