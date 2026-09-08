@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
 from app.analysis.business_domain_detector import inspect_business_domains
 from app.analysis.capability_detector import inspect_capabilities
 from app.analysis.dashboard_service import get_dashboard_summary
@@ -16,7 +17,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.4.0"
+    version="0.5.0"
 )
 
 
@@ -56,11 +57,7 @@ def root():
 @app.post("/ask")
 def ask(question: Question):
     response = ask_gemma(question.question)
-
-    return {
-        "question": question.question,
-        "response": response
-    }
+    return {"question": question.question, "response": response}
 
 
 @app.post("/ask-db")
@@ -71,6 +68,17 @@ def ask_database_endpoint(question: Question):
 @app.get("/api/dashboard")
 def dashboard():
     return get_dashboard_summary()
+
+
+@app.get("/api/dashboard/adaptive")
+def adaptive_dashboard():
+    try:
+        return get_adaptive_dashboard_summary()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible construir el dashboard adaptativo: {exc}"
+        ) from exc
 
 
 @app.get("/api/database/status")
@@ -114,9 +122,7 @@ def test_database_connection(config: DatabaseConnectionRequest):
 @app.post("/api/database/connect")
 def connect_database(config: DatabaseConnectionRequest):
     try:
-        connection_status = database_manager.configure(
-            **config.model_dump()
-        )
+        connection_status = database_manager.configure(**config.model_dump())
 
         schema = inspect_database()
         capabilities = inspect_capabilities()
