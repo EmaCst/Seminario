@@ -53,6 +53,18 @@ export async function connectDatabase(config) {
   return parseResponse(response);
 }
 
+export async function uploadSqlServerBackup(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_URL}/api/database/upload/sqlserver-bak`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  return parseResponse(response);
+}
+
 export async function getBusinessDomain() {
   const response = await fetch(`${API_URL}/api/database/domain`);
   return parseResponse(response);
