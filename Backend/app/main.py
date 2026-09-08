@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -11,13 +11,14 @@ from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
 from app.database.inspector import inspect_database
+from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.services.assistant_service import ask_database
 
 
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.5.0"
+    version="0.6.0"
 )
 
 
@@ -43,6 +44,25 @@ class DatabaseConnectionRequest(BaseModel):
     username: str | None = None
     password: str | None = None
     driver: str = "ODBC Driver 18 for SQL Server"
+
+
+def _current_database_analysis() -> dict:
+    schema = inspect_database()
+    domain_analysis = inspect_business_domains()
+    semantic_model = inspect_semantic_model()
+
+    return {
+        "database": schema.database,
+        "tables": list(schema.tables.keys()),
+        "relationships": len(schema.relationships),
+        "business_domain": {
+            "primary": domain_analysis["primary_domain"],
+            "confidence": domain_analysis["primary_confidence"],
+            "ambiguous": domain_analysis["ambiguous"],
+            "candidates": domain_analysis["candidates"],
+        },
+        "semantic_model_v2": semantic_model["semantic_model"],
+    }
 
 
 @app.get("/")
@@ -123,31 +143,47 @@ def test_database_connection(config: DatabaseConnectionRequest):
 def connect_database(config: DatabaseConnectionRequest):
     try:
         connection_status = database_manager.configure(**config.model_dump())
-
-        schema = inspect_database()
+        analysis = _current_database_analysis()
         capabilities = inspect_capabilities()
         semantic_map = inspect_semantic_map()
-        domain_analysis = inspect_business_domains()
-        semantic_model = inspect_semantic_model()
 
         return {
             "connected": True,
             "connection": connection_status,
-            "database": schema.database,
-            "tables": list(schema.tables.keys()),
-            "relationships": len(schema.relationships),
-            "business_domain": {
-                "primary": domain_analysis["primary_domain"],
-                "confidence": domain_analysis["primary_confidence"],
-                "ambiguous": domain_analysis["ambiguous"],
-                "candidates": domain_analysis["candidates"],
-            },
+            **analysis,
             "capabilities": capabilities["capabilities"],
             "semantic_map": semantic_map["semantic_map"],
-            "semantic_model_v2": semantic_model["semantic_model"],
         }
     except Exception as exc:
         raise HTTPException(
             status_code=400,
             detail=f"No fue posible activar la base de datos: {exc}"
+        ) from exc
+
+
+@app.post("/api/database/upload/sqlserver-bak")
+async def upload_sqlserver_backup(file: UploadFile = File(...)):
+    """Carga un .bak, lo restaura en la instancia SQL Server configurada y lo analiza."""
+    try:
+        restore_result = await restore_sqlserver_backup(file)
+        analysis = _current_database_analysis()
+        adaptive = get_adaptive_dashboard_summary()
+
+        return {
+            "uploaded": True,
+            "engine": "sqlserver",
+            "restore": restore_result,
+            **analysis,
+            "dashboard": adaptive,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No fue posible restaurar el backup. Verifica que la cuenta usada por el backend "
+                "tenga permisos para RESTORE DATABASE y que SQL Server pueda leer DB_RESTORE_DIR. "
+                f"Detalle: {exc}"
+            ),
         ) from exc
