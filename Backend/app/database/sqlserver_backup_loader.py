@@ -10,7 +10,17 @@ from sqlalchemy import text
 from app.database.database_manager import database_manager
 
 
-MAX_BACKUP_SIZE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB para la primera versión
+MAX_BACKUP_SIZE_BYTES = 2 * 1024 * 1024 * 1024
+
+BACKUP_TYPE_LABELS = {
+    1: "FULL / Database",
+    2: "Transaction Log",
+    4: "File",
+    5: "Differential Database",
+    6: "Differential File",
+    7: "Partial",
+    8: "Differential Partial",
+}
 
 
 def _safe_db_name(filename: str) -> str:
@@ -60,7 +70,7 @@ def _get_restore_directory(connection) -> Path:
     raise RuntimeError(
         "No se encontró una carpeta donde el backend pueda guardar el .bak. "
         "Define DB_RESTORE_DIR en el .env (por ejemplo C:\\SQLBackups) y asegúrate "
-        "de que tanto el usuario que ejecuta FastAPI como el servicio SQL Server tengan acceso. "
+        "de que FastAPI pueda escribir y SQL Server pueda leer esa carpeta. "
         f"Intentos: {' | '.join(errors)}"
     )
 
@@ -117,21 +127,76 @@ async def _save_upload(upload: UploadFile, destination: Path) -> int:
     return written
 
 
-def _read_file_list(connection, backup_path: Path) -> list[dict]:
+def _select_full_backup_set(connection, backup_path: Path) -> dict:
     escaped = _escape_sql_literal(str(backup_path))
     try:
         rows = connection.exec_driver_sql(
-            f"RESTORE FILELISTONLY FROM DISK = N'{escaped}'"
+            f"RESTORE HEADERONLY FROM DISK = N'{escaped}'"
         ).mappings().all()
     except Exception as exc:
         raise RuntimeError(
-            f"El backend guardó el backup en '{backup_path}', pero SQL Server no pudo leerlo. "
-            "Da permiso de lectura a la cuenta del servicio SQL Server sobre DB_RESTORE_DIR. "
+            f"SQL Server no pudo leer la cabecera del backup '{backup_path}'. "
             f"Detalle original: {exc}"
         ) from exc
 
     if not rows:
-        raise RuntimeError("El backup no contiene archivos restaurables.")
+        raise RuntimeError("El archivo no contiene ningún backup reconocible por SQL Server.")
+
+    headers = [dict(row) for row in rows]
+    full_backups = [row for row in headers if int(row.get("BackupType") or 0) == 1]
+
+    if not full_backups:
+        detected = []
+        for row in headers:
+            backup_type = int(row.get("BackupType") or 0)
+            label = BACKUP_TYPE_LABELS.get(backup_type, f"Tipo {backup_type}")
+            position = row.get("Position")
+            detected.append(f"FILE={position}: {label}")
+
+        raise RuntimeError(
+            "El archivo .bak no contiene un backup COMPLETO de base de datos. "
+            "Para una carga independiente Kenneth necesita un backup tipo Full. "
+            f"Contenido detectado: {', '.join(detected)}. "
+            "Crea en SSMS un backup con Backup type = Full y vuelve a cargarlo."
+        )
+
+    # Si el archivo contiene varios juegos de backup, usamos el Full más reciente.
+    full_backups.sort(
+        key=lambda row: (
+            row.get("BackupFinishDate") is not None,
+            row.get("BackupFinishDate"),
+            int(row.get("Position") or 0),
+        ),
+        reverse=True,
+    )
+    selected = full_backups[0]
+
+    position = int(selected.get("Position") or 0)
+    if position < 1:
+        raise RuntimeError("SQL Server no devolvió una posición válida para el backup Full.")
+
+    return {
+        "file_number": position,
+        "database_name": selected.get("DatabaseName"),
+        "backup_finish_date": selected.get("BackupFinishDate"),
+        "backup_type": int(selected.get("BackupType") or 0),
+    }
+
+
+def _read_file_list(connection, backup_path: Path, file_number: int) -> list[dict]:
+    escaped = _escape_sql_literal(str(backup_path))
+    try:
+        rows = connection.exec_driver_sql(
+            f"RESTORE FILELISTONLY FROM DISK = N'{escaped}' WITH FILE = {file_number}"
+        ).mappings().all()
+    except Exception as exc:
+        raise RuntimeError(
+            f"SQL Server encontró el backup Full (FILE={file_number}), pero no pudo leer sus archivos lógicos. "
+            f"Detalle original: {exc}"
+        ) from exc
+
+    if not rows:
+        raise RuntimeError("El backup Full seleccionado no contiene archivos restaurables.")
 
     return [dict(row) for row in rows]
 
@@ -139,6 +204,7 @@ def _read_file_list(connection, backup_path: Path) -> list[dict]:
 def _build_restore_sql(
     database_name: str,
     backup_path: Path,
+    file_number: int,
     file_list: list[dict],
     data_dir: Path,
     log_dir: Path,
@@ -176,7 +242,7 @@ def _build_restore_sql(
     return (
         f"RESTORE DATABASE {_quote_identifier(database_name)} "
         f"FROM DISK = N'{_escape_sql_literal(str(backup_path))}' "
-        f"WITH {', '.join(moves)}, RECOVERY"
+        f"WITH FILE = {file_number}, {', '.join(moves)}, RECOVERY"
     )
 
 
@@ -188,11 +254,6 @@ def _database_state(connection, database_name: str) -> str | None:
 
 
 def _wait_until_online(connection, database_name: str, timeout_seconds: int = 45) -> str | None:
-    """Espera a que SQL Server complete la fase de recovery.
-
-    En algunas instalaciones el RESTORE termina de copiar los archivos y la base puede
-    permanecer brevemente en RESTORING/RECOVERING antes de pasar a ONLINE.
-    """
     deadline = time.monotonic() + timeout_seconds
     state: str | None = None
 
@@ -207,34 +268,14 @@ def _wait_until_online(connection, database_name: str, timeout_seconds: int = 45
     return state
 
 
-def _finish_recovery_if_needed(connection, database_name: str) -> str | None:
-    state = _wait_until_online(connection, database_name, timeout_seconds=10)
-    if state == "ONLINE":
-        return state
-
-    if state in {"RESTORING", "RECOVERING"}:
-        db = _quote_identifier(database_name)
-        try:
-            connection.exec_driver_sql(f"RESTORE DATABASE {db} WITH RECOVERY")
-        except Exception as exc:
-            raise RuntimeError(
-                f"SQL Server copió la base '{database_name}', pero no pudo finalizar RECOVERY. "
-                f"Estado actual: {state}. Detalle original: {exc}"
-            ) from exc
-
-        state = _wait_until_online(connection, database_name, timeout_seconds=45)
-
-    return state
-
-
 def _prepare_restored_database_access(connection, database_name: str, username: str | None) -> None:
     db = _quote_identifier(database_name)
+    state = _wait_until_online(connection, database_name, timeout_seconds=45)
 
-    state = _finish_recovery_if_needed(connection, database_name)
     if state != "ONLINE":
         raise RuntimeError(
-            f"SQL Server restauró la base '{database_name}', pero quedó en estado {state or 'desconocido'} "
-            "después de esperar y solicitar WITH RECOVERY."
+            f"El RESTORE del backup Full terminó, pero la base '{database_name}' quedó en estado "
+            f"{state or 'desconocido'}. No se intentará aplicar logs automáticamente."
         )
 
     if not username:
@@ -247,11 +288,22 @@ def _prepare_restored_database_access(connection, database_name: str, username: 
         )
     except Exception as exc:
         raise RuntimeError(
-            f"La base '{database_name}' se restauró correctamente, pero el login '{username}' "
-            "no pudo recibir acceso a la base restaurada. La cuenta usada para cargar backups "
-            "debe poder cambiar el propietario de la base (por ejemplo, sysadmin en desarrollo). "
+            f"La base '{database_name}' se restauró, pero el login '{username}' no pudo recibir acceso. "
+            "En desarrollo usa una cuenta con permisos suficientes (por ejemplo sysadmin). "
             f"Detalle original: {exc}"
         ) from exc
+
+
+def _cleanup_failed_restore(connection, database_name: str) -> None:
+    try:
+        state = _database_state(connection, database_name)
+        if state is None:
+            return
+        db = _quote_identifier(database_name)
+        connection.exec_driver_sql(f"DROP DATABASE {db}")
+    except Exception:
+        # La limpieza es best-effort: no debe ocultar el error original.
+        pass
 
 
 async def restore_sqlserver_backup(upload: UploadFile) -> dict:
@@ -261,6 +313,8 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
 
     system_engine = database_manager.create_system_engine("master")
     staged_backup: Path | None = None
+    database_name: str | None = None
+    activated = False
 
     try:
         with system_engine.connect() as connection:
@@ -271,10 +325,14 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
             staged_backup = restore_dir / f"{database_name}.bak"
             size_bytes = await _save_upload(upload, staged_backup)
 
-            file_list = _read_file_list(connection, staged_backup)
+            backup_set = _select_full_backup_set(connection, staged_backup)
+            file_number = backup_set["file_number"]
+            file_list = _read_file_list(connection, staged_backup, file_number)
+
             restore_sql = _build_restore_sql(
                 database_name=database_name,
                 backup_path=staged_backup,
+                file_number=file_number,
                 file_list=file_list,
                 data_dir=data_dir,
                 log_dir=log_dir,
@@ -296,13 +354,24 @@ async def restore_sqlserver_backup(upload: UploadFile) -> dict:
             password=active.get("password"),
             driver=active.get("driver") or "ODBC Driver 18 for SQL Server",
         )
+        activated = True
 
         return {
             "restored": True,
             "database": database_name,
+            "source_database": backup_set.get("database_name"),
+            "backup_file_number": file_number,
             "original_filename": filename,
             "size_bytes": size_bytes,
         }
+    except Exception:
+        if database_name:
+            try:
+                with system_engine.connect() as cleanup_connection:
+                    _cleanup_failed_restore(cleanup_connection, database_name)
+            except Exception:
+                pass
+        raise
     finally:
         system_engine.dispose()
         if staged_backup is not None and staged_backup.exists():
