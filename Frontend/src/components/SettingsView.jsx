@@ -1,8 +1,153 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { DashboardContext } from '../context/DashboardContext';
-import { Check, Moon, Sun, Languages, Palette, ChartNoAxesCombined } from 'lucide-react';
+import {
+  Check,
+  Moon,
+  Sun,
+  Languages,
+  Palette,
+  ChartNoAxesCombined,
+  Database,
+  Server,
+  FileSpreadsheet,
+  Construction,
+} from 'lucide-react';
 import { DatabaseConfig } from './DatabaseConfig';
 import { DatabaseUpload } from './DatabaseUpload';
+
+const DataSourceSwitcher = ({ source, setSource, theme, colors, language }) => {
+  const options = [
+    {
+      id: 'sqlserver',
+      label: 'SQL Server',
+      icon: Database,
+      status: language === 'es' ? 'Disponible' : 'Available',
+      enabled: true,
+    },
+    {
+      id: 'postgresql',
+      label: 'PostgreSQL',
+      icon: Server,
+      status: language === 'es' ? 'En desarrollo' : 'In development',
+      enabled: true,
+    },
+    {
+      id: 'excel',
+      label: 'Excel',
+      icon: FileSpreadsheet,
+      status: language === 'es' ? 'En evaluación' : 'Under evaluation',
+      enabled: true,
+    },
+  ];
+
+  return (
+    <section
+      className="p-5 sm:p-6 rounded-2xl border shadow-sm"
+      style={{ backgroundColor: colors.card, borderColor: colors.border }}
+    >
+      <div className="flex items-start gap-3 mb-5">
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{ backgroundColor: colors.accentSoft, color: theme.primary }}
+        >
+          <Database size={20} />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold" style={{ color: colors.text }}>
+            {language === 'es' ? 'Fuente de datos' : 'Data source'}
+          </h3>
+          <p className="text-sm" style={{ color: colors.muted }}>
+            {language === 'es'
+              ? 'Selecciona el origen que deseas conectar o cargar en Kenneth.'
+              : 'Choose the source you want to connect or upload to Kenneth.'}
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="grid grid-cols-1 sm:grid-cols-3 overflow-hidden rounded-xl border"
+        style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}
+      >
+        {options.map((option, index) => {
+          const selected = source === option.id;
+          const Icon = option.icon;
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => option.enabled && setSource(option.id)}
+              className="relative px-4 py-4 sm:py-3.5 transition-all text-left sm:text-center flex sm:flex-col items-center justify-between sm:justify-center gap-2"
+              style={{
+                backgroundColor: selected ? theme.primary : 'transparent',
+                color: selected ? '#fff' : colors.text,
+                borderLeft: index > 0 ? `1px solid ${colors.border}` : undefined,
+              }}
+            >
+              <div className="flex items-center gap-2 font-bold">
+                <Icon size={18} />
+                <span>{option.label}</span>
+              </div>
+              <span
+                className="text-[11px] font-semibold rounded-full px-2 py-0.5"
+                style={{
+                  backgroundColor: selected ? 'rgba(255,255,255,0.16)' : colors.accentSoft,
+                  color: selected ? '#fff' : theme.primary,
+                }}
+              >
+                {option.status}
+              </span>
+
+              {selected && (
+                <span
+                  className="hidden sm:block absolute -bottom-2 left-1/2 -translate-x-1/2 rotate-45 w-4 h-4"
+                  style={{ backgroundColor: theme.primary }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
+const SourcePlaceholder = ({ source, theme, colors, language }) => {
+  const isPostgres = source === 'postgresql';
+  const title = isPostgres ? 'PostgreSQL' : 'Excel';
+  const Icon = isPostgres ? Server : FileSpreadsheet;
+
+  return (
+    <section
+      className="p-5 sm:p-6 rounded-2xl border shadow-sm"
+      style={{ backgroundColor: colors.card, borderColor: colors.border }}
+    >
+      <div className="min-h-52 rounded-2xl border border-dashed p-8 flex flex-col items-center justify-center text-center"
+        style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}
+      >
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+          style={{ backgroundColor: colors.accentSoft, color: theme.primary }}
+        >
+          <Icon size={28} />
+        </div>
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="text-xl font-extrabold" style={{ color: colors.text }}>{title}</h3>
+          <Construction size={18} style={{ color: theme.primary }} />
+        </div>
+        <p className="max-w-2xl text-sm leading-6" style={{ color: colors.muted }}>
+          {isPostgres
+            ? (language === 'es'
+                ? 'La interfaz ya está reservada para PostgreSQL. Aquí aparecerán la conexión por host, puerto, base de datos y credenciales, además de la carga de archivos .dump, .backup y .sql cuando implementemos el backend.'
+                : 'The interface is already reserved for PostgreSQL. Connection fields and .dump, .backup and .sql uploads will appear here once the backend is implemented.')
+            : (language === 'es'
+                ? 'Excel queda reservado como una futura fuente de datos. Si se aprueba, esta vista permitirá cargar .xlsx, .xls o .csv y transformar sus hojas en entidades para el Semantic Mapper.'
+                : 'Excel is reserved as a future data source. If approved, this view will allow .xlsx, .xls or .csv uploads and map sheets into Semantic Mapper entities.')}
+        </p>
+      </div>
+    </section>
+  );
+};
 
 export const SettingsView = () => {
   const {
@@ -20,6 +165,7 @@ export const SettingsView = () => {
     t,
   } = useContext(DashboardContext);
 
+  const [dataSource, setDataSource] = useState('sqlserver');
   const cardStyle = { backgroundColor: colors.card, borderColor: colors.border };
 
   const settings = [
@@ -130,8 +276,27 @@ export const SettingsView = () => {
         </section>
       </div>
 
-      <DatabaseUpload />
-      <DatabaseConfig />
+      <DataSourceSwitcher
+        source={dataSource}
+        setSource={setDataSource}
+        theme={theme}
+        colors={colors}
+        language={language}
+      />
+
+      {dataSource === 'sqlserver' ? (
+        <>
+          <DatabaseUpload />
+          <DatabaseConfig />
+        </>
+      ) : (
+        <SourcePlaceholder
+          source={dataSource}
+          theme={theme}
+          colors={colors}
+          language={language}
+        />
+      )}
 
       <section className="p-5 sm:p-6 rounded-2xl border shadow-sm" style={cardStyle}>
         <div className="flex items-start gap-3 mb-5">
