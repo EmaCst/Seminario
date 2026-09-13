@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DatabaseConfig } from './DatabaseConfig';
 import { DatabaseUpload } from './DatabaseUpload';
+import { PostgreSQLConfig } from './PostgreSQLConfig';
 
 const DataSourceSwitcher = ({ source, setSource, theme, colors, language }) => {
   const options = [
@@ -28,7 +29,7 @@ const DataSourceSwitcher = ({ source, setSource, theme, colors, language }) => {
       id: 'postgresql',
       label: 'PostgreSQL',
       icon: Server,
-      status: language === 'es' ? 'En desarrollo' : 'In development',
+      status: language === 'es' ? 'Disponible' : 'Available',
       enabled: true,
     },
     {
@@ -112,42 +113,33 @@ const DataSourceSwitcher = ({ source, setSource, theme, colors, language }) => {
   );
 };
 
-const SourcePlaceholder = ({ source, theme, colors, language }) => {
-  const isPostgres = source === 'postgresql';
-  const title = isPostgres ? 'PostgreSQL' : 'Excel';
-  const Icon = isPostgres ? Server : FileSpreadsheet;
-
-  return (
-    <section
-      className="p-5 sm:p-6 rounded-2xl border shadow-sm"
-      style={{ backgroundColor: colors.card, borderColor: colors.border }}
+const ExcelPlaceholder = ({ theme, colors, language }) => (
+  <section
+    className="p-5 sm:p-6 rounded-2xl border shadow-sm"
+    style={{ backgroundColor: colors.card, borderColor: colors.border }}
+  >
+    <div
+      className="min-h-52 rounded-2xl border border-dashed p-8 flex flex-col items-center justify-center text-center"
+      style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}
     >
-      <div className="min-h-52 rounded-2xl border border-dashed p-8 flex flex-col items-center justify-center text-center"
-        style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+        style={{ backgroundColor: colors.accentSoft, color: theme.primary }}
       >
-        <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-          style={{ backgroundColor: colors.accentSoft, color: theme.primary }}
-        >
-          <Icon size={28} />
-        </div>
-        <div className="flex items-center gap-2 mb-2">
-          <h3 className="text-xl font-extrabold" style={{ color: colors.text }}>{title}</h3>
-          <Construction size={18} style={{ color: theme.primary }} />
-        </div>
-        <p className="max-w-2xl text-sm leading-6" style={{ color: colors.muted }}>
-          {isPostgres
-            ? (language === 'es'
-                ? 'La interfaz ya está reservada para PostgreSQL. Aquí aparecerán la conexión por host, puerto, base de datos y credenciales, además de la carga de archivos .dump, .backup y .sql cuando implementemos el backend.'
-                : 'The interface is already reserved for PostgreSQL. Connection fields and .dump, .backup and .sql uploads will appear here once the backend is implemented.')
-            : (language === 'es'
-                ? 'Excel queda reservado como una futura fuente de datos. Si se aprueba, esta vista permitirá cargar .xlsx, .xls o .csv y transformar sus hojas en entidades para el Semantic Mapper.'
-                : 'Excel is reserved as a future data source. If approved, this view will allow .xlsx, .xls or .csv uploads and map sheets into Semantic Mapper entities.')}
-        </p>
+        <FileSpreadsheet size={28} />
       </div>
-    </section>
-  );
-};
+      <div className="flex items-center gap-2 mb-2">
+        <h3 className="text-xl font-extrabold" style={{ color: colors.text }}>Excel</h3>
+        <Construction size={18} style={{ color: theme.primary }} />
+      </div>
+      <p className="max-w-2xl text-sm leading-6" style={{ color: colors.muted }}>
+        {language === 'es'
+          ? 'Excel queda reservado como una futura fuente de datos. Si se aprueba, esta vista permitirá cargar .xlsx, .xls o .csv y transformar sus hojas en entidades para el Semantic Mapper.'
+          : 'Excel is reserved as a future data source. If approved, this view will allow .xlsx, .xls or .csv uploads and map sheets into Semantic Mapper entities.'}
+      </p>
+    </div>
+  </section>
+);
 
 export const SettingsView = () => {
   const {
@@ -284,18 +276,17 @@ export const SettingsView = () => {
         language={language}
       />
 
-      {dataSource === 'sqlserver' ? (
+      {dataSource === 'sqlserver' && (
         <>
           <DatabaseUpload />
           <DatabaseConfig />
         </>
-      ) : (
-        <SourcePlaceholder
-          source={dataSource}
-          theme={theme}
-          colors={colors}
-          language={language}
-        />
+      )}
+
+      {dataSource === 'postgresql' && <PostgreSQLConfig />}
+
+      {dataSource === 'excel' && (
+        <ExcelPlaceholder theme={theme} colors={colors} language={language} />
       )}
 
       <section className="p-5 sm:p-6 rounded-2xl border shadow-sm" style={cardStyle}>
