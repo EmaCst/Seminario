@@ -1,21 +1,13 @@
 import re
 
 
-def normalize_sql(sql: str) -> str:
-    """
-    Limpia y normaliza el SQL generado por la IA
-    para Microsoft SQL Server.
-    """
+def normalize_sql(sql: str, dialect: str = "sqlserver") -> str:
+    """Limpia el SQL generado y aplica normalización específica del motor."""
 
     sql = sql.strip()
 
-    # ==========================================
-    # ELIMINAR BLOQUES MARKDOWN
-    # ==========================================
-
     if sql.startswith("```sql"):
         sql = sql[6:]
-
     elif sql.startswith("```"):
         sql = sql[3:]
 
@@ -24,52 +16,51 @@ def normalize_sql(sql: str) -> str:
 
     sql = sql.strip()
 
-    # ==========================================
-    # CONVERTIR LIMIT -> TOP
-    # ==========================================
-
-    limit_match = re.search(
-        r"\s+LIMIT\s+(\d+)\s*;?\s*$",
-        sql,
-        re.IGNORECASE
-    )
-
-    if limit_match:
-
-        limit = limit_match.group(1)
-
-        # Eliminar LIMIT del final
-        sql = sql[:limit_match.start()].rstrip()
-
-        # SELECT DISTINCT necesita TOP después de DISTINCT
-        if re.match(
-            r"^\s*SELECT\s+DISTINCT\b",
+    if dialect == "sqlserver":
+        limit_match = re.search(
+            r"\s+LIMIT\s+(\d+)\s*;?\s*$",
             sql,
-            re.IGNORECASE
-        ):
+            re.IGNORECASE,
+        )
 
+        if limit_match:
+            limit = limit_match.group(1)
+            sql = sql[:limit_match.start()].rstrip()
+
+            if re.match(r"^\s*SELECT\s+DISTINCT\b", sql, re.IGNORECASE):
+                sql = re.sub(
+                    r"^(\s*SELECT\s+DISTINCT)\b",
+                    rf"\1 TOP {limit}",
+                    sql,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                sql = re.sub(
+                    r"^(\s*SELECT)\b",
+                    rf"\1 TOP {limit}",
+                    sql,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+
+    elif dialect == "postgresql":
+        # Defensa por si el modelo mezcla TOP de SQL Server con PostgreSQL.
+        top_match = re.match(
+            r"^(\s*SELECT\s+)(?:DISTINCT\s+)?TOP\s+(\d+)\s+",
+            sql,
+            re.IGNORECASE,
+        )
+        if top_match:
+            limit = top_match.group(2)
+            distinct = bool(re.match(r"^\s*SELECT\s+DISTINCT", sql, re.IGNORECASE))
             sql = re.sub(
-                r"^(\s*SELECT\s+DISTINCT)\b",
-                rf"\1 TOP {limit}",
+                r"^(\s*SELECT\s+)(?:DISTINCT\s+)?TOP\s+\d+\s+",
+                r"\1DISTINCT " if distinct else r"\1",
                 sql,
                 count=1,
-                flags=re.IGNORECASE
+                flags=re.IGNORECASE,
             )
+            sql = sql.rstrip("; ") + f" LIMIT {limit}"
 
-        else:
-
-            sql = re.sub(
-                r"^(\s*SELECT)\b",
-                rf"\1 TOP {limit}",
-                sql,
-                count=1,
-                flags=re.IGNORECASE
-            )
-
-    # ==========================================
-    # ASEGURAR PUNTO Y COMA
-    # ==========================================
-
-    sql = sql.rstrip(";").strip() + ";"
-
-    return sql
+    return sql.rstrip(";").strip() + ";"
