@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  BarChart,
   Bar,
+  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 import { DashboardContext } from '../context/DashboardContext';
-import { getAdaptiveDashboard, getSemanticModel } from '../services/api';
+import { getAdaptiveDashboard, getDatabaseStatus, getSemanticModel } from '../services/api';
 import { DashboardView } from './DashboardView';
 
 const DOMAIN_META = {
@@ -69,9 +69,11 @@ const ROLE_LABELS = {
   ingredients: ['Ingredientes', 'Ingredients'],
   services: ['Servicios', 'Services'],
   clients: ['Clientes', 'Clients'],
+  customers: ['Clientes', 'Customers'],
   projects: ['Proyectos', 'Projects'],
   invoices: ['Facturas', 'Invoices'],
   payments: ['Pagos', 'Payments'],
+  sales: ['Ventas', 'Sales'],
   accounts: ['Cuentas', 'Accounts'],
   transactions: ['Transacciones', 'Transactions'],
   journal_entries: ['Asientos contables', 'Journal entries'],
@@ -108,25 +110,22 @@ const monthNames = {
 
 const BusinessDashboard = ({ data }) => {
   const { theme, colors, language, t } = useContext(DashboardContext);
-  const domain = data?.domain;
-  const meta = DOMAIN_META[domain] || { es: domain || 'Desconocido', en: domain || 'Unknown', Icon: Database };
+  const meta = DOMAIN_META[data?.domain] || { es: data?.domain || 'Desconocido', en: data?.domain || 'Unknown', Icon: Database };
   const DomainIcon = meta.Icon;
+  const statusRows = data?.status_distribution?.data || [];
+  const cardStyle = { backgroundColor: colors.card, borderColor: colors.border };
 
-  const trend = useMemo(() => {
-    return (data?.trend?.data || []).map((item) => ({
+  const trendRows = useMemo(
+    () => (data?.trend?.data || []).map((item) => ({
       name: `${monthNames[language][item.month - 1]} ${item.year}`,
       total: item.total,
-    }));
-  }, [data, language]);
-
-  const status = data?.status_distribution?.data || [];
-  const cardStyle = { backgroundColor: colors.card, borderColor: colors.border };
+    })),
+    [data, language],
+  );
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: theme.primary }}>
-        {t.dashboard}
-      </h2>
+      <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: theme.primary }}>{t.dashboard}</h2>
 
       <section className="rounded-2xl border p-5 shadow-sm" style={cardStyle}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -135,12 +134,9 @@ const BusinessDashboard = ({ data }) => {
               <DomainIcon size={25} />
             </div>
             <div>
-              <p className="text-sm" style={{ color: colors.muted }}>
-                {language === 'es' ? 'Tipo de negocio detectado' : 'Detected business domain'}
-              </p>
-              <h3 className="text-2xl font-extrabold" style={{ color: colors.text }}>
-                {language === 'es' ? meta.es : meta.en}
-              </h3>
+              <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'Tipo de negocio detectado' : 'Detected business domain'}</p>
+              <h3 className="text-2xl font-extrabold" style={{ color: colors.text }}>{language === 'es' ? meta.es : meta.en}</h3>
+              <p className="text-xs mt-1" style={{ color: colors.muted }}>{data?.provider === 'postgresql' ? 'PostgreSQL' : 'SQL Server'}</p>
             </div>
           </div>
           <div className="rounded-xl border px-4 py-2 text-sm" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft, color: colors.text }}>
@@ -152,15 +148,9 @@ const BusinessDashboard = ({ data }) => {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {(data?.kpis || []).map((kpi) => (
           <section key={kpi.role} className="rounded-2xl border p-5 shadow-sm" style={cardStyle}>
-            <div className="text-sm font-semibold" style={{ color: colors.muted }}>
-              {roleLabel(kpi.role, language)}
-            </div>
-            <div className="mt-1 text-3xl font-extrabold" style={{ color: theme.primary }}>
-              {Number(kpi.value || 0).toLocaleString()}
-            </div>
-            <div className="mt-1 text-xs" style={{ color: colors.muted }}>
-              {language === 'es' ? 'Registros detectados' : 'Detected records'}
-            </div>
+            <div className="text-sm font-semibold" style={{ color: colors.muted }}>{roleLabel(kpi.role, language)}</div>
+            <div className="mt-1 text-3xl font-extrabold" style={{ color: theme.primary }}>{Number(kpi.value || 0).toLocaleString()}</div>
+            <div className="mt-1 text-xs" style={{ color: colors.muted }}>{language === 'es' ? 'Registros detectados' : 'Detected records'}</div>
           </section>
         ))}
       </div>
@@ -168,13 +158,11 @@ const BusinessDashboard = ({ data }) => {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
           <h3 className="font-bold mb-3" style={{ color: theme.primary }}>
-            {data?.trend?.available
-              ? `${roleLabel(data.trend.role, language)} ${language === 'es' ? 'por mes' : 'by month'}`
-              : (language === 'es' ? 'Evolución mensual' : 'Monthly trend')}
+            {data?.trend?.available ? `${roleLabel(data.trend.role, language)} ${language === 'es' ? 'por mes' : 'by month'}` : (language === 'es' ? 'Evolución mensual' : 'Monthly trend')}
           </h3>
-          {data?.trend?.available && trend.length > 0 ? (
+          {data?.trend?.available && trendRows.length ? (
             <ResponsiveContainer width="100%" height="86%">
-              <LineChart data={trend} margin={{ top: 5, right: 18, left: -15, bottom: 0 }}>
+              <LineChart data={trendRows} margin={{ top: 5, right: 18, left: -15, bottom: 0 }}>
                 <CartesianGrid stroke={colors.grid} strokeOpacity={0.15} vertical={false} />
                 <XAxis dataKey="name" tick={{ fill: colors.muted, fontSize: 12 }} tickLine={false} />
                 <YAxis tick={{ fill: colors.muted, fontSize: 12 }} tickLine={false} axisLine={false} />
@@ -184,22 +172,18 @@ const BusinessDashboard = ({ data }) => {
             </ResponsiveContainer>
           ) : (
             <div className="h-[86%] flex items-center justify-center text-center text-sm" style={{ color: colors.muted }}>
-              {language === 'es'
-                ? 'No hay una columna de fecha utilizable o todavía no existen registros.'
-                : 'No usable date column was found or there are no records yet.'}
+              {language === 'es' ? 'No hay una columna de fecha utilizable o todavía no existen registros.' : 'No usable date column was found or there are no records yet.'}
             </div>
           )}
         </section>
 
         <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
           <h3 className="font-bold mb-3" style={{ color: theme.primary }}>
-            {data?.status_distribution?.available
-              ? `${roleLabel(data.status_distribution.role, language)} — ${language === 'es' ? 'distribución por estado' : 'status distribution'}`
-              : (language === 'es' ? 'Distribución por estado' : 'Status distribution')}
+            {data?.status_distribution?.available ? `${roleLabel(data.status_distribution.role, language)} — ${language === 'es' ? 'distribución por estado' : 'status distribution'}` : (language === 'es' ? 'Distribución por estado' : 'Status distribution')}
           </h3>
-          {data?.status_distribution?.available && status.length > 0 ? (
+          {data?.status_distribution?.available && statusRows.length ? (
             <ResponsiveContainer width="100%" height="86%">
-              <BarChart data={status} margin={{ top: 5, right: 18, left: -15, bottom: 0 }}>
+              <BarChart data={statusRows} margin={{ top: 5, right: 18, left: -15, bottom: 0 }}>
                 <CartesianGrid stroke={colors.grid} strokeOpacity={0.15} vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: colors.muted, fontSize: 12 }} tickLine={false} />
                 <YAxis tick={{ fill: colors.muted, fontSize: 12 }} tickLine={false} axisLine={false} />
@@ -209,9 +193,7 @@ const BusinessDashboard = ({ data }) => {
             </ResponsiveContainer>
           ) : (
             <div className="h-[86%] flex items-center justify-center text-center text-sm" style={{ color: colors.muted }}>
-              {language === 'es'
-                ? 'No se encontró una columna de estado utilizable o todavía no existen registros.'
-                : 'No usable status column was found or there are no records yet.'}
+              {language === 'es' ? 'No se encontró una columna de estado utilizable o todavía no existen registros.' : 'No usable status column was found or there are no records yet.'}
             </div>
           )}
         </section>
@@ -219,9 +201,7 @@ const BusinessDashboard = ({ data }) => {
 
       <section className="overflow-hidden rounded-2xl border shadow-sm" style={cardStyle}>
         <div className="border-b px-5 py-4" style={{ borderColor: colors.border }}>
-          <h3 className="font-bold" style={{ color: theme.primary }}>
-            {language === 'es' ? 'Resumen de módulos del negocio' : 'Business modules summary'}
-          </h3>
+          <h3 className="font-bold" style={{ color: theme.primary }}>{language === 'es' ? 'Resumen de módulos del negocio' : 'Business modules summary'}</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
@@ -254,6 +234,7 @@ export const UniversalDashboard = () => {
   const { colors, language } = useContext(DashboardContext);
   const [semantic, setSemantic] = useState(null);
   const [adaptive, setAdaptive] = useState(null);
+  const [provider, setProvider] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -263,17 +244,26 @@ export const UniversalDashboard = () => {
     async function load() {
       try {
         setLoading(true);
-        const semanticData = await getSemanticModel();
+        const [semanticData, statusData] = await Promise.all([
+          getSemanticModel(),
+          getDatabaseStatus(),
+        ]);
         if (!active) return;
+
         setSemantic(semanticData);
+        const activeProvider = statusData?.provider || 'sqlserver';
+        setProvider(activeProvider);
 
         const domain = semanticData?.semantic_model?.domain || semanticData?.business_domain?.primary;
-        if (domain === 'retail') {
+        const useLegacyRetail = domain === 'retail' && activeProvider === 'sqlserver';
+
+        if (useLegacyRetail) {
           setAdaptive(null);
         } else {
           const adaptiveData = await getAdaptiveDashboard();
           if (active) setAdaptive(adaptiveData);
         }
+
         if (active) setError(null);
       } catch (err) {
         console.error('Error cargando dashboard universal:', err);
@@ -297,7 +287,7 @@ export const UniversalDashboard = () => {
     return <div style={{ color: colors.text }}>{error}</div>;
   }
 
-  if (domain === 'retail') {
+  if (domain === 'retail' && provider === 'sqlserver') {
     return <DashboardView />;
   }
 
