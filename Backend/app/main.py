@@ -18,7 +18,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.6.0"
+    version="0.7.0"
 )
 
 
@@ -46,6 +46,15 @@ class DatabaseConnectionRequest(BaseModel):
     driver: str = "ODBC Driver 18 for SQL Server"
 
 
+class PostgreSQLConnectionRequest(BaseModel):
+    host: str
+    database: str
+    username: str
+    password: str | None = None
+    port: int = 5432
+    sslmode: str = "prefer"
+
+
 def _current_database_analysis() -> dict:
     schema = inspect_database()
     domain_analysis = inspect_business_domains()
@@ -62,6 +71,20 @@ def _current_database_analysis() -> dict:
             "candidates": domain_analysis["candidates"],
         },
         "semantic_model_v2": semantic_model["semantic_model"],
+    }
+
+
+def _full_connection_analysis(connection_status: dict) -> dict:
+    analysis = _current_database_analysis()
+    capabilities = inspect_capabilities()
+    semantic_map = inspect_semantic_map()
+
+    return {
+        "connected": True,
+        "connection": connection_status,
+        **analysis,
+        "capabilities": capabilities["capabilities"],
+        "semantic_map": semantic_map["semantic_map"],
     }
 
 
@@ -128,6 +151,7 @@ def database_semantic_model():
         ) from exc
 
 
+# --- SQL Server ---
 @app.post("/api/database/test")
 def test_database_connection(config: DatabaseConnectionRequest):
     try:
@@ -135,7 +159,7 @@ def test_database_connection(config: DatabaseConnectionRequest):
     except Exception as exc:
         raise HTTPException(
             status_code=400,
-            detail=f"No fue posible conectar con la base de datos: {exc}"
+            detail=f"No fue posible conectar con SQL Server: {exc}"
         ) from exc
 
 
@@ -143,21 +167,35 @@ def test_database_connection(config: DatabaseConnectionRequest):
 def connect_database(config: DatabaseConnectionRequest):
     try:
         connection_status = database_manager.configure(**config.model_dump())
-        analysis = _current_database_analysis()
-        capabilities = inspect_capabilities()
-        semantic_map = inspect_semantic_map()
-
-        return {
-            "connected": True,
-            "connection": connection_status,
-            **analysis,
-            "capabilities": capabilities["capabilities"],
-            "semantic_map": semantic_map["semantic_map"],
-        }
+        return _full_connection_analysis(connection_status)
     except Exception as exc:
         raise HTTPException(
             status_code=400,
-            detail=f"No fue posible activar la base de datos: {exc}"
+            detail=f"No fue posible activar la base SQL Server: {exc}"
+        ) from exc
+
+
+# --- PostgreSQL ---
+@app.post("/api/database/test/postgresql")
+def test_postgresql_connection(config: PostgreSQLConnectionRequest):
+    try:
+        return database_manager.test_postgresql_connection(**config.model_dump())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible conectar con PostgreSQL: {exc}"
+        ) from exc
+
+
+@app.post("/api/database/connect/postgresql")
+def connect_postgresql_database(config: PostgreSQLConnectionRequest):
+    try:
+        connection_status = database_manager.configure_postgresql(**config.model_dump())
+        return _full_connection_analysis(connection_status)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible activar la base PostgreSQL: {exc}"
         ) from exc
 
 
