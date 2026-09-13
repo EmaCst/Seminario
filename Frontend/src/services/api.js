@@ -53,6 +53,24 @@ export async function connectDatabase(config) {
   return parseResponse(response);
 }
 
+export async function testPostgreSQLConnection(config) {
+  const response = await fetch(`${API_URL}/api/database/test/postgresql`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return parseResponse(response);
+}
+
+export async function connectPostgreSQL(config) {
+  const response = await fetch(`${API_URL}/api/database/connect/postgresql`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return parseResponse(response);
+}
+
 export async function uploadSqlServerBackup(file) {
   const formData = new FormData();
   formData.append('file', file);
