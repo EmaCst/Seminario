@@ -12,13 +12,14 @@ from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
 from app.database.inspector import inspect_database
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
+from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.services.assistant_service import ask_database
 
 
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.7.0"
+    version="0.8.0"
 )
 
 
@@ -106,6 +107,32 @@ def ask(question: Question):
 @app.post("/ask-db")
 def ask_database_endpoint(question: Question):
     return ask_database(question.question)
+
+
+@app.get("/api/ai/forecast")
+def ai_forecast(horizon: int = 3):
+    try:
+        return forecast_next_months(horizon=horizon)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible generar la predicción: {exc}"
+        ) from exc
+
+
+@app.get("/api/ai/anomalies")
+def ai_anomalies():
+    try:
+        return detect_monthly_anomalies()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible detectar anomalías: {exc}"
+        ) from exc
 
 
 @app.get("/api/dashboard")
