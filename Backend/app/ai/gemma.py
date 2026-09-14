@@ -96,10 +96,21 @@ def _dialect_rules() -> str:
 def _sql_system_prompt() -> str:
     return (
         "Eres un generador experto de SQL seguro. Devuelve únicamente UNA consulta SELECT en SQL plano, "
-        "sin Markdown ni explicaciones. Usa exclusivamente tablas, columnas y relaciones presentes en el esquema. "
-        "No inventes nada. Respeta PK/FK. Para rankings incluye la métrica usada para ordenar. "
-        "Para cantidades usa SUM(cantidad) cuando exista; para importes usa la columna monetaria real. "
-        "Usa GROUP BY correctamente, evita JOIN innecesarios y termina con punto y coma. "
+        "sin Markdown ni explicaciones. La consulta DEBE comenzar con SELECT; no uses CTE/WITH. "
+        "Usa exclusivamente tablas, columnas y relaciones presentes en el esquema. No inventes nada. "
+        "Respeta PK/FK y usa alias descriptivos para TODAS las métricas calculadas. "
+        "La PREGUNTA ACTUAL tiene prioridad; el historial solo sirve para resolver referencias como 'y eso', "
+        "'el anterior', 'ese cliente' o 'cuánto representan'. "
+        "Interpreta 'cuántas ventas hay' como cantidad de transacciones/filas de ventas con COUNT, "
+        "no como dinero. Interpreta 'cuánto dinero', 'monto', 'importe', 'ingresos' o 'facturación' como SUM "
+        "de la columna monetaria real. Interpreta 'unidades vendidas' como SUM de una columna de cantidad. "
+        "Para rankings incluye la métrica usada para ordenar. Para preguntas con varias partes devuelve en la "
+        "misma consulta todas las columnas necesarias para responderlas. Puedes usar subconsultas, tablas derivadas "
+        "y funciones de ventana si ayudan, pero la sentencia completa debe iniciar con SELECT. "
+        "Si preguntan por el mes con mayor valor y cuánto superó al anterior, calcula también el valor del mes anterior "
+        "y la diferencia. Si preguntan por un top N y una diferencia entre posiciones, devuelve las filas del ranking "
+        "con suficiente información para calcular o mostrar esa diferencia. Usa GROUP BY correctamente, evita JOIN "
+        "innecesarios y termina con punto y coma. "
         + _dialect_rules()
     )
 
@@ -119,7 +130,7 @@ PREGUNTA ACTUAL:
         prompt,
         system=_sql_system_prompt(),
         temperature=0.0,
-        num_predict=180,
+        num_predict=220,
     )
 
     if sql.startswith("```sql"):
@@ -144,7 +155,7 @@ def repair_sql(
 {database_context}
 {_history_text(history)}
 
-PREGUNTA:
+PREGUNTA ACTUAL:
 {question}
 
 SQL QUE FALLÓ:
@@ -153,14 +164,14 @@ SQL QUE FALLÓ:
 ERROR DEVUELTO POR LA BASE:
 {error[:1200]}
 
-Corrige la consulta respetando estrictamente el esquema y el motor activo.
+Corrige la consulta. Conserva todas las partes de la pregunta del usuario, usa alias claros y devuelve solo SQL.
 """
 
     sql = ask_gemma(
         prompt,
         system=_sql_system_prompt(),
         temperature=0.0,
-        num_predict=200,
+        num_predict=240,
     )
 
     if sql.startswith("```sql"):
@@ -179,7 +190,7 @@ def explain_results(
     results: list[dict],
     history: list[dict] | None = None,
 ) -> str:
-    prompt = f"""PREGUNTA:
+    prompt = f"""PREGUNTA ACTUAL:
 {question}
 {_history_text(history, limit=4)}
 
@@ -194,9 +205,11 @@ SQL EJECUTADO:
         prompt,
         system=(
             "Eres Kenneth, asistente empresarial. Responde en español de forma natural, directa y breve. "
-            "Basa la respuesta EXCLUSIVAMENTE en los resultados recibidos. No inventes causas, datos, "
-            "porcentajes, tendencias ni registros ausentes. Si faltan datos, dilo. No muestres SQL salvo que lo pidan."
+            "Responde TODAS las partes de la pregunta usando exclusivamente los resultados recibidos. "
+            "Puedes hacer aritmética simple entre valores que sí aparecen en los resultados, por ejemplo diferencias "
+            "entre dos posiciones o dos meses. No inventes causas, datos, tendencias ni registros ausentes. "
+            "Si falta algún valor necesario, dilo claramente. No muestres SQL salvo que lo pidan."
         ),
-        temperature=0.15,
-        num_predict=180,
+        temperature=0.1,
+        num_predict=200,
     )
