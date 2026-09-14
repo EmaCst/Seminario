@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
 from app.analysis.business_domain_detector import inspect_business_domains
@@ -19,7 +19,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.8.0"
+    version="0.9.0"
 )
 
 
@@ -35,8 +35,14 @@ app.add_middleware(
 )
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class Question(BaseModel):
     question: str
+    history: list[ChatMessage] = Field(default_factory=list)
 
 
 class DatabaseConnectionRequest(BaseModel):
@@ -106,7 +112,8 @@ def ask(question: Question):
 
 @app.post("/ask-db")
 def ask_database_endpoint(question: Question):
-    return ask_database(question.question)
+    history = [item.model_dump() for item in question.history]
+    return ask_database(question.question, history=history)
 
 
 @app.get("/api/ai/forecast")
