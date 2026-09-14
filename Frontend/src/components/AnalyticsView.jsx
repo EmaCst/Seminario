@@ -40,6 +40,12 @@ const rangeOptions = [
   { value: 0, label: 'Todo' },
 ];
 
+const rankingGridClass = (count) => {
+  if (count <= 1) return 'grid grid-cols-1 gap-4';
+  if (count === 2) return 'grid grid-cols-1 lg:grid-cols-2 gap-4';
+  return 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4';
+};
+
 const SectionTitle = ({ icon: Icon, title, subtitle, theme, colors }) => (
   <div className="flex items-start gap-3 mb-4">
     <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: colors.accentSoft, color: theme.primary }}>
@@ -224,7 +230,7 @@ export const AnalyticsView = () => {
           {(data.rankings || []).length > 0 && (
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Trophy} title={language === 'es' ? 'Rankings del negocio' : 'Business rankings'} subtitle={language === 'es' ? 'Clasificaciones construidas a partir de relaciones reales del modelo semántico.' : 'Rankings built from real semantic-model relationships.'} theme={theme} colors={colors} />
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div className={rankingGridClass(data.rankings.length)}>
                 {data.rankings.map((ranking) => (
                   <div key={ranking.title} className="rounded-2xl border p-4" style={{ backgroundColor: colors.cardSoft, borderColor: colors.border }}>
                     <h3 className="font-extrabold" style={{ color: colors.text }}>{ranking.title}</h3>
