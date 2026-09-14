@@ -2,6 +2,8 @@ import re
 from time import perf_counter
 
 from app.ai.gemma import explain_results, generate_sql, repair_sql
+from app.analysis.adaptive_dashboard_service import _monthly_count
+from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.query_executor import execute_query
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 
@@ -16,6 +18,15 @@ PREDICTION_TERMS = (
 ANOMALY_TERMS = (
     "anomal", "atíp", "atip", "extraño", "extrano", "inusual", "fuera de lo normal",
     "comportamiento raro", "outlier", "unusual", "abnormal",
+)
+
+
+ROLE_TERMS = (
+    (("venta", "ventas", "sale", "sales"), ("sales",)),
+    (("pago", "pagos", "payment", "payments"), ("payments",)),
+    (("cita", "citas", "appointment", "appointments"), ("appointments",)),
+    (("inscripción", "inscripcion", "inscripciones", "enrollment", "enrollments"), ("enrollments",)),
+    (("viaje", "viajes", "trip", "trips"), ("trips",)),
 )
 
 
@@ -53,6 +64,20 @@ def _is_prediction_request(text: str) -> bool:
 
 def _is_anomaly_request(text: str) -> bool:
     return any(term in text for term in ANOMALY_TERMS)
+
+
+def _is_peak_month_comparison_request(text: str) -> bool:
+    has_month = any(term in text for term in ("mes", "monthly"))
+    has_peak = any(term in text for term in (
+        "más venta", "mas venta", "mayor venta", "más alto", "mas alto",
+        "mayor cantidad", "mayor número", "mayor numero", "máximo", "maximo",
+        "highest", "most",
+    ))
+    has_previous = any(term in text for term in (
+        "anterior", "previo", "precedente", "previous", "superó", "supero",
+        "diferencia", "difference",
+    ))
+    return has_month and has_peak and has_previous
 
 
 def _quality_from_r2(r2: float | None) -> str:
@@ -131,6 +156,89 @@ def _format_anomaly_answer(result: dict) -> str:
     )
 
 
+def _select_monthly_series(question: str) -> tuple[str, str, str, list[dict]]:
+    """Selecciona una entidad temporal usando el modelo semántico, sin pedirle SQL al LLM."""
+    semantic = (inspect_semantic_model().get("semantic_model") or {})
+    entities = semantic.get("entities") or {}
+    text = question.lower()
+
+    preferred_roles: list[str] = []
+    for terms, roles in ROLE_TERMS:
+        if any(term in text for term in terms):
+            preferred_roles.extend(roles)
+
+    ordered_roles = preferred_roles + [role for role in entities if role not in preferred_roles]
+
+    for role in ordered_roles:
+        entity = entities.get(role) or {}
+        table = entity.get("table")
+        date_column = (entity.get("columns") or {}).get("date")
+        if not table or not date_column:
+            continue
+        try:
+            data = _monthly_count(table, date_column)
+        except Exception:
+            continue
+        if data:
+            return role, table, date_column, data
+
+    raise ValueError("No encontré una serie mensual compatible con esa pregunta.")
+
+
+def _monthly_peak_comparison(question: str) -> dict:
+    """Resuelve comparaciones pico-vs-mes-anterior de forma determinista y rápida."""
+    role, table, date_column, raw_data = _select_monthly_series(question)
+    data = sorted(raw_data, key=lambda item: (int(item["year"]), int(item["month"])))
+
+    if not data:
+        raise ValueError("No hay datos mensuales disponibles.")
+
+    peak_index = max(range(len(data)), key=lambda index: float(data[index]["total"]))
+    peak = data[peak_index]
+    peak_total = float(peak["total"])
+
+    if peak_index == 0:
+        answer = (
+            f"El mes con mayor actividad fue {int(peak['month']):02d}/{int(peak['year'])}, "
+            f"con {_format_value(peak_total)} registros. No hay un mes anterior dentro del historial disponible para compararlo."
+        )
+        previous = None
+        difference = None
+        pct_difference = None
+    else:
+        previous = data[peak_index - 1]
+        previous_total = float(previous["total"])
+        difference = peak_total - previous_total
+        pct_difference = ((difference / previous_total) * 100.0) if previous_total else None
+
+        comparison = f"{_format_value(abs(difference))}"
+        if difference >= 0:
+            direction_text = f"superó al mes anterior por {comparison}"
+        else:
+            direction_text = f"quedó {_format_value(abs(difference))} por debajo del mes anterior"
+
+        if pct_difference is not None:
+            direction_text += f" ({abs(pct_difference):.1f}%)"
+
+        answer = (
+            f"El mes con más ventas fue {int(peak['month']):02d}/{int(peak['year'])}, "
+            f"con {_format_value(peak_total)} ventas. "
+            f"El mes anterior, {int(previous['month']):02d}/{int(previous['year'])}, tuvo "
+            f"{_format_value(previous_total)}; por lo tanto, {direction_text}."
+        )
+
+    return {
+        "role": role,
+        "table": table,
+        "date_column": date_column,
+        "peak": peak,
+        "previous": previous,
+        "difference": difference,
+        "pct_difference": round(pct_difference, 2) if pct_difference is not None else None,
+        "answer": answer,
+    }
+
+
 def _format_value(value) -> str:
     if isinstance(value, float):
         if value.is_integer():
@@ -180,7 +288,7 @@ def _fast_answer(question: str, results: list[dict]) -> str | None:
 
 
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
-    """Orquesta SQL, ML, contexto conversacional y autocorrección."""
+    """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
     intent_text = _intent_text(question, history)
@@ -215,6 +323,25 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
                 "total_ms": round((perf_counter() - started) * 1000, 1),
             },
         }
+
+    if _is_peak_month_comparison_request(intent_text):
+        analytics_started = perf_counter()
+        try:
+            result = _monthly_peak_comparison(question)
+        except Exception:
+            result = None
+        if result:
+            return {
+                "question": question,
+                "mode": "analytics",
+                "sql": None,
+                "data": result,
+                "answer": result["answer"],
+                "performance": {
+                    "analytics_ms": round((perf_counter() - analytics_started) * 1000, 1),
+                    "total_ms": round((perf_counter() - started) * 1000, 1),
+                },
+            }
 
     sql_started = perf_counter()
     sql = generate_sql(question, history=history)
