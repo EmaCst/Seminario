@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.analysis.adaptive_analytics_service import get_adaptive_analytics
 from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
 from app.analysis.business_domain_detector import inspect_business_domains
 from app.analysis.capability_detector import inspect_capabilities
@@ -19,7 +20,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.9.1"
+    version="0.10.0"
 )
 
 
@@ -165,6 +166,17 @@ def adaptive_dashboard():
         raise HTTPException(
             status_code=400,
             detail=f"No fue posible construir el dashboard adaptativo: {exc}"
+        ) from exc
+
+
+@app.get("/api/analytics/adaptive")
+def adaptive_analytics():
+    try:
+        return get_adaptive_analytics()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible construir la analítica adaptativa: {exc}"
         ) from exc
 
 
