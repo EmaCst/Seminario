@@ -1,7 +1,7 @@
 import re
 from time import perf_counter
 
-from app.ai.gemma import explain_results, generate_sql
+from app.ai.gemma import explain_results, generate_sql, repair_sql
 from app.database.query_executor import execute_query
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 
@@ -34,13 +34,24 @@ def _extract_horizon(question: str, default: int = 3) -> int:
     return default
 
 
-def _is_prediction_request(question: str) -> bool:
-    text = question.lower()
+def _intent_text(question: str, history: list[dict] | None) -> str:
+    """Permite entender follow-ups cortos como '¿y para 6 meses?'."""
+    recent_user = []
+    for item in (history or [])[-6:]:
+        role = item.get("role") or item.get("from")
+        if role not in {"user", "usuario"}:
+            continue
+        content = str(item.get("content") or item.get("text") or "").strip()
+        if content:
+            recent_user.append(content)
+    return " ".join(recent_user[-2:] + [question]).lower()
+
+
+def _is_prediction_request(text: str) -> bool:
     return any(term in text for term in PREDICTION_TERMS)
 
 
-def _is_anomaly_request(question: str) -> bool:
-    text = question.lower()
+def _is_anomaly_request(text: str) -> bool:
     return any(term in text for term in ANOMALY_TERMS)
 
 
@@ -72,16 +83,13 @@ def _format_forecast_answer(result: dict) -> str:
 
     if isinstance(r2, (int, float)):
         explanation = (
-            f"La calidad de ajuste del modelo es {quality} (R²={r2:.4f}), "
-            "así que conviene interpretar estos valores como una tendencia estimada y no como una certeza."
+            f"La calidad de ajuste es {quality} (R²={r2:.4f}), "
+            "así que conviene tomarlo como una tendencia estimada, no como una certeza."
         )
     else:
-        explanation = "Tómalo como una estimación orientativa basada en el comportamiento histórico disponible."
+        explanation = "Tómalo como una estimación orientativa basada en el historial disponible."
 
-    return (
-        f"La proyección para {role} es: {values}. "
-        f"{explanation}"
-    )
+    return f"La proyección para {role} es: {values}. {explanation}"
 
 
 def _format_anomaly_answer(result: dict) -> str:
@@ -111,32 +119,45 @@ def _format_anomaly_answer(result: dict) -> str:
             direction = "por encima" if pct_neighbors >= 0 else "por debajo"
             reasons.append(f"quedó {abs(pct_neighbors):.1f}% {direction} de sus meses vecinos")
 
-        if reasons:
-            reason_text = "; además, ".join(reasons)
-        else:
-            reason_text = item.get("reason") or "se alejó del patrón mensual habitual"
-
+        reason_text = "; además, ".join(reasons) if reasons else "se alejó del patrón mensual habitual"
         descriptions.append(
-            f"{month} registró {total} y fue clasificado con severidad {severity}: {reason_text}."
+            f"{month} registró {total} y tuvo severidad {severity}: {reason_text}."
         )
-
-    interpretation = (
-        "Vale la pena revisar qué ocurrió en esos periodos para identificar posibles factores del negocio que expliquen el cambio."
-    )
 
     return (
         f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {role}. "
         + " ".join(descriptions)
-        + " "
-        + interpretation
+        + " Vale la pena revisar qué ocurrió en esos periodos para entender el cambio."
     )
 
 
-def ask_database(question: str) -> dict:
-    """Orquesta SQL, predicciones y anomalías según la intención de la pregunta."""
-    started = perf_counter()
+def _fast_answer(results: list[dict]) -> str | None:
+    """Evita una segunda llamada al LLM para respuestas escalares muy simples."""
+    if not results:
+        return "No encontré resultados para esa consulta."
 
-    if _is_prediction_request(question):
+    if len(results) != 1:
+        return None
+
+    row = results[0]
+    if not row or len(row) > 3:
+        return None
+
+    parts = []
+    for key, value in row.items():
+        label = str(key).replace("_", " ").strip().capitalize()
+        parts.append(f"{label}: {value}")
+
+    return ". ".join(parts) + "."
+
+
+def ask_database(question: str, history: list[dict] | None = None) -> dict:
+    """Orquesta SQL, ML, contexto conversacional y autocorrección."""
+    started = perf_counter()
+    history = history or []
+    intent_text = _intent_text(question, history)
+
+    if _is_prediction_request(intent_text):
         ml_started = perf_counter()
         horizon = _extract_horizon(question)
         result = forecast_next_months(horizon=horizon)
@@ -152,7 +173,7 @@ def ask_database(question: str) -> dict:
             },
         }
 
-    if _is_anomaly_request(question):
+    if _is_anomaly_request(intent_text):
         ml_started = perf_counter()
         result = detect_monthly_anomalies()
         return {
@@ -168,15 +189,40 @@ def ask_database(question: str) -> dict:
         }
 
     sql_started = perf_counter()
-    sql = generate_sql(question)
-    sql_seconds = perf_counter() - sql_started
+    sql = generate_sql(question, history=history)
+    sql_generation_seconds = perf_counter() - sql_started
 
     query_started = perf_counter()
-    results = execute_query(sql)
+    retried = False
+    original_error = None
+    try:
+        results = execute_query(sql)
+    except Exception as exc:
+        # Un solo retry guiado por el error real mejora consultas complejas sin
+        # entrar en bucles ni relajar el validador de seguridad.
+        retried = True
+        original_error = str(exc)
+        repair_started = perf_counter()
+        sql = repair_sql(
+            question=question,
+            failed_sql=sql,
+            error=original_error,
+            history=history,
+        )
+        sql_generation_seconds += perf_counter() - repair_started
+        results = execute_query(sql)
     query_seconds = perf_counter() - query_started
 
     explanation_started = perf_counter()
-    answer = explain_results(question=question, sql=sql, results=results)
+    answer = _fast_answer(results)
+    used_llm_explanation = answer is None
+    if answer is None:
+        answer = explain_results(
+            question=question,
+            sql=sql,
+            results=results,
+            history=history,
+        )
     explanation_seconds = perf_counter() - explanation_started
 
     return {
@@ -185,10 +231,15 @@ def ask_database(question: str) -> dict:
         "sql": sql,
         "data": results,
         "answer": answer,
+        "recovery": {
+            "retried": retried,
+            "initial_error": original_error if retried else None,
+        },
         "performance": {
-            "sql_generation_ms": round(sql_seconds * 1000, 1),
+            "sql_generation_ms": round(sql_generation_seconds * 1000, 1),
             "database_query_ms": round(query_seconds * 1000, 1),
             "explanation_ms": round(explanation_seconds * 1000, 1),
+            "used_llm_explanation": used_llm_explanation,
             "total_ms": round((perf_counter() - started) * 1000, 1),
         },
     }
