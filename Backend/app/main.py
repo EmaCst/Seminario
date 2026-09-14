@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -14,13 +14,14 @@ from app.database.database_manager import database_manager
 from app.database.inspector import inspect_database
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
+from app.reports.report_service import REPORT_TYPES, generate_report_pdf
 from app.services.assistant_service import ask_database
 
 
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.10.0"
+    version="0.11.0"
 )
 
 
@@ -177,6 +178,29 @@ def adaptive_analytics():
         raise HTTPException(
             status_code=400,
             detail=f"No fue posible construir la analítica adaptativa: {exc}"
+        ) from exc
+
+
+@app.get("/api/reports/pdf")
+def report_pdf(type: str = "executive"):
+    if type not in REPORT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tipo de reporte no válido. Usa uno de: {', '.join(REPORT_TYPES.keys())}",
+        )
+    try:
+        content, filename = generate_report_pdf(type)
+        return Response(
+            content=content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No fue posible generar el reporte PDF: {exc}",
         ) from exc
 
 
