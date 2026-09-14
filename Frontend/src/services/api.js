@@ -30,6 +30,11 @@ export async function getAdaptiveDashboard() {
   return parseResponse(response);
 }
 
+export async function getAdaptiveAnalytics() {
+  const response = await fetch(`${API_URL}/api/analytics/adaptive`);
+  return parseResponse(response);
+}
+
 export async function getDatabaseStatus() {
   const response = await fetch(`${API_URL}/api/database/status`);
   return parseResponse(response);
