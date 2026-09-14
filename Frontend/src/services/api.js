@@ -11,11 +11,11 @@ async function parseResponse(response) {
   return data;
 }
 
-export async function askDatabase(question) {
+export async function askDatabase(question, history = []) {
   const response = await fetch(`${API_URL}/ask-db`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history }),
   });
   return parseResponse(response);
 }
