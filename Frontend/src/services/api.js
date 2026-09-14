@@ -35,6 +35,16 @@ export async function getDatabaseStatus() {
   return parseResponse(response);
 }
 
+export async function getForecast(horizon = 3) {
+  const response = await fetch(`${API_URL}/api/ai/forecast?horizon=${encodeURIComponent(horizon)}`);
+  return parseResponse(response);
+}
+
+export async function getAnomalies() {
+  const response = await fetch(`${API_URL}/api/ai/anomalies`);
+  return parseResponse(response);
+}
+
 export async function testDatabaseConnection(config) {
   const response = await fetch(`${API_URL}/api/database/test`, {
     method: 'POST',
