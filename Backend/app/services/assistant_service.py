@@ -131,7 +131,15 @@ def _format_anomaly_answer(result: dict) -> str:
     )
 
 
-def _fast_answer(results: list[dict]) -> str | None:
+def _format_value(value) -> str:
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:,.2f}"
+    return str(value)
+
+
+def _fast_answer(question: str, results: list[dict]) -> str | None:
     """Evita una segunda llamada al LLM para respuestas escalares muy simples."""
     if not results:
         return "No encontré resultados para esa consulta."
@@ -143,10 +151,30 @@ def _fast_answer(results: list[dict]) -> str | None:
     if not row or len(row) > 3:
         return None
 
+    if len(row) == 1:
+        key, value = next(iter(row.items()))
+        raw_key = str(key or "").strip()
+        key_text = raw_key.lower().replace("_", " ")
+        q = question.lower()
+        value_text = _format_value(value)
+
+        if any(term in q for term in ("cuántas ventas", "cuantas ventas", "cantidad de ventas", "número de ventas", "numero de ventas")):
+            return f"Hay {value_text} ventas en total."
+
+        if any(term in q for term in ("cuánto dinero", "cuanto dinero", "monto", "importe", "facturación", "facturacion", "ingresos")):
+            return f"El monto total es {value_text}."
+
+        if raw_key:
+            label = key_text.capitalize()
+            return f"{label}: {value_text}."
+
+        return f"El resultado es {value_text}."
+
     parts = []
     for key, value in row.items():
-        label = str(key).replace("_", " ").strip().capitalize()
-        parts.append(f"{label}: {value}")
+        raw_key = str(key or "").strip()
+        label = raw_key.replace("_", " ").strip().capitalize() or "Resultado"
+        parts.append(f"{label}: {_format_value(value)}")
 
     return ". ".join(parts) + "."
 
@@ -195,26 +223,52 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
     query_started = perf_counter()
     retried = False
     original_error = None
+    retry_error = None
+
     try:
         results = execute_query(sql)
     except Exception as exc:
-        # Un solo retry guiado por el error real mejora consultas complejas sin
-        # entrar en bucles ni relajar el validador de seguridad.
         retried = True
         original_error = str(exc)
         repair_started = perf_counter()
-        sql = repair_sql(
-            question=question,
-            failed_sql=sql,
-            error=original_error,
-            history=history,
-        )
-        sql_generation_seconds += perf_counter() - repair_started
-        results = execute_query(sql)
+        try:
+            sql = repair_sql(
+                question=question,
+                failed_sql=sql,
+                error=original_error,
+                history=history,
+            )
+            sql_generation_seconds += perf_counter() - repair_started
+            results = execute_query(sql)
+        except Exception as retry_exc:
+            retry_error = str(retry_exc)
+            return {
+                "question": question,
+                "mode": "error",
+                "sql": None,
+                "data": [],
+                "answer": (
+                    "No pude resolver esa consulta con suficiente seguridad. "
+                    "Prueba reformulándola en una sola petición más concreta o vuelve a intentarlo."
+                ),
+                "recovery": {
+                    "retried": True,
+                    "initial_error": original_error,
+                    "retry_error": retry_error,
+                },
+                "performance": {
+                    "sql_generation_ms": round(sql_generation_seconds * 1000, 1),
+                    "database_query_ms": round((perf_counter() - query_started) * 1000, 1),
+                    "explanation_ms": 0.0,
+                    "used_llm_explanation": False,
+                    "total_ms": round((perf_counter() - started) * 1000, 1),
+                },
+            }
+
     query_seconds = perf_counter() - query_started
 
     explanation_started = perf_counter()
-    answer = _fast_answer(results)
+    answer = _fast_answer(question, results)
     used_llm_explanation = answer is None
     if answer is None:
         answer = explain_results(
@@ -234,6 +288,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
         "recovery": {
             "retried": retried,
             "initial_error": original_error if retried else None,
+            "retry_error": retry_error,
         },
         "performance": {
             "sql_generation_ms": round(sql_generation_seconds * 1000, 1),
