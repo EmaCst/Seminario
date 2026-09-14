@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from ollama import chat
 
-from app.ai.database_context import get_database_context
+from app.ai.database_context import get_compact_database_context
 from app.ai.sql_normalizer import normalize_sql
 from app.database.database_manager import database_manager
 
@@ -8,12 +10,28 @@ from app.database.database_manager import database_manager
 MODEL = "gemma3:4b"
 
 
-def ask_gemma(prompt: str) -> str:
+def ask_gemma(
+    prompt: str,
+    *,
+    system: str | None = None,
+    temperature: float = 0.1,
+    num_predict: int = 220,
+) -> str:
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
     response = chat(
         model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
+        keep_alive="30m",
+        options={
+            "temperature": temperature,
+            "num_predict": num_predict,
+        },
     )
-    return response.message.content
+    return response.message.content.strip()
 
 
 def _active_dialect() -> str:
@@ -24,99 +42,85 @@ def _dialect_label() -> str:
     return "PostgreSQL" if _active_dialect() == "postgresql" else "Microsoft SQL Server"
 
 
-def analyze_database(question: str) -> str:
-    database_context = get_database_context()
+def _history_text(history: list[dict] | None, limit: int = 6) -> str:
+    if not history:
+        return ""
+
+    normalized = []
+    for item in history[-limit:]:
+        role = item.get("role") or item.get("from") or "user"
+        content = str(item.get("content") or item.get("text") or "").strip()
+        if not content:
+            continue
+        label = "Usuario" if role in {"user", "usuario"} else "Kenneth"
+        normalized.append(f"{label}: {content[:500]}")
+
+    if not normalized:
+        return ""
+    return "\nCONTEXTO RECIENTE DE LA CONVERSACIÓN:\n" + "\n".join(normalized)
+
+
+def analyze_database(question: str, history: list[dict] | None = None) -> str:
+    database_context = get_compact_database_context()
     dialect_label = _dialect_label()
 
-    prompt = f"""
-Eres un asistente especializado en análisis de bases de datos empresariales.
-
-A continuación recibirás la estructura real de una base de datos {dialect_label}.
-
-ESTRUCTURA DE LA BASE DE DATOS:
-
+    prompt = f"""ESQUEMA REAL ({dialect_label}):
 {database_context}
+{_history_text(history)}
 
-Responde únicamente utilizando la información presente en ese esquema.
-
-IMPORTANTE:
-- No inventes tablas.
-- No inventes columnas.
-- Respeta las llaves primarias y foráneas.
-- Interpreta correctamente la dirección de las relaciones.
-- Si una tabla contiene una llave foránea hacia otra tabla, múltiples registros de la primera tabla pueden estar relacionados con un registro de la tabla referenciada.
-- Si no puedes determinar algo a partir del esquema, indícalo.
-- Responde en español.
-
-PREGUNTA:
-
+PREGUNTA ACTUAL:
 {question}
 """
 
-    return ask_gemma(prompt)
+    return ask_gemma(
+        prompt,
+        system=(
+            "Eres Kenneth, asistente empresarial especializado en bases de datos. "
+            "Responde en español, usa solo información demostrable por el esquema, "
+            "no inventes tablas, columnas ni relaciones y sé claro y breve."
+        ),
+        num_predict=220,
+    )
 
 
-def generate_sql(question: str) -> str:
-    database_context = get_database_context()
-    dialect = _active_dialect()
-    dialect_label = _dialect_label()
+def _dialect_rules() -> str:
+    if _active_dialect() == "postgresql":
+        return (
+            "Motor PostgreSQL: usa LIMIT, nunca TOP; usa EXTRACT/DATE_TRUNC cuando corresponda."
+        )
+    return (
+        "Motor Microsoft SQL Server: usa TOP, nunca LIMIT; usa funciones de fecha compatibles con SQL Server."
+    )
 
-    if dialect == "postgresql":
-        dialect_rules = """
-- La sintaxis debe ser exclusivamente PostgreSQL.
-- Si necesitas limitar resultados usa LIMIT al final de la consulta.
-- NUNCA uses TOP.
-- Usa comillas dobles solo cuando necesites preservar mayúsculas/minúsculas o nombres especiales.
-- Para fechas puedes usar EXTRACT, DATE_TRUNC y funciones nativas de PostgreSQL.
-"""
-    else:
-        dialect_rules = """
-- La sintaxis debe ser exclusivamente Microsoft SQL Server.
-- Si necesitas limitar resultados usa TOP.
-- NUNCA uses LIMIT.
-- Para fechas usa funciones compatibles con SQL Server.
-"""
 
-    prompt = f"""
-Eres un generador de consultas para {dialect_label}.
+def _sql_system_prompt() -> str:
+    return (
+        "Eres un generador experto de SQL seguro. Devuelve únicamente UNA consulta SELECT en SQL plano, "
+        "sin Markdown ni explicaciones. Usa exclusivamente tablas, columnas y relaciones presentes en el esquema. "
+        "No inventes nada. Respeta PK/FK. Para rankings incluye la métrica usada para ordenar. "
+        "Para cantidades usa SUM(cantidad) cuando exista; para importes usa la columna monetaria real. "
+        "Usa GROUP BY correctamente, evita JOIN innecesarios y termina con punto y coma. "
+        + _dialect_rules()
+    )
 
-Debes generar UNA SOLA consulta que responda correctamente la pregunta del usuario.
 
-ESTRUCTURA REAL DE LA BASE DE DATOS:
+def generate_sql(question: str, history: list[dict] | None = None) -> str:
+    database_context = get_compact_database_context()
 
+    prompt = f"""ESQUEMA REAL:
 {database_context}
+{_history_text(history)}
 
-REGLAS OBLIGATORIAS:
-
-1. Devuelve únicamente SQL plano.
-2. NO uses bloques Markdown ni escribas ```sql.
-3. Solo puedes usar SELECT.
-4. No uses INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, EXEC, CREATE ni MERGE.
-5. Usa únicamente tablas y columnas existentes en el esquema.
-6. Respeta las llaves foráneas reales del esquema.
-7. No inventes tablas, columnas o relaciones.
-8. Usa únicamente los JOIN necesarios para responder la pregunta.
-9. Para rankings, incluye en SELECT la métrica numérica utilizada para ordenar.
-10. Para cantidades acumuladas usa SUM sobre una columna de cantidad apropiada cuando exista; no confundas cantidad con número de filas.
-11. Para totales monetarios usa SUM sobre la columna monetaria que realmente represente el importe/total según el esquema.
-12. Si una tabla ya contiene un total final de transacción, prefiere esa columna antes de reconstruirlo salvo que la pregunta requiera otro cálculo.
-13. Distingue compras, ventas, pagos, inventario y otras operaciones según las tablas y relaciones reales; no mezcles procesos distintos.
-14. Usa GROUP BY correctamente cuando agregues datos.
-15. Termina la consulta con punto y coma.
-16. No devuelvas únicamente nombres cuando exista una métrica relevante necesaria para responder la pregunta.
-17. Si el esquema no permite responder con seguridad, genera la consulta más conservadora posible usando solo datos demostrables.
-
-REGLAS DEL MOTOR:
-{dialect_rules}
-
-PREGUNTA:
-
+PREGUNTA ACTUAL:
 {question}
-
-RESPUESTA:
 """
 
-    sql = ask_gemma(prompt).strip()
+    sql = ask_gemma(
+        prompt,
+        system=_sql_system_prompt(),
+        temperature=0.0,
+        num_predict=180,
+    )
 
     if sql.startswith("```sql"):
         sql = sql[6:]
@@ -125,45 +129,74 @@ RESPUESTA:
     if sql.endswith("```"):
         sql = sql[:-3]
 
-    return normalize_sql(sql, dialect=dialect)
+    return normalize_sql(sql.strip(), dialect=_active_dialect())
+
+
+def repair_sql(
+    question: str,
+    failed_sql: str,
+    error: str,
+    history: list[dict] | None = None,
+) -> str:
+    """Hace un único intento de autocorrección cuando la primera consulta falla."""
+    database_context = get_compact_database_context()
+    prompt = f"""ESQUEMA REAL:
+{database_context}
+{_history_text(history)}
+
+PREGUNTA:
+{question}
+
+SQL QUE FALLÓ:
+{failed_sql}
+
+ERROR DEVUELTO POR LA BASE:
+{error[:1200]}
+
+Corrige la consulta respetando estrictamente el esquema y el motor activo.
+"""
+
+    sql = ask_gemma(
+        prompt,
+        system=_sql_system_prompt(),
+        temperature=0.0,
+        num_predict=200,
+    )
+
+    if sql.startswith("```sql"):
+        sql = sql[6:]
+    if sql.startswith("```"):
+        sql = sql[3:]
+    if sql.endswith("```"):
+        sql = sql[:-3]
+
+    return normalize_sql(sql.strip(), dialect=_active_dialect())
 
 
 def explain_results(
     question: str,
     sql: str,
     results: list[dict],
+    history: list[dict] | None = None,
 ) -> str:
-    prompt = f"""
-Eres un asistente empresarial especializado en análisis de datos.
-
-El usuario realizó la siguiente pregunta:
-
+    prompt = f"""PREGUNTA:
 {question}
+{_history_text(history, limit=4)}
 
-Para responderla se ejecutó esta consulta SQL:
-
-{sql}
-
-La base de datos devolvió estos resultados:
-
+RESULTADOS REALES:
 {results}
 
-Explica los resultados al usuario de manera clara y breve.
-
-REGLAS OBLIGATORIAS:
-- Responde en español.
-- Basa tu respuesta EXCLUSIVAMENTE en los valores presentes en los resultados.
-- No inventes datos, porcentajes, cantidades, tendencias ni comparaciones.
-- No calcules porcentajes si los valores necesarios para calcularlos no aparecen en los resultados.
-- No afirmes que algo representa un porcentaje del total si el total no aparece en los resultados.
-- No supongas cuántos registros existen fuera de los resultados recibidos.
-- Si los resultados solo contienen nombres, limita tu respuesta a esos nombres y al orden en que aparecen.
-- Si los resultados contienen una métrica numérica, puedes citarla y compararla.
-- Si falta información para responder completamente la pregunta, indícalo claramente.
-- Si no existen resultados, indícalo claramente.
-- No inventes causas ni explicaciones que los datos no demuestren.
-- Utiliza lenguaje empresarial comprensible.
-- No muestres SQL salvo que el usuario lo solicite.
+SQL EJECUTADO:
+{sql}
 """
 
-    return ask_gemma(prompt)
+    return ask_gemma(
+        prompt,
+        system=(
+            "Eres Kenneth, asistente empresarial. Responde en español de forma natural, directa y breve. "
+            "Basa la respuesta EXCLUSIVAMENTE en los resultados recibidos. No inventes causas, datos, "
+            "porcentajes, tendencias ni registros ausentes. Si faltan datos, dilo. No muestres SQL salvo que lo pidan."
+        ),
+        temperature=0.15,
+        num_predict=180,
+    )
