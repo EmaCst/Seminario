@@ -19,7 +19,7 @@ from app.services.assistant_service import ask_database
 app = FastAPI(
     title="AI Business Assistant",
     description="Asistente empresarial para análisis de datos",
-    version="0.9.0"
+    version="0.9.1"
 )
 
 
@@ -113,7 +113,17 @@ def ask(question: Question):
 @app.post("/ask-db")
 def ask_database_endpoint(question: Question):
     history = [item.model_dump() for item in question.history]
-    return ask_database(question.question, history=history)
+    try:
+        return ask_database(question.question, history=history)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Kenneth no pudo completar la consulta en este momento. "
+                "Verifica que Ollama y la base de datos sigan activos e inténtalo de nuevo. "
+                f"Detalle técnico: {exc}"
+            ),
+        ) from exc
 
 
 @app.get("/api/ai/forecast")
