@@ -35,6 +35,22 @@ export async function getAdaptiveAnalytics() {
   return parseResponse(response);
 }
 
+export async function downloadReportPdf(type) {
+  const response = await fetch(`${API_URL}/api/reports/pdf?type=${encodeURIComponent(type)}`);
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data?.detail || `Error HTTP: ${response.status}`);
+  }
+
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = match?.[1] || `reporte_${type}.pdf`;
+  const blob = await response.blob();
+
+  return { blob, filename };
+}
+
 export async function getDatabaseStatus() {
   const response = await fetch(`${API_URL}/api/database/status`);
   return parseResponse(response);
