@@ -69,45 +69,66 @@ def _format_forecast_answer(result: dict) -> str:
         f"{item['month']:02d}/{item['year']}: {item['predicted_total']}"
         for item in forecast
     )
-    score_text = f" R²={r2:.4f}, confianza {quality}." if isinstance(r2, (int, float)) else ""
+
+    if isinstance(r2, (int, float)):
+        explanation = (
+            f"La calidad de ajuste del modelo es {quality} (R²={r2:.4f}), "
+            "así que conviene interpretar estos valores como una tendencia estimada y no como una certeza."
+        )
+    else:
+        explanation = "Tómalo como una estimación orientativa basada en el comportamiento histórico disponible."
 
     return (
-        f"Generé una predicción para {role} usando regresión lineal. "
-        f"Proyección: {values}.{score_text} "
-        "Es una estimación exploratoria basada en la tendencia histórica y no una garantía de resultados futuros."
+        f"La proyección para {role} es: {values}. "
+        f"{explanation}"
     )
 
 
 def _format_anomaly_answer(result: dict) -> str:
     role = result.get("role", "serie")
     anomalies = result.get("anomalies") or []
-    baseline = result.get("baseline") or {}
 
     if not anomalies:
-        return f"No detecté anomalías mensuales relevantes en {role} con el modelo actual."
+        return f"No encontré meses que se alejen de forma relevante del comportamiento habitual de {role}."
 
-    details = []
+    descriptions = []
     for item in anomalies:
         month = f"{item['month']:02d}/{item['year']}"
         total = item.get("total")
         severity = item.get("severity") or "no determinada"
-        reason = item.get("reason") or "El patrón fue clasificado como diferente por Isolation Forest."
-        details.append(
-            f"{month}: {total} (severidad {severity}). {reason}"
+        pct_average = item.get("pct_vs_average")
+        pct_previous = item.get("pct_vs_previous")
+        pct_neighbors = item.get("pct_vs_neighbors")
+
+        reasons = []
+        if isinstance(pct_average, (int, float)):
+            direction = "por encima" if pct_average >= 0 else "por debajo"
+            reasons.append(f"estuvo {abs(pct_average):.1f}% {direction} del promedio mensual")
+        if isinstance(pct_previous, (int, float)):
+            direction = "subió" if pct_previous >= 0 else "bajó"
+            reasons.append(f"{direction} {abs(pct_previous):.1f}% frente al mes anterior")
+        if isinstance(pct_neighbors, (int, float)):
+            direction = "por encima" if pct_neighbors >= 0 else "por debajo"
+            reasons.append(f"quedó {abs(pct_neighbors):.1f}% {direction} de sus meses vecinos")
+
+        if reasons:
+            reason_text = "; además, ".join(reasons)
+        else:
+            reason_text = item.get("reason") or "se alejó del patrón mensual habitual"
+
+        descriptions.append(
+            f"{month} registró {total} y fue clasificado con severidad {severity}: {reason_text}."
         )
 
-    baseline_text = ""
-    if baseline:
-        baseline_text = (
-            f" Como referencia, la serie tiene promedio {baseline.get('average')}, "
-            f"mediana {baseline.get('median')} y desviación estándar {baseline.get('std_dev')}."
-        )
+    interpretation = (
+        "Vale la pena revisar qué ocurrió en esos periodos para identificar posibles factores del negocio que expliquen el cambio."
+    )
 
     return (
-        f"Detecté {len(anomalies)} comportamiento(s) mensual(es) atípico(s) en {role}. "
-        + " ".join(details)
-        + baseline_text
-        + " La detección usa Isolation Forest y la explicación compara cada punto con el promedio, el mes anterior y sus meses vecinos."
+        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {role}. "
+        + " ".join(descriptions)
+        + " "
+        + interpretation
     )
 
 
