@@ -85,6 +85,9 @@ export const PredictionsView = () => {
 
   const quality = qualityFromR2(forecast?.r2_score);
   const anomalyCount = anomalies?.anomalies?.length || 0;
+  const explainedVariation = typeof forecast?.r2_score === 'number'
+    ? Math.max(0, forecast.r2_score * 100).toFixed(2)
+    : null;
 
   if (loading) {
     return (
@@ -171,7 +174,7 @@ export const PredictionsView = () => {
             {[
               { icon: CalendarRange, label: language === 'es' ? 'Meses de entrenamiento' : 'Training months', value: forecast.training_months },
               { icon: TrendingUp, label: 'R²', value: forecast.r2_score ?? '—' },
-              { icon: BrainCircuit, label: language === 'es' ? 'Confianza' : 'Confidence', value: quality.label },
+              { icon: BrainCircuit, label: language === 'es' ? 'Calidad de ajuste' : 'Fit quality', value: quality.label },
               { icon: AlertTriangle, label: language === 'es' ? 'Anomalías detectadas' : 'Detected anomalies', value: anomalyCount },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
@@ -219,14 +222,57 @@ export const PredictionsView = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <h2 className="font-extrabold text-lg mb-3" style={{ color: colors.text }}>{language === 'es' ? 'Calidad del modelo' : 'Model quality'}</h2>
-              <p className="text-sm leading-6" style={{ color: colors.muted }}>
-                {language === 'es'
-                  ? `El modelo obtuvo un R² de ${forecast.r2_score ?? 'N/D'}, clasificado como confianza ${quality.label.toLowerCase()}. Cuanto mayor sea el R², mejor explica la tendencia histórica observada.`
-                  : `The model obtained an R² of ${forecast.r2_score ?? 'N/A'}, classified as ${quality.label.toLowerCase()} confidence.`}
-              </p>
-              <div className="mt-4 rounded-xl p-3 text-sm" style={{ backgroundColor: colors.accentSoft, color: colors.text }}>{forecast.warning}</div>
+            <div className="rounded-2xl border p-5 shadow-sm flex flex-col" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+              <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>
+                {language === 'es' ? 'Calidad del modelo' : 'Model quality'}
+              </h2>
+
+              <div className="flex-1 flex flex-col items-center justify-center text-center py-5">
+                <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: colors.muted }}>
+                  {language === 'es' ? 'Calidad de ajuste' : 'Fit quality'}
+                </p>
+                <p className="mt-1 text-2xl font-extrabold" style={{ color: theme.primary }}>
+                  {quality.label}
+                </p>
+                <p className="mt-3 text-lg font-extrabold" style={{ color: colors.text }}>
+                  R² = {forecast.r2_score ?? (language === 'es' ? 'N/D' : 'N/A')}
+                </p>
+
+                {explainedVariation != null && (
+                  <p className="mt-3 max-w-md text-sm leading-6" style={{ color: colors.muted }}>
+                    {language === 'es'
+                      ? <>El modelo explica aproximadamente el <strong style={{ color: colors.text }}>{explainedVariation}%</strong> de la variación observada en los datos históricos.</>
+                      : <>The model explains approximately <strong style={{ color: colors.text }}>{explainedVariation}%</strong> of the variation observed in the historical data.</>}
+                  </p>
+                )}
+
+                <div
+                  className="mt-4 w-full max-w-md rounded-xl border px-4 py-3"
+                  style={{ backgroundColor: colors.cardSoft, borderColor: colors.border }}
+                >
+                  <p className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: colors.muted }}>
+                    {language === 'es' ? 'Fórmula de R²' : 'R² formula'}
+                  </p>
+                  <div className="text-sm sm:text-base font-semibold overflow-x-auto whitespace-nowrap" style={{ color: colors.text }}>
+                    R² = 1 − Σ(yᵢ − ŷᵢ)² / Σ(yᵢ − ȳ)²
+                  </div>
+                  <p className="mt-2 text-xs leading-5" style={{ color: colors.muted }}>
+                    {language === 'es'
+                      ? 'yᵢ = valor real · ŷᵢ = valor predicho · ȳ = promedio de los valores reales'
+                      : 'yᵢ = actual value · ŷᵢ = predicted value · ȳ = average of actual values'}
+                  </p>
+                </div>
+
+                <p className="mt-3 max-w-md text-xs leading-5" style={{ color: colors.muted }}>
+                  {language === 'es'
+                    ? 'Cuanto más cercano a 1 sea R², mejor explica el modelo la variación histórica observada.'
+                    : 'The closer R² is to 1, the better the model explains the historical variation observed.'}
+                </p>
+              </div>
+
+              <div className="rounded-xl p-3 text-sm" style={{ backgroundColor: colors.accentSoft, color: colors.text }}>
+                {forecast.warning}
+              </div>
             </div>
 
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
