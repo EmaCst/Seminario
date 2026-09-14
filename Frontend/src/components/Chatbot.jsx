@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { LoaderCircle, MessageCircle, Send, X } from 'lucide-react';
+import { MessageCircle, Send, X } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 import { askDatabase } from '../services/api';
 
@@ -57,14 +57,18 @@ export const Chatbot = () => {
     } catch (error) {
       console.error('Error consultando el asistente:', error);
 
+      const networkError = error?.message === 'Failed to fetch';
       setMessages((prev) => [
         ...prev,
         {
           from: 'bot',
-          text:
-            language === 'es'
-              ? `No pude completar la consulta. ${error.message || 'Intenta reformularla.'}`
-              : `I could not complete the query. ${error.message || 'Try rephrasing it.'}`,
+          text: language === 'es'
+            ? (networkError
+              ? 'No pude conectarme con el backend. Verifica que el servidor siga activo e inténtalo de nuevo.'
+              : `No pude completar la consulta. ${error.message || 'Intenta reformularla.'}`)
+            : (networkError
+              ? 'I could not connect to the backend. Check that the server is still running and try again.'
+              : `I could not complete the query. ${error.message || 'Try rephrasing it.'}`),
         },
       ]);
     } finally {
@@ -98,9 +102,7 @@ export const Chatbot = () => {
               <div>
                 <p className="font-bold">Kenneth</p>
                 <p className="text-xs opacity-80">
-                  {sending
-                    ? (language === 'es' ? 'Analizando...' : 'Analyzing...')
-                    : (language === 'es' ? 'Asistente del sistema' : 'System assistant')}
+                  {language === 'es' ? 'Asistente del sistema' : 'System assistant'}
                 </p>
               </div>
             </div>
@@ -126,11 +128,21 @@ export const Chatbot = () => {
             {sending && (
               <div className="flex justify-start">
                 <div
-                  className="rounded-2xl px-3.5 py-2.5 text-sm flex items-center gap-2"
-                  style={{ backgroundColor: colors.cardSoft, color: colors.muted, border: `1px solid ${colors.border}` }}
+                  className="rounded-2xl px-4 py-3 flex items-center gap-1.5"
+                  style={{ backgroundColor: colors.cardSoft, border: `1px solid ${colors.border}` }}
+                  aria-label={language === 'es' ? 'Kenneth está escribiendo' : 'Kenneth is typing'}
                 >
-                  <LoaderCircle size={15} className="animate-spin" />
-                  {language === 'es' ? 'Consultando datos...' : 'Querying data...'}
+                  {[0, 1, 2].map((dot) => (
+                    <span
+                      key={dot}
+                      className="w-2 h-2 rounded-full animate-bounce"
+                      style={{
+                        backgroundColor: colors.muted,
+                        animationDelay: `${dot * 140}ms`,
+                        animationDuration: '900ms',
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             )}
@@ -156,7 +168,7 @@ export const Chatbot = () => {
                 style={{ backgroundColor: theme.primary }}
                 aria-label={language === 'es' ? 'Enviar mensaje' : 'Send message'}
               >
-                {sending ? <LoaderCircle size={18} className="animate-spin" /> : <Send size={18} />}
+                <Send size={18} />
               </button>
             </div>
           </div>
