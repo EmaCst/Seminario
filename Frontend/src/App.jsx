@@ -3,6 +3,7 @@ import { DashboardProvider, DashboardContext } from './context/DashboardContext'
 import { Sidebar } from './components/Sidebar';
 import { UniversalDashboard } from './components/UniversalDashboard';
 import { SettingsView } from './components/SettingsView';
+import { PredictionsView } from './components/PredictionsView';
 import { Header } from './components/Header';
 import { BarChart3, FileText } from 'lucide-react';
 import { Chatbot } from './components/Chatbot';
@@ -47,6 +48,7 @@ const MainLayout = () => {
           <main className="flex-1 overflow-y-auto p-5 sm:p-6 lg:p-8">
             {activeTab === 'dashboard' && <UniversalDashboard />}
             {activeTab === 'settings' && <SettingsView />}
+            {activeTab === 'predictions' && <PredictionsView />}
             {activeTab === 'analytics' && <PlaceholderView type="analytics" />}
             {activeTab === 'reports' && <PlaceholderView type="reports" />}
           </main>
