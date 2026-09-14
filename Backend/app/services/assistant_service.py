@@ -81,17 +81,33 @@ def _format_forecast_answer(result: dict) -> str:
 def _format_anomaly_answer(result: dict) -> str:
     role = result.get("role", "serie")
     anomalies = result.get("anomalies") or []
+    baseline = result.get("baseline") or {}
 
     if not anomalies:
         return f"No detecté anomalías mensuales relevantes en {role} con el modelo actual."
 
-    values = ", ".join(
-        f"{item['month']:02d}/{item['year']} ({item['total']})"
-        for item in anomalies
-    )
+    details = []
+    for item in anomalies:
+        month = f"{item['month']:02d}/{item['year']}"
+        total = item.get("total")
+        severity = item.get("severity") or "no determinada"
+        reason = item.get("reason") or "El patrón fue clasificado como diferente por Isolation Forest."
+        details.append(
+            f"{month}: {total} (severidad {severity}). {reason}"
+        )
+
+    baseline_text = ""
+    if baseline:
+        baseline_text = (
+            f" Como referencia, la serie tiene promedio {baseline.get('average')}, "
+            f"mediana {baseline.get('median')} y desviación estándar {baseline.get('std_dev')}."
+        )
+
     return (
-        f"Detecté {len(anomalies)} comportamiento(s) mensual(es) atípico(s) en {role}: {values}. "
-        "La detección se realizó con Isolation Forest sobre el historial mensual disponible."
+        f"Detecté {len(anomalies)} comportamiento(s) mensual(es) atípico(s) en {role}. "
+        + " ".join(details)
+        + baseline_text
+        + " La detección usa Isolation Forest y la explicación compara cada punto con el promedio, el mes anterior y sus meses vecinos."
     )
 
 
