@@ -18,6 +18,7 @@ CATEGORICAL_COLUMN_TERMS = (
     "genero", "gender", "especialidad", "specialty", "periodo", "period",
     "concepto", "category", "categoria", "marca", "brand",
 )
+DISPLAY_COLUMN_TERMS = ("nombre", "name", "descripcion", "description", "titulo", "title", "codigo", "code")
 
 DOMAIN_RANKING_SPECS = {
     "retail": [
@@ -194,6 +195,92 @@ def _categorical_distribution(table: str, column: str, limit: int = 8) -> list[d
     return [{"label": str(row["label"]), "total": int(row["total"])} for row in rows]
 
 
+def _relationship_for_column(table_name: str, column_name: str):
+    schema = inspect_database()
+    for rel in schema.relationships:
+        if rel.table == table_name and rel.column == column_name:
+            return rel
+    return None
+
+
+def _display_column_for_table(table_name: str, entities: dict) -> str | None:
+    for entity in entities.values():
+        if entity.get("table") != table_name:
+            continue
+        name_column = (entity.get("columns") or {}).get("name")
+        if name_column:
+            return name_column
+
+    schema = inspect_database()
+    table = schema.tables.get(table_name)
+    if not table:
+        return None
+
+    lower_to_real = {column.name.lower(): column.name for column in table.columns}
+    for candidate in DISPLAY_COLUMN_TERMS:
+        if candidate in lower_to_real:
+            return lower_to_real[candidate]
+    return None
+
+
+def _related_distribution(table_name: str, column_name: str, entities: dict, limit: int = 8) -> dict | None:
+    relation = _relationship_for_column(table_name, column_name)
+    if not relation:
+        return None
+
+    display_column = _display_column_for_table(relation.references_table, entities)
+    if not display_column:
+        return None
+
+    qsource = _quote(table_name)
+    qtarget = _quote(relation.references_table)
+    qsource_fk = _quote(relation.column)
+    qtarget_pk = _quote(relation.references_column)
+    qdisplay = _quote(display_column)
+    top_clause = "" if _provider() == "postgresql" else f"TOP {limit} "
+    limit_clause = f"LIMIT {limit}" if _provider() == "postgresql" else ""
+
+    sql = text(
+        f"SELECT {top_clause}CAST(t.{qdisplay} AS VARCHAR(255)) AS label, COUNT(*) AS total "
+        f"FROM {qsource} s JOIN {qtarget} t ON s.{qsource_fk} = t.{qtarget_pk} "
+        f"WHERE t.{qdisplay} IS NOT NULL GROUP BY t.{qdisplay} ORDER BY total DESC {limit_clause};"
+    )
+
+    try:
+        with get_connection() as connection:
+            rows = connection.execute(sql).mappings().all()
+    except Exception:
+        return None
+
+    data = [{"label": str(row["label"]), "total": int(row["total"])} for row in rows]
+    if not 2 <= len(data) <= limit:
+        return None
+
+    target_role = next(
+        (role for role, entity in entities.items() if entity.get("table") == relation.references_table),
+        relation.references_table,
+    )
+    return {
+        "role": target_role,
+        "column": display_column,
+        "label": str(target_role).replace("_", " ").title(),
+        "data": data,
+        "source": "relationship",
+    }
+
+
+def _is_technical_identifier(table_name: str, column_name: str) -> bool:
+    normalized = column_name.lower()
+    schema = inspect_database()
+    table = schema.tables.get(table_name)
+
+    if table and column_name in table.primary_key:
+        return True
+    if _relationship_for_column(table_name, column_name):
+        return True
+    return normalized == "id" or normalized.endswith("_id") or normalized.endswith("id")
+
+
 def _collect_distributions(entities: dict, primary_status: dict) -> list[dict]:
     distributions = []
     used: set[tuple[str, str]] = set()
@@ -209,6 +296,7 @@ def _collect_distributions(entities: dict, primary_status: dict) -> list[dict]:
             "column": status_col or "status",
             "label": "Estado",
             "data": primary_status.get("data") or [],
+            "source": "direct",
         })
 
     schema = inspect_database()
@@ -224,6 +312,16 @@ def _collect_distributions(entities: dict, primary_status: dict) -> list[dict]:
                 continue
             if (table_name, column.name) in used:
                 continue
+
+            if _is_technical_identifier(table_name, column.name):
+                related = _related_distribution(table_name, column.name, entities)
+                used.add((table_name, column.name))
+                if related:
+                    distributions.append(related)
+                if len(distributions) >= 4:
+                    return distributions
+                continue
+
             try:
                 data = _categorical_distribution(table_name, column.name)
             except Exception:
@@ -234,6 +332,7 @@ def _collect_distributions(entities: dict, primary_status: dict) -> list[dict]:
                     "column": column.name,
                     "label": column.name.replace("_", " ").title(),
                     "data": data,
+                    "source": "direct",
                 })
                 used.add((table_name, column.name))
             if len(distributions) >= 4:
