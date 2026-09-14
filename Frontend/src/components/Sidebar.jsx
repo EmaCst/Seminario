@@ -1,10 +1,11 @@
 import { useContext } from 'react';
 import { DashboardContext } from '../context/DashboardContext';
-import { LayoutDashboard, ChartNoAxesCombined, FileText, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, ChartNoAxesCombined, BrainCircuit, FileText, Settings, LogOut } from 'lucide-react';
 
 const menuItems = [
   { id: 'dashboard', labelKey: 'dashboard', icon: LayoutDashboard },
   { id: 'analytics', labelKey: 'analytics', icon: ChartNoAxesCombined },
+  { id: 'predictions', labelKey: 'predictions', icon: BrainCircuit },
   { id: 'reports', labelKey: 'reports', icon: FileText },
   { id: 'settings', labelKey: 'settings', icon: Settings },
   { id: 'logout', labelKey: 'logout', icon: LogOut },
