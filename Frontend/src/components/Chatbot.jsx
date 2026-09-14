@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { Bot, MessageCircle, Send, X } from 'lucide-react';
+import { LoaderCircle, MessageCircle, Send, X } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 import { askDatabase } from '../services/api';
 
@@ -7,61 +7,70 @@ export const Chatbot = () => {
   const { theme, colors, language } = useContext(DashboardContext);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState([
     {
       from: 'bot',
       text: language === 'es'
-        ? 'Hola. Soy Kenneth el asistente del sistema. ¿En qué puedo ayudarte?'
-        : 'Hello. I am the system assistant. How can I help you?',
+        ? 'Hola. Soy Kenneth, el asistente del sistema. ¿En qué puedo ayudarte?'
+        : 'Hello. I am Kenneth, the system assistant. How can I help you?',
     },
   ]);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, open]);
+  }, [messages, open, sending]);
+
+  const buildHistory = () => messages
+    .slice(-6)
+    .map((message) => ({
+      role: message.from === 'user' ? 'user' : 'assistant',
+      content: message.text,
+    }));
 
   const sendMessage = async () => {
-  const text = input.trim();
+    const text = input.trim();
+    if (!text || sending) return;
 
-  if (!text) return;
-
-  // Mostrar mensaje del usuario
-  setMessages((prev) => [
-    ...prev,
-    {
-      from: 'user',
-      text,
-    },
-  ]);
-
-  setInput('');
-
-  try {
-    const result = await askDatabase(text);
+    const history = buildHistory();
 
     setMessages((prev) => [
       ...prev,
-      {
-        from: 'bot',
-        text: result.answer,
-      },
+      { from: 'user', text },
     ]);
-  } catch (error) {
-    console.error('Error consultando el asistente:', error);
+    setInput('');
+    setSending(true);
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        from: 'bot',
-        text:
-          language === 'es'
-            ? 'Ocurrió un error al consultar el asistente.'
-            : 'An error occurred while contacting the assistant.',
-      },
-    ]);
-  }
-};
+    try {
+      const result = await askDatabase(text, history);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          from: 'bot',
+          text: result.answer,
+          mode: result.mode,
+          performance: result.performance,
+        },
+      ]);
+    } catch (error) {
+      console.error('Error consultando el asistente:', error);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          from: 'bot',
+          text:
+            language === 'es'
+              ? `No pude completar la consulta. ${error.message || 'Intenta reformularla.'}`
+              : `I could not complete the query. ${error.message || 'Try rephrasing it.'}`,
+        },
+      ]);
+    } finally {
+      setSending(false);
+    }
+  };
 
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -79,16 +88,20 @@ export const Chatbot = () => {
         >
           <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: theme.primary, color: '#fff' }}>
             <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full overflow-hidden bg-white/15 flex items-center justify-center">
-              <img
-                src="https://raw.githubusercontent.com/EmaCst/Fotos/main/Kenett.jpeg"
-                alt="Kenneth"
-                className="w-full h-full rounded-full object-cover"
-              />
-            </div>
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-white/15 flex items-center justify-center">
+                <img
+                  src="https://raw.githubusercontent.com/EmaCst/Fotos/main/Kenett.jpeg"
+                  alt="Kenneth"
+                  className="w-full h-full rounded-full object-cover"
+                />
+              </div>
               <div>
                 <p className="font-bold">Kenneth</p>
-                <p className="text-xs opacity-80">{language === 'es' ? 'Asistente del sistema' : 'System assistant'}</p>
+                <p className="text-xs opacity-80">
+                  {sending
+                    ? (language === 'es' ? 'Analizando...' : 'Analyzing...')
+                    : (language === 'es' ? 'Asistente del sistema' : 'System assistant')}
+                </p>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="p-2 rounded-lg hover:bg-white/10" aria-label="Cerrar chatbot">
@@ -109,6 +122,19 @@ export const Chatbot = () => {
                 </div>
               </div>
             ))}
+
+            {sending && (
+              <div className="flex justify-start">
+                <div
+                  className="rounded-2xl px-3.5 py-2.5 text-sm flex items-center gap-2"
+                  style={{ backgroundColor: colors.cardSoft, color: colors.muted, border: `1px solid ${colors.border}` }}
+                >
+                  <LoaderCircle size={15} className="animate-spin" />
+                  {language === 'es' ? 'Consultando datos...' : 'Querying data...'}
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
 
@@ -118,17 +144,19 @@ export const Chatbot = () => {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleKeyDown}
+                disabled={sending}
                 placeholder={language === 'es' ? 'Escribe un mensaje...' : 'Type a message...'}
-                className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 outline-none focus:ring-2"
+                className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 outline-none focus:ring-2 disabled:opacity-60"
                 style={{ backgroundColor: colors.cardSoft, borderColor: colors.border, color: colors.text, '--tw-ring-color': `${theme.primary}55` }}
               />
               <button
                 onClick={sendMessage}
-                className="w-11 h-11 rounded-xl flex items-center justify-center text-white shrink-0"
+                disabled={sending || !input.trim()}
+                className="w-11 h-11 rounded-xl flex items-center justify-center text-white shrink-0 disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
                 aria-label={language === 'es' ? 'Enviar mensaje' : 'Send message'}
               >
-                <Send size={18} />
+                {sending ? <LoaderCircle size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
             </div>
           </div>
