@@ -86,17 +86,19 @@ PREGUNTA ACTUAL:
 def _dialect_rules() -> str:
     if _active_dialect() == "postgresql":
         return (
-            "Motor PostgreSQL: usa LIMIT, nunca TOP; usa EXTRACT/DATE_TRUNC cuando corresponda."
+            "Motor PostgreSQL: usa LIMIT, nunca TOP; usa EXTRACT/DATE_TRUNC cuando corresponda. "
+            "Puedes usar WITH, LAG, ROW_NUMBER, RANK y otras funciones de ventana nativas de PostgreSQL."
         )
     return (
-        "Motor Microsoft SQL Server: usa TOP, nunca LIMIT; usa funciones de fecha compatibles con SQL Server."
+        "Motor Microsoft SQL Server: usa TOP, nunca LIMIT; usa funciones de fecha compatibles con SQL Server. "
+        "Puedes usar WITH, LAG, ROW_NUMBER, RANK y otras funciones de ventana compatibles con SQL Server."
     )
 
 
 def _sql_system_prompt() -> str:
     return (
-        "Eres un generador experto de SQL seguro. Devuelve únicamente UNA consulta SELECT en SQL plano, "
-        "sin Markdown ni explicaciones. La consulta DEBE comenzar con SELECT; no uses CTE/WITH. "
+        "Eres un generador experto de SQL seguro. Devuelve únicamente UNA consulta de solo lectura en SQL plano, "
+        "sin Markdown ni explicaciones. Puede comenzar con SELECT o con WITH si necesitas CTEs. "
         "Usa exclusivamente tablas, columnas y relaciones presentes en el esquema. No inventes nada. "
         "Respeta PK/FK y usa alias descriptivos para TODAS las métricas calculadas. "
         "La PREGUNTA ACTUAL tiene prioridad; el historial solo sirve para resolver referencias como 'y eso', "
@@ -105,12 +107,13 @@ def _sql_system_prompt() -> str:
         "no como dinero. Interpreta 'cuánto dinero', 'monto', 'importe', 'ingresos' o 'facturación' como SUM "
         "de la columna monetaria real. Interpreta 'unidades vendidas' como SUM de una columna de cantidad. "
         "Para rankings incluye la métrica usada para ordenar. Para preguntas con varias partes devuelve en la "
-        "misma consulta todas las columnas necesarias para responderlas. Puedes usar subconsultas, tablas derivadas "
-        "y funciones de ventana si ayudan, pero la sentencia completa debe iniciar con SELECT. "
-        "Si preguntan por el mes con mayor valor y cuánto superó al anterior, calcula también el valor del mes anterior "
-        "y la diferencia. Si preguntan por un top N y una diferencia entre posiciones, devuelve las filas del ranking "
-        "con suficiente información para calcular o mostrar esa diferencia. Usa GROUP BY correctamente, evita JOIN "
-        "innecesarios y termina con punto y coma. "
+        "misma consulta todas las columnas necesarias para responderlas. Puedes usar CTEs, subconsultas, tablas "
+        "derivadas y funciones de ventana cuando simplifiquen el análisis. "
+        "Para comparar un periodo con el anterior, primero agrega por periodo y luego usa LAG sobre la serie ordenada. "
+        "Para encontrar el mejor periodo y compararlo con el anterior, conserva ambos valores y devuelve también la diferencia. "
+        "Para un top N, calcula primero la métrica por entidad, ordénala y limita el resultado al N solicitado. "
+        "Si además piden la diferencia entre posiciones del ranking, devuelve suficiente información para que Kenneth la calcule. "
+        "Usa GROUP BY correctamente, evita JOIN innecesarios y termina con punto y coma. "
         + _dialect_rules()
     )
 
@@ -130,7 +133,7 @@ PREGUNTA ACTUAL:
         prompt,
         system=_sql_system_prompt(),
         temperature=0.0,
-        num_predict=220,
+        num_predict=260,
     )
 
     if sql.startswith("```sql"):
@@ -165,13 +168,14 @@ ERROR DEVUELTO POR LA BASE:
 {error[:1200]}
 
 Corrige la consulta. Conserva todas las partes de la pregunta del usuario, usa alias claros y devuelve solo SQL.
+Si la consulta era demasiado compleja como SELECT anidado, puedes reescribirla con WITH/CTEs y funciones de ventana.
 """
 
     sql = ask_gemma(
         prompt,
         system=_sql_system_prompt(),
         temperature=0.0,
-        num_predict=240,
+        num_predict=280,
     )
 
     if sql.startswith("```sql"):
@@ -211,5 +215,5 @@ SQL EJECUTADO:
             "Si falta algún valor necesario, dilo claramente. No muestres SQL salvo que lo pidan."
         ),
         temperature=0.1,
-        num_predict=200,
+        num_predict=220,
     )
