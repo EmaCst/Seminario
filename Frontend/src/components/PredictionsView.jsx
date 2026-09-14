@@ -30,6 +30,14 @@ const qualityFromR2 = (score) => {
   return { label: 'Muy baja', level: 'very-low' };
 };
 
+const severityLabel = (severity, language) => {
+  if (language !== 'en') return severity || 'No determinada';
+  if (severity === 'alta') return 'High';
+  if (severity === 'media') return 'Medium';
+  if (severity === 'baja') return 'Low';
+  return 'Unknown';
+};
+
 export const PredictionsView = () => {
   const { theme, colors, language } = useContext(DashboardContext);
   const [horizon, setHorizon] = useState(3);
@@ -161,26 +169,10 @@ export const PredictionsView = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {[
-              {
-                icon: CalendarRange,
-                label: language === 'es' ? 'Meses de entrenamiento' : 'Training months',
-                value: forecast.training_months,
-              },
-              {
-                icon: TrendingUp,
-                label: 'R²',
-                value: forecast.r2_score ?? '—',
-              },
-              {
-                icon: BrainCircuit,
-                label: language === 'es' ? 'Confianza' : 'Confidence',
-                value: quality.label,
-              },
-              {
-                icon: AlertTriangle,
-                label: language === 'es' ? 'Anomalías detectadas' : 'Detected anomalies',
-                value: anomalyCount,
-              },
+              { icon: CalendarRange, label: language === 'es' ? 'Meses de entrenamiento' : 'Training months', value: forecast.training_months },
+              { icon: TrendingUp, label: 'R²', value: forecast.r2_score ?? '—' },
+              { icon: BrainCircuit, label: language === 'es' ? 'Confianza' : 'Confidence', value: quality.label },
+              { icon: AlertTriangle, label: language === 'es' ? 'Anomalías detectadas' : 'Detected anomalies', value: anomalyCount },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                 <div className="flex items-center gap-2 mb-2" style={{ color: theme.primary }}>
@@ -195,12 +187,8 @@ export const PredictionsView = () => {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <div className="xl:col-span-2 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <div className="mb-4">
-                <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>
-                  {language === 'es' ? 'Histórico + proyección' : 'History + forecast'}
-                </h2>
-                <p className="text-sm" style={{ color: colors.muted }}>
-                  {language === 'es' ? `Pronóstico para los próximos ${horizon} meses.` : `Forecast for the next ${horizon} months.`}
-                </p>
+                <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>{language === 'es' ? 'Histórico + proyección' : 'History + forecast'}</h2>
+                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? `Pronóstico para los próximos ${horizon} meses.` : `Forecast for the next ${horizon} months.`}</p>
               </div>
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -218,9 +206,7 @@ export const PredictionsView = () => {
             </div>
 
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <h2 className="font-extrabold text-lg mb-4" style={{ color: colors.text }}>
-                {language === 'es' ? 'Próximos valores' : 'Next values'}
-              </h2>
+              <h2 className="font-extrabold text-lg mb-4" style={{ color: colors.text }}>{language === 'es' ? 'Próximos valores' : 'Next values'}</h2>
               <div className="space-y-3">
                 {(forecast.forecast || []).map((item) => (
                   <div key={`${item.year}-${item.month}`} className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
@@ -234,38 +220,73 @@ export const PredictionsView = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <h2 className="font-extrabold text-lg mb-3" style={{ color: colors.text }}>
-                {language === 'es' ? 'Calidad del modelo' : 'Model quality'}
-              </h2>
+              <h2 className="font-extrabold text-lg mb-3" style={{ color: colors.text }}>{language === 'es' ? 'Calidad del modelo' : 'Model quality'}</h2>
               <p className="text-sm leading-6" style={{ color: colors.muted }}>
                 {language === 'es'
                   ? `El modelo obtuvo un R² de ${forecast.r2_score ?? 'N/D'}, clasificado como confianza ${quality.label.toLowerCase()}. Cuanto mayor sea el R², mejor explica la tendencia histórica observada.`
                   : `The model obtained an R² of ${forecast.r2_score ?? 'N/A'}, classified as ${quality.label.toLowerCase()} confidence.`}
               </p>
-              <div className="mt-4 rounded-xl p-3 text-sm" style={{ backgroundColor: colors.accentSoft, color: colors.text }}>
-                {forecast.warning}
-              </div>
+              <div className="mt-4 rounded-xl p-3 text-sm" style={{ backgroundColor: colors.accentSoft, color: colors.text }}>{forecast.warning}</div>
             </div>
 
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <h2 className="font-extrabold text-lg mb-3" style={{ color: colors.text }}>
-                {language === 'es' ? 'Comportamientos atípicos' : 'Anomalous behavior'}
-              </h2>
+              <h2 className="font-extrabold text-lg mb-3" style={{ color: colors.text }}>{language === 'es' ? 'Comportamientos atípicos' : 'Anomalous behavior'}</h2>
+
+              {anomalies?.baseline && (
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="rounded-xl border p-2.5" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
+                    <p className="text-[11px] uppercase font-bold" style={{ color: colors.muted }}>{language === 'es' ? 'Promedio' : 'Average'}</p>
+                    <p className="font-extrabold" style={{ color: colors.text }}>{anomalies.baseline.average}</p>
+                  </div>
+                  <div className="rounded-xl border p-2.5" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
+                    <p className="text-[11px] uppercase font-bold" style={{ color: colors.muted }}>{language === 'es' ? 'Mediana' : 'Median'}</p>
+                    <p className="font-extrabold" style={{ color: colors.text }}>{anomalies.baseline.median}</p>
+                  </div>
+                  <div className="rounded-xl border p-2.5" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
+                    <p className="text-[11px] uppercase font-bold" style={{ color: colors.muted }}>{language === 'es' ? 'Desv. est.' : 'Std. dev.'}</p>
+                    <p className="font-extrabold" style={{ color: colors.text }}>{anomalies.baseline.std_dev}</p>
+                  </div>
+                </div>
+              )}
+
               {anomalyCount === 0 ? (
-                <p className="text-sm" style={{ color: colors.muted }}>
-                  {language === 'es' ? 'No se detectaron meses atípicos con el modelo actual.' : 'No anomalous months were detected.'}
-                </p>
+                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'No se detectaron meses atípicos con el modelo actual.' : 'No anomalous months were detected.'}</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {anomalies.anomalies.map((item) => (
-                    <div key={`${item.year}-${item.month}`} className="rounded-xl border p-3" style={{ borderColor: '#F59E0B55', backgroundColor: '#F59E0B10' }}>
-                      <div className="flex justify-between gap-3">
-                        <strong style={{ color: colors.text }}>{monthLabel(item.year, item.month)}</strong>
-                        <strong style={{ color: '#D97706' }}>{item.total}</strong>
+                    <div key={`${item.year}-${item.month}`} className="rounded-xl border p-4" style={{ borderColor: '#F59E0B55', backgroundColor: '#F59E0B10' }}>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <strong style={{ color: colors.text }}>{monthLabel(item.year, item.month)}</strong>
+                          <span className="ml-2 text-xs font-bold uppercase px-2 py-1 rounded-full" style={{ backgroundColor: colors.accentSoft, color: theme.primary }}>
+                            {language === 'es' ? 'Severidad' : 'Severity'}: {severityLabel(item.severity, language)}
+                          </span>
+                        </div>
+                        <strong className="text-xl" style={{ color: '#D97706' }}>{item.total}</strong>
                       </div>
-                      <p className="text-xs mt-1" style={{ color: colors.muted }}>
-                        score: {item.anomaly_score}
+
+                      <p className="text-sm mt-3 leading-5" style={{ color: colors.text }}>
+                        {item.reason || (language === 'es' ? 'El modelo detectó un patrón diferente al comportamiento habitual.' : 'The model detected a pattern different from normal behavior.')}
                       </p>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+                        <div className="rounded-lg p-2" style={{ backgroundColor: colors.card }}>
+                          <span style={{ color: colors.muted }}>vs promedio</span>
+                          <strong className="block mt-1" style={{ color: colors.text }}>{item.pct_vs_average == null ? '—' : `${item.pct_vs_average > 0 ? '+' : ''}${item.pct_vs_average}%`}</strong>
+                        </div>
+                        <div className="rounded-lg p-2" style={{ backgroundColor: colors.card }}>
+                          <span style={{ color: colors.muted }}>vs anterior</span>
+                          <strong className="block mt-1" style={{ color: colors.text }}>{item.pct_vs_previous == null ? '—' : `${item.pct_vs_previous > 0 ? '+' : ''}${item.pct_vs_previous}%`}</strong>
+                        </div>
+                        <div className="rounded-lg p-2" style={{ backgroundColor: colors.card }}>
+                          <span style={{ color: colors.muted }}>z-score</span>
+                          <strong className="block mt-1" style={{ color: colors.text }}>{item.z_score ?? '—'}</strong>
+                        </div>
+                        <div className="rounded-lg p-2" style={{ backgroundColor: colors.card }}>
+                          <span style={{ color: colors.muted }}>Isolation score</span>
+                          <strong className="block mt-1" style={{ color: colors.text }}>{item.anomaly_score}</strong>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
