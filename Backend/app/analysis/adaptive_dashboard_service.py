@@ -4,261 +4,91 @@ from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.connection import get_connection
 from app.database.database_manager import database_manager
 
+DOMAIN_KPI_ROLES={"retail":["products","customers","sales","payments"],"education":["students","teachers","courses","enrollments"],"healthcare":["patients","doctors","appointments","admissions"],"transportation":["vehicles","drivers","routes","trips"],"hospitality":["rooms","guests","reservations","stays"],"restaurant":["menu_items","tables","orders","ingredients"],"professional_services":["clients","services","projects","invoices"],"finance_accounting":["accounts","transactions","journal_entries"],"manufacturing":["products","materials","machines","production_orders"],"human_resources":["employees","departments","attendance","payroll"]}
+DOMAIN_TREND_PRIORITY={"retail":["sales","payments","orders"],"education":["enrollments","attendance","grades"],"healthcare":["appointments","admissions","treatments"],"transportation":["trips","tickets"],"hospitality":["reservations","stays"],"restaurant":["orders"],"professional_services":["appointments","projects","invoices","payments"],"finance_accounting":["transactions","journal_entries"],"manufacturing":["production_orders"],"human_resources":["attendance","payroll"]}
+DOMAIN_STATUS_PRIORITY={"retail":["payments","sales","orders"],"education":["enrollments","attendance","students"],"healthcare":["appointments","admissions","treatments"],"transportation":["trips","vehicles","drivers","tickets"],"hospitality":["reservations","rooms","stays"],"restaurant":["orders","tables"],"professional_services":["projects","appointments","invoices"],"finance_accounting":["transactions"],"manufacturing":["production_orders","machines"],"human_resources":["employees","attendance"]}
 
-DOMAIN_KPI_ROLES = {
-    "retail": ["products", "customers", "orders", "sales"],
-    "education": ["students", "teachers", "courses", "enrollments"],
-    "healthcare": ["patients", "doctors", "appointments", "admissions"],
-    "transportation": ["vehicles", "drivers", "routes", "trips"],
-    "hospitality": ["rooms", "guests", "reservations", "stays"],
-    "restaurant": ["menu_items", "tables", "orders", "ingredients"],
-    "professional_services": ["clients", "services", "projects", "invoices"],
-    "finance_accounting": ["accounts", "transactions", "journal_entries"],
-    "manufacturing": ["products", "materials", "machines", "production_orders"],
-    "human_resources": ["employees", "departments", "attendance", "payroll"],
-}
+def _provider(): return database_manager.status().get("provider") or "sqlserver"
+def _quote(identifier):
+    if _provider() in ("postgresql","excel"): return '"'+identifier.replace('"','""')+'"'
+    return "["+identifier.replace("]","]]" )+"]"
 
-DOMAIN_TREND_PRIORITY = {
-    "retail": ["sales", "orders", "payments"],
-    "education": ["enrollments", "attendance", "grades"],
-    "healthcare": ["appointments", "admissions", "treatments"],
-    "transportation": ["trips", "tickets"],
-    "hospitality": ["reservations", "stays"],
-    "restaurant": ["orders"],
-    "professional_services": ["appointments", "projects", "invoices", "payments"],
-    "finance_accounting": ["transactions", "journal_entries"],
-    "manufacturing": ["production_orders"],
-    "human_resources": ["attendance", "payroll"],
-}
-
-DOMAIN_STATUS_PRIORITY = {
-    "retail": ["sales", "orders", "payments"],
-    "education": ["enrollments", "attendance", "students"],
-    "healthcare": ["appointments", "admissions", "treatments"],
-    "transportation": ["trips", "vehicles", "drivers", "tickets"],
-    "hospitality": ["reservations", "rooms", "stays"],
-    "restaurant": ["orders", "tables"],
-    "professional_services": ["projects", "appointments", "invoices"],
-    "finance_accounting": ["transactions"],
-    "manufacturing": ["production_orders", "machines"],
-    "human_resources": ["employees", "attendance"],
-}
-
-
-def _provider() -> str:
-    return database_manager.status().get("provider") or "sqlserver"
-
-
-def _quote(identifier: str) -> str:
-    if _provider() == "postgresql":
-        return '"' + identifier.replace('"', '""') + '"'
-    return "[" + identifier.replace("]", "]]" ) + "]"
-
-
-def _count_table(table: str) -> int:
-    sql = text(f"SELECT COUNT(*) AS total FROM {_quote(table)};")
-    with get_connection() as connection:
-        row = connection.execute(sql).mappings().first()
+def _count_table(table):
+    with get_connection() as c: row=c.execute(text(f"SELECT COUNT(*) AS total FROM {_quote(table)};")).mappings().first()
     return int(row["total"] if row else 0)
 
-
-def _monthly_count(table: str, date_column: str) -> list[dict]:
-    qtable = _quote(table)
-    qdate = _quote(date_column)
-
-    if _provider() == "postgresql":
-        sql = text(
-            f"""
-            SELECT
-                EXTRACT(YEAR FROM {qdate})::int AS year,
-                EXTRACT(MONTH FROM {qdate})::int AS month,
-                COUNT(*) AS total
-            FROM {qtable}
-            WHERE {qdate} IS NOT NULL
-            GROUP BY EXTRACT(YEAR FROM {qdate}), EXTRACT(MONTH FROM {qdate})
-            ORDER BY EXTRACT(YEAR FROM {qdate}), EXTRACT(MONTH FROM {qdate});
-            """
-        )
+def _monthly_count(table,date_column):
+    qtable,qdate=_quote(table),_quote(date_column); provider=_provider()
+    if provider=="postgresql":
+        sql=text(f"SELECT EXTRACT(YEAR FROM {qdate})::int AS year, EXTRACT(MONTH FROM {qdate})::int AS month, COUNT(*) AS total FROM {qtable} WHERE {qdate} IS NOT NULL GROUP BY EXTRACT(YEAR FROM {qdate}),EXTRACT(MONTH FROM {qdate}) ORDER BY EXTRACT(YEAR FROM {qdate}),EXTRACT(MONTH FROM {qdate});")
+    elif provider=="excel":
+        sql=text(f"SELECT CAST(strftime('%Y',{qdate}) AS INTEGER) AS year, CAST(strftime('%m',{qdate}) AS INTEGER) AS month, COUNT(*) AS total FROM {qtable} WHERE {qdate} IS NOT NULL GROUP BY strftime('%Y',{qdate}),strftime('%m',{qdate}) ORDER BY strftime('%Y',{qdate}),strftime('%m',{qdate});")
     else:
-        sql = text(
-            f"""
-            SELECT
-                YEAR({qdate}) AS year,
-                MONTH({qdate}) AS month,
-                COUNT(*) AS total
-            FROM {qtable}
-            WHERE {qdate} IS NOT NULL
-            GROUP BY YEAR({qdate}), MONTH({qdate})
-            ORDER BY YEAR({qdate}), MONTH({qdate});
-            """
-        )
+        sql=text(f"SELECT YEAR({qdate}) AS year, MONTH({qdate}) AS month, COUNT(*) AS total FROM {qtable} WHERE {qdate} IS NOT NULL GROUP BY YEAR({qdate}),MONTH({qdate}) ORDER BY YEAR({qdate}),MONTH({qdate});")
+    with get_connection() as c: rows=c.execute(sql).mappings().all()
+    return [{"year":int(r["year"]),"month":int(r["month"]),"total":int(r["total"])} for r in rows if r["year"] is not None and r["month"] is not None]
 
-    with get_connection() as connection:
-        rows = connection.execute(sql).mappings().all()
-
-    return [
-        {"year": int(row["year"]), "month": int(row["month"]), "total": int(row["total"])}
-        for row in rows
-        if row["year"] is not None and row["month"] is not None
-    ]
-
-
-def _status_distribution(table: str, status_column: str) -> list[dict]:
-    qtable = _quote(table)
-    qstatus = _quote(status_column)
-
-    if _provider() == "postgresql":
-        sql = text(
-            f"""
-            SELECT
-                CAST({qstatus} AS VARCHAR(255)) AS label,
-                COUNT(*) AS total
-            FROM {qtable}
-            WHERE {qstatus} IS NOT NULL
-            GROUP BY CAST({qstatus} AS VARCHAR(255))
-            ORDER BY total DESC
-            LIMIT 12;
-            """
-        )
+def _status_distribution(table,status_column):
+    qtable,qstatus=_quote(table),_quote(status_column); provider=_provider()
+    if provider in ("postgresql","excel"):
+        sql=text(f"SELECT CAST({qstatus} AS VARCHAR(255)) AS label,COUNT(*) AS total FROM {qtable} WHERE {qstatus} IS NOT NULL GROUP BY CAST({qstatus} AS VARCHAR(255)) ORDER BY total DESC LIMIT 12;")
     else:
-        sql = text(
-            f"""
-            SELECT TOP 12
-                CAST({qstatus} AS NVARCHAR(255)) AS label,
-                COUNT(*) AS total
-            FROM {qtable}
-            WHERE {qstatus} IS NOT NULL
-            GROUP BY CAST({qstatus} AS NVARCHAR(255))
-            ORDER BY total DESC;
-            """
-        )
+        sql=text(f"SELECT TOP 12 CAST({qstatus} AS NVARCHAR(255)) AS label,COUNT(*) AS total FROM {qtable} WHERE {qstatus} IS NOT NULL GROUP BY CAST({qstatus} AS NVARCHAR(255)) ORDER BY total DESC;")
+    with get_connection() as c: rows=c.execute(sql).mappings().all()
+    return [{"label":str(r["label"]),"total":int(r["total"])} for r in rows]
 
-    with get_connection() as connection:
-        rows = connection.execute(sql).mappings().all()
-
-    return [
-        {"label": str(row["label"]), "total": int(row["total"])}
-        for row in rows
-    ]
-
-
-def _entity_counts(entities: dict) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for role, entity in entities.items():
-        table = entity.get("table")
-        if not table:
-            continue
-        try:
-            counts[role] = _count_table(table)
-        except Exception:
-            counts[role] = 0
+def _entity_counts(entities):
+    counts={}
+    for role,entity in entities.items():
+        table=entity.get("table")
+        if not table: continue
+        try: counts[role]=_count_table(table)
+        except Exception: counts[role]=0
     return counts
 
+def _select_kpis(domain,entities,counts):
+    selected=[]
+    for role in DOMAIN_KPI_ROLES.get(domain,[]):
+        if role in entities and role not in selected: selected.append(role)
+    # Avoid duplicate KPI cards when a denormalized Excel sheet maps to several semantic roles.
+    used_tables=set()
+    unique=[]
+    for role in selected+list(entities):
+        if role not in entities: continue
+        table=entities[role].get("table")
+        if not table or table in used_tables: continue
+        used_tables.add(table); unique.append(role)
+        if len(unique)>=4: break
+    return [{"role":r,"value":counts.get(r,0),"table":entities[r].get("table")} for r in unique]
 
-def _select_kpis(domain: str | None, entities: dict, counts: dict[str, int]) -> list[dict]:
-    preferred = DOMAIN_KPI_ROLES.get(domain, [])
-    selected: list[str] = []
-
-    for role in preferred:
-        if role in entities and role not in selected:
-            selected.append(role)
-
-    for role in entities:
-        if role not in selected:
-            selected.append(role)
-        if len(selected) >= 4:
-            break
-
-    return [
-        {
-            "role": role,
-            "value": counts.get(role, 0),
-            "table": entities[role].get("table"),
-        }
-        for role in selected[:4]
-    ]
-
-
-def _select_trend(domain: str | None, entities: dict) -> dict:
-    candidates = DOMAIN_TREND_PRIORITY.get(domain, []) + list(entities.keys())
-    seen: set[str] = set()
-
-    for role in candidates:
-        if role in seen:
-            continue
-        seen.add(role)
-        entity = entities.get(role)
-        if not entity:
-            continue
-        table = entity.get("table")
-        date_column = (entity.get("columns") or {}).get("date")
-        if not table or not date_column:
-            continue
+def _select_trend(domain,entities):
+    seen=set()
+    for role in DOMAIN_TREND_PRIORITY.get(domain,[])+list(entities):
+        if role in seen: continue
+        seen.add(role); entity=entities.get(role)
+        if not entity: continue
+        table=entity.get("table"); date=(entity.get("columns") or {}).get("date")
+        if not table or not date: continue
         try:
-            return {
-                "available": True,
-                "role": role,
-                "data": _monthly_count(table, date_column),
-            }
-        except Exception:
-            continue
+            data=_monthly_count(table,date)
+            if data: return {"available":True,"role":role,"data":data}
+        except Exception: continue
+    return {"available":False,"role":None,"data":[]}
 
-    return {"available": False, "role": None, "data": []}
-
-
-def _select_status(domain: str | None, entities: dict) -> dict:
-    candidates = DOMAIN_STATUS_PRIORITY.get(domain, []) + list(entities.keys())
-    seen: set[str] = set()
-
-    for role in candidates:
-        if role in seen:
-            continue
-        seen.add(role)
-        entity = entities.get(role)
-        if not entity:
-            continue
-        table = entity.get("table")
-        status_column = (entity.get("columns") or {}).get("status")
-        if not table or not status_column:
-            continue
+def _select_status(domain,entities):
+    seen=set()
+    for role in DOMAIN_STATUS_PRIORITY.get(domain,[])+list(entities):
+        if role in seen: continue
+        seen.add(role); entity=entities.get(role)
+        if not entity: continue
+        table=entity.get("table"); status=(entity.get("columns") or {}).get("status")
+        if not table or not status: continue
         try:
-            return {
-                "available": True,
-                "role": role,
-                "data": _status_distribution(table, status_column),
-            }
-        except Exception:
-            continue
+            data=_status_distribution(table,status)
+            if data: return {"available":True,"role":role,"data":data}
+        except Exception: continue
+    return {"available":False,"role":None,"data":[]}
 
-    return {"available": False, "role": None, "data": []}
-
-
-def get_adaptive_dashboard_summary() -> dict:
-    analysis = inspect_semantic_model()
-    semantic = analysis.get("semantic_model") or {}
-    domain = semantic.get("domain")
-    entities = semantic.get("entities") or {}
-
-    counts = _entity_counts(entities)
-
-    return {
-        "database": analysis.get("database"),
-        "provider": _provider(),
-        "domain": domain,
-        "domain_confidence": semantic.get("domain_confidence"),
-        "ambiguous_domain": semantic.get("ambiguous_domain", False),
-        "kpis": _select_kpis(domain, entities, counts),
-        "trend": _select_trend(domain, entities),
-        "status_distribution": _select_status(domain, entities),
-        "entity_counts": [
-            {
-                "role": role,
-                "value": counts.get(role, 0),
-                "table": entity.get("table"),
-                "confidence": entity.get("confidence"),
-            }
-            for role, entity in entities.items()
-        ],
-        "relations_detected": len(semantic.get("relations") or []),
-        "unmapped_tables": semantic.get("unmapped_tables") or [],
-    }
+def get_adaptive_dashboard_summary():
+    analysis=inspect_semantic_model(); semantic=analysis.get("semantic_model") or {}; domain=semantic.get("domain"); entities=semantic.get("entities") or {}; counts=_entity_counts(entities)
+    return {"database":analysis.get("database"),"provider":_provider(),"domain":domain,"domain_confidence":semantic.get("domain_confidence"),"ambiguous_domain":semantic.get("ambiguous_domain",False),"kpis":_select_kpis(domain,entities,counts),"trend":_select_trend(domain,entities),"status_distribution":_select_status(domain,entities),"entity_counts":[{"role":r,"value":counts.get(r,0),"table":e.get("table"),"confidence":e.get("confidence")} for r,e in entities.items()],"relations_detected":len(semantic.get("relations") or []),"unmapped_tables":semantic.get("unmapped_tables") or []}
