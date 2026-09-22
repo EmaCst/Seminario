@@ -11,39 +11,23 @@ from app.analysis.semantic_mapper import inspect_semantic_map
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
-from app.database.excel_loader import inspect_excel_upload
+from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
 from app.services.assistant_service import ask_database
 
-
-app = FastAPI(
-    title="AI Business Assistant",
-    description="Asistente empresarial para análisis de datos",
-    version="0.12.0"
-)
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+app = FastAPI(title="AI Business Assistant", description="Asistente empresarial para análisis de datos", version="0.13.0")
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 class ChatMessage(BaseModel):
     role: str
     content: str
 
-
 class Question(BaseModel):
     question: str
     history: list[ChatMessage] = Field(default_factory=list)
-
 
 class DatabaseConnectionRequest(BaseModel):
     server: str
@@ -51,7 +35,6 @@ class DatabaseConnectionRequest(BaseModel):
     username: str | None = None
     password: str | None = None
     driver: str = "ODBC Driver 18 for SQL Server"
-
 
 class PostgreSQLConnectionRequest(BaseModel):
     host: str
@@ -61,57 +44,32 @@ class PostgreSQLConnectionRequest(BaseModel):
     port: int = 5432
     sslmode: str = "prefer"
 
-
 def _current_database_analysis() -> dict:
     schema = inspect_database()
     domain_analysis = inspect_business_domains()
     semantic_model = inspect_semantic_model()
-    return {
-        "database": schema.database,
-        "tables": list(schema.tables.keys()),
-        "relationships": len(schema.relationships),
-        "business_domain": {
-            "primary": domain_analysis["primary_domain"],
-            "confidence": domain_analysis["primary_confidence"],
-            "ambiguous": domain_analysis["ambiguous"],
-            "candidates": domain_analysis["candidates"],
-        },
-        "semantic_model_v2": semantic_model["semantic_model"],
-    }
-
+    return {"database": schema.database, "tables": list(schema.tables.keys()), "relationships": len(schema.relationships), "business_domain": {"primary": domain_analysis["primary_domain"], "confidence": domain_analysis["primary_confidence"], "ambiguous": domain_analysis["ambiguous"], "candidates": domain_analysis["candidates"]}, "semantic_model_v2": semantic_model["semantic_model"]}
 
 def _full_connection_analysis(connection_status: dict) -> dict:
     analysis = _current_database_analysis()
     capabilities = inspect_capabilities()
     semantic_map = inspect_semantic_map()
-    return {
-        "connected": True,
-        "connection": connection_status,
-        **analysis,
-        "capabilities": capabilities["capabilities"],
-        "semantic_map": semantic_map["semantic_map"],
-    }
-
+    return {"connected": True, "connection": connection_status, **analysis, "capabilities": capabilities["capabilities"], "semantic_map": semantic_map["semantic_map"]}
 
 @app.get("/")
 def root():
     return {"status": "online", "service": "AI Business Assistant", "database": database_manager.status()}
 
-
 @app.post("/ask")
 def ask(question: Question):
-    response = ask_gemma(question.question)
-    return {"question": question.question, "response": response}
-
+    return {"question": question.question, "response": ask_gemma(question.question)}
 
 @app.post("/ask-db")
 def ask_database_endpoint(question: Question):
-    history = [item.model_dump() for item in question.history]
     try:
-        return ask_database(question.question, history=history)
+        return ask_database(question.question, history=[item.model_dump() for item in question.history])
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Kenneth no pudo completar la consulta. Detalle técnico: {exc}") from exc
-
 
 @app.get("/api/ai/forecast")
 def ai_forecast(horizon: int = 3):
@@ -122,7 +80,6 @@ def ai_forecast(horizon: int = 3):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible generar la predicción: {exc}") from exc
 
-
 @app.get("/api/ai/anomalies")
 def ai_anomalies():
     try:
@@ -132,11 +89,9 @@ def ai_anomalies():
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible detectar anomalías: {exc}") from exc
 
-
 @app.get("/api/dashboard")
 def dashboard():
     return get_dashboard_summary()
-
 
 @app.get("/api/dashboard/adaptive")
 def adaptive_dashboard():
@@ -145,14 +100,12 @@ def adaptive_dashboard():
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir el dashboard adaptativo: {exc}") from exc
 
-
 @app.get("/api/analytics/adaptive")
 def adaptive_analytics():
     try:
         return get_adaptive_analytics()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir la analítica adaptativa: {exc}") from exc
-
 
 @app.get("/api/reports/pdf")
 def report_pdf(type: str = "executive"):
@@ -166,11 +119,9 @@ def report_pdf(type: str = "executive"):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible generar el reporte PDF: {exc}") from exc
 
-
 @app.get("/api/database/status")
 def database_status():
     return database_manager.status()
-
 
 @app.get("/api/database/domain")
 def database_domain():
@@ -179,14 +130,12 @@ def database_domain():
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible analizar el dominio de la base de datos: {exc}") from exc
 
-
 @app.get("/api/database/semantic-model")
 def database_semantic_model():
     try:
         return inspect_semantic_model()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir el modelo semántico: {exc}") from exc
-
 
 @app.post("/api/database/test")
 def test_database_connection(config: DatabaseConnectionRequest):
@@ -195,14 +144,12 @@ def test_database_connection(config: DatabaseConnectionRequest):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible conectar con SQL Server: {exc}") from exc
 
-
 @app.post("/api/database/connect")
 def connect_database(config: DatabaseConnectionRequest):
     try:
         return _full_connection_analysis(database_manager.configure(**config.model_dump()))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible activar la base SQL Server: {exc}") from exc
-
 
 @app.post("/api/database/test/postgresql")
 def test_postgresql_connection(config: PostgreSQLConnectionRequest):
@@ -211,7 +158,6 @@ def test_postgresql_connection(config: PostgreSQLConnectionRequest):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible conectar con PostgreSQL: {exc}") from exc
 
-
 @app.post("/api/database/connect/postgresql")
 def connect_postgresql_database(config: PostgreSQLConnectionRequest):
     try:
@@ -219,10 +165,8 @@ def connect_postgresql_database(config: PostgreSQLConnectionRequest):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible activar la base PostgreSQL: {exc}") from exc
 
-
 @app.post("/api/database/upload/excel/inspect")
 async def inspect_excel_file(file: UploadFile = File(...)):
-    """Analiza la estructura y una muestra de un Excel sin modificar la fuente de datos activa."""
     try:
         return await inspect_excel_upload(file)
     except ValueError as exc:
@@ -230,10 +174,24 @@ async def inspect_excel_file(file: UploadFile = File(...)):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible interpretar el archivo Excel: {exc}") from exc
 
+@app.post("/api/database/upload/excel")
+async def upload_excel_file(file: UploadFile = File(...)):
+    """Convierte el libro a SQLite, lo activa y ejecuta la interpretación semántica existente."""
+    try:
+        imported = await activate_excel_upload(file)
+        analysis = _full_connection_analysis(imported["connection"])
+        try:
+            dashboard = get_adaptive_dashboard_summary()
+        except Exception as exc:
+            dashboard = {"available": False, "reason": str(exc)}
+        return {**imported, **analysis, "dashboard": dashboard}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible activar el archivo Excel: {exc}") from exc
 
 @app.post("/api/database/upload/sqlserver-bak")
 async def upload_sqlserver_backup(file: UploadFile = File(...)):
-    """Carga un .bak, lo restaura en la instancia SQL Server configurada y lo analiza."""
     try:
         restore_result = await restore_sqlserver_backup(file)
         analysis = _current_database_analysis()
