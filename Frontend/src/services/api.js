@@ -2,124 +2,41 @@ const API_URL = 'http://127.0.0.1:8000';
 
 async function parseResponse(response) {
   const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const detail = data?.detail || `Error HTTP: ${response.status}`;
-    throw new Error(detail);
-  }
-
+  if (!response.ok) throw new Error(data?.detail || `Error HTTP: ${response.status}`);
   return data;
 }
 
-export async function askDatabase(question, history = []) {
-  const response = await fetch(`${API_URL}/ask-db`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, history }),
-  });
-  return parseResponse(response);
-}
-
-export async function getDashboard() {
-  const response = await fetch(`${API_URL}/api/dashboard`);
-  return parseResponse(response);
-}
-
-export async function getAdaptiveDashboard() {
-  const response = await fetch(`${API_URL}/api/dashboard/adaptive`);
-  return parseResponse(response);
-}
-
-export async function getAdaptiveAnalytics() {
-  const response = await fetch(`${API_URL}/api/analytics/adaptive`);
-  return parseResponse(response);
-}
+export async function askDatabase(question, history = []) { const response = await fetch(`${API_URL}/ask-db`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, history }) }); return parseResponse(response); }
+export async function getDashboard() { return parseResponse(await fetch(`${API_URL}/api/dashboard`)); }
+export async function getAdaptiveDashboard() { return parseResponse(await fetch(`${API_URL}/api/dashboard/adaptive`)); }
+export async function getAdaptiveAnalytics() { return parseResponse(await fetch(`${API_URL}/api/analytics/adaptive`)); }
+export async function getDatabaseStatus() { return parseResponse(await fetch(`${API_URL}/api/database/status`)); }
+export async function getForecast(horizon = 3) { return parseResponse(await fetch(`${API_URL}/api/ai/forecast?horizon=${encodeURIComponent(horizon)}`)); }
+export async function getAnomalies() { return parseResponse(await fetch(`${API_URL}/api/ai/anomalies`)); }
+export async function getBusinessDomain() { return parseResponse(await fetch(`${API_URL}/api/database/domain`)); }
+export async function getSemanticModel() { return parseResponse(await fetch(`${API_URL}/api/database/semantic-model`)); }
 
 export async function downloadReportPdf(type) {
   const response = await fetch(`${API_URL}/api/reports/pdf?type=${encodeURIComponent(type)}`);
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data?.detail || `Error HTTP: ${response.status}`);
-  }
-
+  if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data?.detail || `Error HTTP: ${response.status}`); }
   const disposition = response.headers.get('content-disposition') || '';
   const match = disposition.match(/filename="?([^";]+)"?/i);
-  const filename = match?.[1] || `reporte_${type}.pdf`;
-  const blob = await response.blob();
-
-  return { blob, filename };
+  return { blob: await response.blob(), filename: match?.[1] || `reporte_${type}.pdf` };
 }
 
-export async function getDatabaseStatus() {
-  const response = await fetch(`${API_URL}/api/database/status`);
-  return parseResponse(response);
+async function postJson(path, config) {
+  return parseResponse(await fetch(`${API_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }));
 }
+export const testDatabaseConnection = (config) => postJson('/api/database/test', config);
+export const connectDatabase = (config) => postJson('/api/database/connect', config);
+export const testPostgreSQLConnection = (config) => postJson('/api/database/test/postgresql', config);
+export const connectPostgreSQL = (config) => postJson('/api/database/connect/postgresql', config);
 
-export async function getForecast(horizon = 3) {
-  const response = await fetch(`${API_URL}/api/ai/forecast?horizon=${encodeURIComponent(horizon)}`);
-  return parseResponse(response);
-}
-
-export async function getAnomalies() {
-  const response = await fetch(`${API_URL}/api/ai/anomalies`);
-  return parseResponse(response);
-}
-
-export async function testDatabaseConnection(config) {
-  const response = await fetch(`${API_URL}/api/database/test`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  return parseResponse(response);
-}
-
-export async function connectDatabase(config) {
-  const response = await fetch(`${API_URL}/api/database/connect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  return parseResponse(response);
-}
-
-export async function testPostgreSQLConnection(config) {
-  const response = await fetch(`${API_URL}/api/database/test/postgresql`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  return parseResponse(response);
-}
-
-export async function connectPostgreSQL(config) {
-  const response = await fetch(`${API_URL}/api/database/connect/postgresql`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  return parseResponse(response);
-}
-
-export async function uploadSqlServerBackup(file) {
+async function uploadFile(path, file) {
   const formData = new FormData();
   formData.append('file', file);
-
-  const response = await fetch(`${API_URL}/api/database/upload/sqlserver-bak`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  return parseResponse(response);
+  return parseResponse(await fetch(`${API_URL}${path}`, { method: 'POST', body: formData }));
 }
-
-export async function getBusinessDomain() {
-  const response = await fetch(`${API_URL}/api/database/domain`);
-  return parseResponse(response);
-}
-
-export async function getSemanticModel() {
-  const response = await fetch(`${API_URL}/api/database/semantic-model`);
-  return parseResponse(response);
-}
+export const uploadSqlServerBackup = (file) => uploadFile('/api/database/upload/sqlserver-bak', file);
+export const inspectExcel = (file) => uploadFile('/api/database/upload/excel/inspect', file);
+export const uploadExcel = (file) => uploadFile('/api/database/upload/excel', file);
