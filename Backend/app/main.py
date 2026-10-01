@@ -17,6 +17,7 @@ from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
 from app.services.assistant_service import ask_database
+from app.visualizations.semantic_catalog import get_semantic_visualization_catalog
 from app.visualizations.visualization_service import (
     VisualizationDefinition,
     get_visualization_catalog,
@@ -111,6 +112,13 @@ def adaptive_analytics():
         return get_adaptive_analytics()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir la analítica adaptativa: {exc}") from exc
+
+@app.get("/api/visualizations/semantic-catalog")
+def visualization_semantic_catalog():
+    try:
+        return get_semantic_visualization_catalog()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible construir el catálogo semántico: {exc}") from exc
 
 @app.get("/api/visualizations/catalog")
 def visualization_catalog():
