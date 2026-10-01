@@ -17,6 +17,11 @@ from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
 from app.services.assistant_service import ask_database
+from app.visualizations.visualization_service import (
+    VisualizationDefinition,
+    get_visualization_catalog,
+    preview_visualization,
+)
 
 app = FastAPI(title="AI Business Assistant", description="Asistente empresarial para análisis de datos", version="0.13.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -106,6 +111,22 @@ def adaptive_analytics():
         return get_adaptive_analytics()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir la analítica adaptativa: {exc}") from exc
+
+@app.get("/api/visualizations/catalog")
+def visualization_catalog():
+    try:
+        return get_visualization_catalog()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible construir el catálogo de visualizaciones: {exc}") from exc
+
+@app.post("/api/visualizations/preview")
+def visualization_preview(definition: VisualizationDefinition):
+    try:
+        return preview_visualization(definition)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible generar la visualización: {exc}") from exc
 
 @app.get("/api/reports/pdf")
 def report_pdf(type: str = "executive"):
