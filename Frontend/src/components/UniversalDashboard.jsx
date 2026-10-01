@@ -29,6 +29,7 @@ import { DashboardContext } from '../context/DashboardContext';
 import { getAdaptiveDashboard, getDatabaseStatus, getSemanticModel } from '../services/api';
 import { DashboardView } from './DashboardView';
 import { VisualizationBuilder } from './VisualizationBuilder';
+import { SavedVisualizations } from './SavedVisualizations';
 
 const DOMAIN_META = {
   retail: { es: 'Comercio / Retail', en: 'Retail / Commerce', Icon: PackageSearch },
@@ -235,6 +236,7 @@ const BusinessDashboard = ({ data }) => {
 export const UniversalDashboard = () => {
   const { colors, language, theme } = useContext(DashboardContext);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [customRefresh, setCustomRefresh] = useState(0);
   const [semantic, setSemantic] = useState(null);
   const [adaptive, setAdaptive] = useState(null);
   const [provider, setProvider] = useState(null);
@@ -291,7 +293,7 @@ export const UniversalDashboard = () => {
   }
 
   if (domain === 'retail' && provider === 'sqlserver') {
-    return <><div className="mb-5 flex justify-end"><button onClick={() => setBuilderOpen(true)} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:scale-[1.03]" style={{ backgroundColor: theme.primary }}><Plus size={17}/>{language === 'es' ? 'Agregar visualización' : 'Add visualization'}</button></div><DashboardView /><VisualizationBuilder open={builderOpen} onClose={() => setBuilderOpen(false)} /></>;
+    return <><div className="mb-5 flex justify-end"><button onClick={() => setBuilderOpen(true)} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:scale-[1.03]" style={{ backgroundColor: theme.primary }}><Plus size={17}/>{language === 'es' ? 'Agregar visualización' : 'Add visualization'}</button></div><DashboardView /><SavedVisualizations destination="dashboard" refreshKey={customRefresh} /><VisualizationBuilder open={builderOpen} onClose={() => setBuilderOpen(false)} onSaved={() => setCustomRefresh((value) => value + 1)} /></>;
   }
 
   if (!adaptive) {
@@ -304,5 +306,5 @@ export const UniversalDashboard = () => {
     );
   }
 
-  return <><div className="mb-5 flex justify-end"><button onClick={() => setBuilderOpen(true)} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:scale-[1.03]" style={{ backgroundColor: theme.primary }}><Plus size={17}/>{language === 'es' ? 'Agregar visualización' : 'Add visualization'}</button></div><BusinessDashboard data={adaptive} /><VisualizationBuilder open={builderOpen} onClose={() => setBuilderOpen(false)} /></>;
+  return <><div className="mb-5 flex justify-end"><button onClick={() => setBuilderOpen(true)} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:scale-[1.03]" style={{ backgroundColor: theme.primary }}><Plus size={17}/>{language === 'es' ? 'Agregar visualización' : 'Add visualization'}</button></div><BusinessDashboard data={adaptive} /><SavedVisualizations destination="dashboard" refreshKey={customRefresh} /><VisualizationBuilder open={builderOpen} onClose={() => setBuilderOpen(false)} onSaved={() => setCustomRefresh((value) => value + 1)} /></>;
 };
