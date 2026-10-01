@@ -39,7 +39,7 @@ class VisualizationDefinition(BaseModel):
 
 def _quote(identifier: str) -> str:
     provider = database_manager.status().get("provider")
-    if provider == "postgresql":
+    if provider in {"postgresql", "excel"}:
         return '"' + identifier.replace('"', '""') + '"'
     return "[" + identifier.replace("]", "]]") + "]"
 
