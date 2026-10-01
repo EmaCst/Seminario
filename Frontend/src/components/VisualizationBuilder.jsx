@@ -2,11 +2,11 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { BarChart3, LineChart, Sigma, Table2, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart as ReLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
-import { getVisualizationSemanticCatalog, previewVisualization } from '../services/api';
+import { getVisualizationSemanticCatalog, previewVisualization, saveVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
 
-export const VisualizationBuilder = ({ open, onClose }) => {
+export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   const { colors, theme, language } = useContext(DashboardContext);
   const [catalog, setCatalog] = useState(null);
   const [entityKey, setEntityKey] = useState('');
@@ -18,6 +18,9 @@ export const VisualizationBuilder = ({ open, onClose }) => {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveToAnalytics, setSaveToAnalytics] = useState(true);
+  const [saveToDashboard, setSaveToDashboard] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -35,15 +38,30 @@ export const VisualizationBuilder = ({ open, onClose }) => {
 
   if (!open) return null;
 
+  const definition = () => ({
+    title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
+    visualization, table: entity?.table, metric: metric || null, aggregation,
+    group_by: dimension || null, filters: [], limit: 20,
+  });
+
   const runPreview = async () => {
     try {
       setLoading(true); setError('');
-      setPreview(await previewVisualization({
-        title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
-        visualization, table: entity?.table, metric: metric || null, aggregation,
-        group_by: dimension || null, filters: [], limit: 20,
-      }));
+      setPreview(await previewVisualization(definition()));
     } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const saveCurrent = async () => {
+    if (!saveToAnalytics && !saveToDashboard) {
+      setError(language === 'es' ? 'Selecciona al menos un destino.' : 'Select at least one destination.');
+      return;
+    }
+    try {
+      setSaving(true); setError('');
+      const saved = await saveVisualization(definition(), { analytics: saveToAnalytics, dashboard: saveToDashboard });
+      onSaved?.(saved);
+      onClose();
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
   };
 
   const data = preview?.data || [];
@@ -64,6 +82,12 @@ export const VisualizationBuilder = ({ open, onClose }) => {
           {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><select value={dimension} onChange={(e)=>setDimension(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(entity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></Field>}
           <Field label={language === 'es' ? 'Título' : 'Title'} colors={colors}><input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder={language === 'es'?'Ej. Ventas por canal':'E.g. Sales by channel'} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}/></Field>
           <button disabled={!canPreview||loading} onClick={runPreview} className="w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{loading?(language==='es'?'Generando...':'Generating...'):(language==='es'?'Generar vista previa':'Generate preview')}</button>
+          {preview && <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
+            <p className="mb-3 text-sm font-bold" style={{color:colors.text}}>{language==='es'?'¿Dónde quieres mostrarla?':'Where do you want to show it?'}</p>
+            <label className="mb-2 flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToAnalytics} onChange={(e)=>setSaveToAnalytics(e.target.checked)} className="h-4 w-4 accent-current"/><span>{language==='es'?'Analítica':'Analytics'} <small style={{color:colors.muted}}>({language==='es'?'predeterminado':'default'})</small></span></label>
+            <label className="flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToDashboard} onChange={(e)=>setSaveToDashboard(e.target.checked)} className="h-4 w-4 accent-current"/><span>Dashboard</span></label>
+            <button disabled={saving||(!saveToAnalytics&&!saveToDashboard)} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?'Guardar visualización':'Save visualization')}</button>
+          </div>}
           {error&&<p className="text-sm text-red-500">{error}</p>}
         </div>
         <div className="min-h-[560px] p-6"><div className="flex h-full min-h-[500px] flex-col rounded-2xl border p-5" style={{backgroundColor:colors.card,borderColor:colors.border}}>
