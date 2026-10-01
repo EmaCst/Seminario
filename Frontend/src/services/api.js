@@ -17,6 +17,13 @@ export async function getBusinessDomain() { return parseResponse(await fetch(`${
 export async function getSemanticModel() { return parseResponse(await fetch(`${API_URL}/api/database/semantic-model`)); }
 export async function getVisualizationSemanticCatalog() { return parseResponse(await fetch(`${API_URL}/api/visualizations/semantic-catalog`)); }
 export async function previewVisualization(definition) { return postJson('/api/visualizations/preview', definition); }
+export async function getSavedVisualizations(destination = '') {
+  const suffix = destination ? `?destination=${encodeURIComponent(destination)}` : '';
+  return parseResponse(await fetch(`${API_URL}/api/visualizations/saved${suffix}`));
+}
+export async function saveVisualization(definition, placement) {
+  return postJson('/api/visualizations/saved', { definition, placement });
+}
 
 export async function downloadReportPdf(type) {
   const response = await fetch(`${API_URL}/api/reports/pdf?type=${encodeURIComponent(type)}`);
