@@ -18,6 +18,14 @@ from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_mo
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
 from app.services.assistant_service import ask_database
 from app.visualizations.semantic_catalog import get_semantic_visualization_catalog
+from app.visualizations.visualization_store import (
+    SavedVisualizationRequest,
+    VisualizationPlacement,
+    delete_saved_visualization,
+    list_saved_visualizations,
+    save_visualization,
+    update_visualization_placement,
+)
 from app.visualizations.visualization_service import (
     VisualizationDefinition,
     get_visualization_catalog,
@@ -119,6 +127,32 @@ def visualization_semantic_catalog():
         return get_semantic_visualization_catalog()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir el catálogo semántico: {exc}") from exc
+
+@app.get("/api/visualizations/saved")
+def saved_visualizations(destination: str | None = None):
+    return {"items": list_saved_visualizations(destination)}
+
+@app.post("/api/visualizations/saved")
+def create_saved_visualization(request: SavedVisualizationRequest):
+    try:
+        return save_visualization(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.put("/api/visualizations/saved/{visualization_id}/placement")
+def change_visualization_placement(visualization_id: str, placement: VisualizationPlacement):
+    try:
+        return update_visualization_placement(visualization_id, placement)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.delete("/api/visualizations/saved/{visualization_id}")
+def remove_saved_visualization(visualization_id: str):
+    try:
+        delete_saved_visualization(visualization_id)
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @app.get("/api/visualizations/catalog")
 def visualization_catalog():
