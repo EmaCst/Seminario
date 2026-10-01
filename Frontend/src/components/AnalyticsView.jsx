@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
 import { getAdaptiveAnalytics } from '../services/api';
+import { SavedVisualizations } from './SavedVisualizations';
 
 const roleLabel = (role) => String(role || 'datos').replaceAll('_', ' ');
 
@@ -337,6 +338,8 @@ export const AnalyticsView = () => {
               </div>
             </div>
           </div>
+
+          <SavedVisualizations destination="analytics" />
 
           <div className="rounded-2xl border p-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" style={{ backgroundColor: colors.cardSoft, borderColor: colors.border, color: colors.muted }}>
             <span className="font-bold" style={{ color: colors.text }}>Cobertura del análisis:</span>
