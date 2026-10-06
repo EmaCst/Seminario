@@ -318,16 +318,9 @@ export const DashboardView = () => {
         ].filter(item=>item.node)} />}
 
 
-      {/* ======================================
-          VENTAS POR MES / TOP PRODUCTOS
-      ====================================== */}
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 lg:gap-6">
-
-        {visibleCharts.monthSales &&
-          dashboard?.sales_by_month?.available && (
-
-          <section
+      {/* GRÁFICAS PRINCIPALES: todas participan del mismo drag & drop */}
+      <EditableDashboardGrid storageId="retail-charts" items={[
+        { id: 'month-sales', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -398,12 +391,8 @@ export const DashboardView = () => {
 
               </LineChart>
             </ResponsiveContainer>
-          </section>
-        )}
-
-
-        {dashboard?.top_products?.available && (
-          <section
+          </section>) },
+        { id: 'top-products-chart', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -470,20 +459,8 @@ export const DashboardView = () => {
               </BarChart>
             </ResponsiveContainer>
 
-          </section>
-        )}
-
-      </div>
-
-
-      {/* ======================================
-          TOP CLIENTES / VENTAS POR CATEGORÍA
-      ====================================== */}
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 lg:gap-6">
-
-        {dashboard?.top_customers?.available && (
-          <section
+          </section>) },
+        { id: 'top-customers', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -543,12 +520,8 @@ export const DashboardView = () => {
 
               </BarChart>
             </ResponsiveContainer>
-          </section>
-        )}
-
-
-        {dashboard?.sales_by_category?.available && (
-          <section
+          </section>) },
+        { id: 'sales-category', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -608,11 +581,8 @@ export const DashboardView = () => {
 
               </BarChart>
             </ResponsiveContainer>
-          </section>
-        )}
-
-      </div>
-
+          </section>) }
+      ]} />
 
       {/* ======================================
           INVENTARIO CRÍTICO
