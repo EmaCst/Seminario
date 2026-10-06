@@ -220,103 +220,29 @@ export const DashboardView = () => {
 
 
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" columns="sm:grid-cols-2 xl:grid-cols-4" sharedCanvas="retail-canvas" items={[
-          { id: 'total-sales', resizable: false, span: 'xl:col-span-3', node: (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Ventas totales'
-                : 'Total sales'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {formatMoney(
-                dashboard.total_sales.value
-              )}
-            </div>
-          </section>
-        ) },
-          { id: 'current-month-sales', resizable: false, span: 'xl:col-span-3', node: dashboard?.current_month_sales?.available ? (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Ventas del mes'
-                : 'Current month sales'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {formatMoney(
-                dashboard.current_month_sales.value
-              )}
-            </div>
-          </section>
-        ) : null },
-          { id: 'sales-count', resizable: false, span: 'xl:col-span-3', node: dashboard?.sales_count?.available ? (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Cantidad de ventas'
-                : 'Sales count'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {dashboard.sales_count.value}
-            </div>
-          </section>
-        ) : null },
-          { id: 'average-ticket', resizable: false, span: 'xl:col-span-3', node: dashboard?.average_ticket?.available ? (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Venta promedio'
-                : 'Average sale'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {formatMoney(
-                dashboard.average_ticket.value
-              )}
-            </div>
-          </section>
-        ) : null },
-        ].filter(item=>item.node)} />}
-
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[{
+          id: 'retail-kpis-block',
+          resizable: false,
+          span: 'xl:col-span-12',
+          node: <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Ventas totales' : 'Total sales'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{formatMoney(dashboard.total_sales.value)}</div>
+            </section>
+            {dashboard?.current_month_sales?.available && <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Ventas del mes' : 'Current month sales'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{formatMoney(dashboard.current_month_sales.value)}</div>
+            </section>}
+            {dashboard?.sales_count?.available && <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Cantidad de ventas' : 'Sales count'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{dashboard.sales_count.value}</div>
+            </section>}
+            {dashboard?.average_ticket?.available && <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Venta promedio' : 'Average sale'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{formatMoney(dashboard.average_ticket.value)}</div>
+            </section>}
+          </div>,
+        }]} />}
 
       {/* GRÁFICAS PRINCIPALES: todas participan del mismo drag & drop */}
       <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[
