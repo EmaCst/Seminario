@@ -26,6 +26,7 @@ import {
 import { DashboardContext } from '../context/DashboardContext';
 import { getAdaptiveAnalytics } from '../services/api';
 import { SavedVisualizations } from './SavedVisualizations';
+import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const roleLabel = (role) => String(role || 'datos').replaceAll('_', ' ');
 
@@ -180,25 +181,17 @@ export const AnalyticsView = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
-            {[
-              { label: 'Período actual', value: trend?.current?.period || '—', detail: roleLabel(trend?.role) },
-              { label: 'Actividad actual', value: formatValue(trend?.current?.total), detail: 'registros' },
-              { label: 'Cambio mensual', value: trend?.change_pct == null ? '—' : `${trend.change_pct > 0 ? '+' : ''}${trend.change_pct}%`, detail: trend?.change_absolute == null ? 'sin comparación' : `${trend.change_absolute > 0 ? '+' : ''}${formatValue(trend.change_absolute)} registros` },
-              { label: 'Promedio mensual', value: formatValue(trend?.average), detail: `${trend?.periods || 0} períodos` },
-              { label: 'Mejor período', value: formatValue(trend?.peak?.total), detail: trend?.peak?.period || '—' },
-              { label: 'Menor período', value: formatValue(trend?.lowest?.total), detail: trend?.lowest?.period || '—' },
-            ].map((card) => (
-              <div key={card.label} className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.muted }}>{card.label}</p>
-                <p className="mt-2 text-2xl font-extrabold" style={{ color: colors.text }}>{card.value}</p>
-                <p className="mt-1 text-xs capitalize" style={{ color: colors.muted }}>{card.detail}</p>
-              </div>
-            ))}
-          </div>
+          <EditableDashboardGrid storageId="analytics-kpis" columns="sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" items={[
+            { label: 'Período actual', value: trend?.current?.period || '—', detail: roleLabel(trend?.role) },
+            { label: 'Actividad actual', value: formatValue(trend?.current?.total), detail: 'registros' },
+            { label: 'Cambio mensual', value: trend?.change_pct == null ? '—' : `${trend.change_pct > 0 ? '+' : ''}${trend.change_pct}%`, detail: trend?.change_absolute == null ? 'sin comparación' : `${trend.change_absolute > 0 ? '+' : ''}${formatValue(trend.change_absolute)} registros` },
+            { label: 'Promedio mensual', value: formatValue(trend?.average), detail: `${trend?.periods || 0} períodos` },
+            { label: 'Mejor período', value: formatValue(trend?.peak?.total), detail: trend?.peak?.period || '—' },
+            { label: 'Menor período', value: formatValue(trend?.lowest?.total), detail: trend?.lowest?.period || '—' },
+          ].map((card,index)=>({ id:`analytics-kpi-${index}`, resizable:false, node:<div className="h-full rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}><p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.muted }}>{card.label}</p><p className="mt-2 text-2xl font-extrabold" style={{ color: colors.text }}>{card.value}</p><p className="mt-1 text-xs capitalize" style={{ color: colors.muted }}>{card.detail}</p></div> }))} />
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-            <div className="xl:col-span-2 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+          <EditableDashboardGrid storageId="analytics-primary" items={[
+            { id:'trend-chart', node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={TrendingUp} title={language === 'es' ? 'Evolución y promedio móvil' : 'Evolution and moving average'} subtitle={`${roleLabel(trend?.role)} · ${range === 0 ? 'histórico completo' : `últimos ${range} meses`}`} theme={theme} colors={colors} />
               <div className="h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -213,9 +206,8 @@ export const AnalyticsView = () => {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-
-            <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            </div> },
+            { id:'automatic-insights', resizable:false, node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Sparkles} title={language === 'es' ? 'Insights automáticos' : 'Automatic insights'} subtitle={language === 'es' ? 'Hallazgos derivados de los datos actuales.' : 'Findings derived from current data.'} theme={theme} colors={colors} />
               <div className="space-y-3 max-h-[330px] overflow-y-auto pr-1">
                 {(data.insights || []).map((insight, index) => (
@@ -225,8 +217,8 @@ export const AnalyticsView = () => {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
+            </div> },
+          ]} />
 
           {(data.rankings || []).length > 0 && (
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
@@ -277,9 +269,9 @@ export const AnalyticsView = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            {(data.distributions || []).slice(0, 4).map((distribution) => (
-              <div key={`${distribution.role}-${distribution.column}`} className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+          <EditableDashboardGrid storageId="analytics-distributions" items={(data.distributions || []).slice(0, 4).map((distribution) => ({
+              id: `distribution-${distribution.role}-${distribution.column}`,
+              node: <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                 <SectionTitle icon={Layers3} title={distribution.label} subtitle={roleLabel(distribution.role)} theme={theme} colors={colors} />
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -293,10 +285,10 @@ export const AnalyticsView = () => {
                   </ResponsiveContainer>
                 </div>
               </div>
-            ))}
-          </div>
+            }))}
+          />
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <EditableDashboardGrid storageId="analytics-detail" items={[{ id:'entity-volume', node:
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={BarChart3} title={language === 'es' ? 'Volumen por entidad' : 'Volume by entity'} subtitle={language === 'es' ? 'Entidades detectadas y mapeadas por el modelo semántico.' : 'Entities detected and mapped by the semantic model.'} theme={theme} colors={colors} />
               <div className="h-[330px]">
@@ -310,9 +302,7 @@ export const AnalyticsView = () => {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-
-            <div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            </div> }, { id:'historical-detail', resizable:false, node:<div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={CalendarRange} title={language === 'es' ? 'Detalle histórico' : 'Historical detail'} subtitle={language === 'es' ? 'Valores mensuales usados para el análisis temporal.' : 'Monthly values used for time analysis.'} theme={theme} colors={colors} />
               <div className="overflow-x-auto max-h-[330px] overflow-y-auto">
                 <table className="w-full text-sm">
@@ -336,8 +326,7 @@ export const AnalyticsView = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
+            </div> }]} />
 
           <SavedVisualizations destination="analytics" />
 
