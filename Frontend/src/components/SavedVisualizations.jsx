@@ -1,12 +1,12 @@
 import { useContext, useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { GripVertical, LayoutDashboard, RefreshCw } from 'lucide-react';
+import { Expand, GripVertical, LayoutDashboard, Minimize2, RefreshCw } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 import { getSavedVisualizations, previewVisualization } from '../services/api';
 
 const formatValue = (value) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-const CustomWidget = ({ item, draggable, dragging, onDragStart, onDragOver, onDrop, onDragEnd }) => {
+const CustomWidget = ({ item, draggable, dragging, large, onToggleSize, onDragStart, onDragOver, onDrop, onDragEnd }) => {
   const { colors, theme, language } = useContext(DashboardContext);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
@@ -22,7 +22,7 @@ const CustomWidget = ({ item, draggable, dragging, onDragStart, onDragOver, onDr
   const cardStyle = { backgroundColor: colors.card, borderColor: colors.border };
 
   return <section draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd} className={`min-h-[250px] rounded-2xl border p-5 shadow-sm transition ${draggable ? 'cursor-grab active:cursor-grabbing' : 'hover:-translate-y-0.5 hover:shadow-md'} ${dragging ? 'scale-[0.98] opacity-50' : ''}`} style={{...cardStyle, outline: draggable ? `1px dashed ${theme.primary}55` : 'none'}}>
-    {draggable && <div className="mb-3 flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold" style={{backgroundColor:colors.accentSoft,color:theme.primary}}><GripVertical size={15}/>{language==='es'?'Arrastra para reordenar':'Drag to reorder'}</div>}
+    {draggable && <div className="mb-3 flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs font-bold" style={{backgroundColor:colors.accentSoft,color:theme.primary}}><span className="flex items-center gap-2"><GripVertical size={15}/>{language==='es'?'Mover':'Move'}</span><button type="button" onClick={(e)=>{e.stopPropagation();onToggleSize();}} className="flex items-center gap-1.5 rounded-lg px-2 py-1 transition hover:scale-105" style={{backgroundColor:colors.card,color:theme.primary}}>{large?<Minimize2 size={14}/>:<Expand size={14}/>} {large?(language==='es'?'Normal':'Normal'):(language==='es'?'Grande':'Large')}</button></div>}
     <div className="mb-4 flex items-start justify-between gap-3">
       <div><p className="text-[11px] font-bold uppercase tracking-wider" style={{color:theme.primary}}>{language==='es'?'Personalizada':'Custom'}</p><h3 className="font-extrabold" style={{color:colors.text}}>{item.definition.title}</h3></div>
       {item.placement?.dashboard && <LayoutDashboard size={17} style={{color:theme.primary}}/>}
@@ -40,6 +40,8 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
   const [error, setError] = useState('');
   const [draggingId, setDraggingId] = useState(null);
   const storageKey = `kenneth-layout-${destination}`;
+  const sizeKey = `kenneth-layout-sizes-${destination}`;
+  const [sizes, setSizes] = useState(()=>{ try { return JSON.parse(localStorage.getItem(sizeKey) || '{}'); } catch { return {}; } });
 
   useEffect(() => {
     let active = true;
@@ -59,6 +61,12 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
     try { localStorage.setItem(storageKey, JSON.stringify(next.map((item)=>item.id))); } catch { /* localStorage opcional */ }
   };
 
+  const toggleSize = (id) => {
+    const next = { ...sizes, [id]: sizes[id] === 'large' ? 'normal' : 'large' };
+    setSizes(next);
+    try { localStorage.setItem(sizeKey, JSON.stringify(next)); } catch { /* localStorage opcional */ }
+  };
+
   const dropOn = (targetId) => {
     if (!draggingId || draggingId === targetId) return;
     const next = [...items];
@@ -74,8 +82,5 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
   if (error) return <div className="rounded-xl border p-3 text-sm text-red-500" style={{borderColor:colors.border}}>{error}</div>;
   if (!items.length) return null;
 
-  return <div className="space-y-4">
-    <div className="flex items-end justify-between gap-4"><div><h2 className="text-xl font-extrabold" style={{color:colors.text}}>{language==='es'?'Mis visualizaciones':'My visualizations'}</h2><p className="text-sm" style={{color:colors.muted}}>{editMode?(language==='es'?'Modo edición activo: arrastra las tarjetas para cambiar su orden.':'Edit mode active: drag cards to reorder them.'):(language==='es'?'Visualizaciones creadas por ti desde el constructor.':'Visualizations you created with the builder.')}</p></div>{editMode&&<span className="rounded-full px-3 py-1 text-xs font-bold" style={{backgroundColor:colors.accentSoft,color:theme.primary}}>{language==='es'?'Editando':'Editing'}</span>}</div>
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">{items.map(item=><CustomWidget key={item.id} item={item} draggable={editMode} dragging={draggingId===item.id} onDragStart={()=>setDraggingId(item.id)} onDragOver={(e)=>editMode&&e.preventDefault()} onDrop={()=>dropOn(item.id)} onDragEnd={()=>setDraggingId(null)}/>)}</div>
-  </div>;
+  return <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">{items.map(item=>{const large=sizes[item.id]==='large';return <div key={item.id} className={large?'xl:col-span-2':''}><CustomWidget item={item} draggable={editMode} dragging={draggingId===item.id} large={large} onToggleSize={()=>toggleSize(item.id)} onDragStart={()=>setDraggingId(item.id)} onDragOver={(e)=>editMode&&e.preventDefault()} onDrop={()=>dropOn(item.id)} onDragEnd={()=>setDraggingId(null)}/></div>})}</div>;
 };
