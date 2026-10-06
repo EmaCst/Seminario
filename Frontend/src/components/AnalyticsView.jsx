@@ -190,21 +190,26 @@ export const AnalyticsView = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[{
-            id:'analytics-kpis-block',
-            resizable:false,
-            span:'xl:col-span-12',
-            node:<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-              [
-            { label: 'Período actual', value: trend?.current?.period || '—', detail: roleLabel(trend?.role) },
-            { label: 'Actividad actual', value: formatValue(trend?.current?.total), detail: 'registros' },
-            { label: 'Cambio mensual', value: trend?.change_pct == null ? '—' : `${trend.change_pct > 0 ? '+' : ''}${trend.change_pct}%`, detail: trend?.change_absolute == null ? 'sin comparación' : `${trend.change_absolute > 0 ? '+' : ''}${formatValue(trend.change_absolute)} registros` },
-            { label: 'Promedio mensual', value: formatValue(trend?.average), detail: `${trend?.periods || 0} períodos` },
-            { label: 'Mejor período', value: formatValue(trend?.peak?.total), detail: trend?.peak?.period || '—' },
-            { label: 'Menor período', value: formatValue(trend?.lowest?.total), detail: trend?.lowest?.period || '—' },
-          ].map((card,index)=>({ id:`analytics-kpi-${index}`, resizable:false, span:'xl:col-span-2', node:<div className="h-full rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}><p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.muted }}>{card.label}</p><p className="mt-2 text-2xl font-extrabold" style={{ color: colors.text }}>{card.value}</p><p className="mt-1 text-xs capitalize" style={{ color: colors.muted }}>{card.detail}</p></div> }))} />
-
-         .map((item)=><div key={item.id}>{item.node}</div>)
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[{
+            id: 'analytics-kpis-block',
+            resizable: false,
+            span: 'xl:col-span-12',
+            node: <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+              {[
+                { label: 'Período actual', value: trend?.current?.period || '—', detail: roleLabel(trend?.role) },
+                { label: 'Actividad actual', value: formatValue(trend?.current?.total), detail: 'registros' },
+                { label: 'Cambio mensual', value: trend?.change_pct == null ? '—' : `${trend.change_pct > 0 ? '+' : ''}${trend.change_pct}%`, detail: trend?.change_absolute == null ? 'sin comparación' : `${trend.change_absolute > 0 ? '+' : ''}${formatValue(trend.change_absolute)} registros` },
+                { label: 'Promedio mensual', value: formatValue(trend?.average), detail: `${trend?.periods || 0} períodos` },
+                { label: 'Mejor período', value: formatValue(trend?.peak?.total), detail: trend?.peak?.period || '—' },
+                { label: 'Menor período', value: formatValue(trend?.lowest?.total), detail: trend?.lowest?.period || '—' },
+              ].map((card, index) => (
+                <div key={index} className="h-full rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                  <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.muted }}>{card.label}</p>
+                  <p className="mt-2 text-2xl font-extrabold" style={{ color: colors.text }}>{card.value}</p>
+                  <p className="mt-1 text-xs capitalize" style={{ color: colors.muted }}>{card.detail}</p>
+                </div>
+              ))}
             </div>,
           }]} />
 
