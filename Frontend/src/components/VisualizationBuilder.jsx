@@ -11,6 +11,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   const [catalog, setCatalog] = useState(null);
   const [entityKey, setEntityKey] = useState('');
   const [metric, setMetric] = useState('');
+  const [metricEntityKey, setMetricEntityKey] = useState('');
+  const [dimensionEntityKey, setDimensionEntityKey] = useState('');
   const [aggregation, setAggregation] = useState('count');
   const [dimension, setDimension] = useState('');
   const [visualization, setVisualization] = useState('bar');
@@ -31,17 +33,32 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   }, [open]);
 
   const entity = useMemo(() => catalog?.entities?.find((item) => item.key === entityKey), [catalog, entityKey]);
+  const relatedEntities = useMemo(() => {
+    if (!catalog || !entity) return [];
+    const reachable = new Set([entity.table]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      (catalog.relationships || []).forEach((rel) => {
+        if (reachable.has(rel.from_table) && !reachable.has(rel.to_table)) { reachable.add(rel.to_table); changed = true; }
+        if (reachable.has(rel.to_table) && !reachable.has(rel.from_table)) { reachable.add(rel.from_table); changed = true; }
+      });
+    }
+    return (catalog.entities || []).filter((item) => reachable.has(item.table));
+  }, [catalog, entity]);
+  const metricEntity = relatedEntities.find((item) => item.key === metricEntityKey) || entity;
+  const dimensionEntity = relatedEntities.find((item) => item.key === dimensionEntityKey) || entity;
   const needsDimension = ['bar', 'line', 'donut'].includes(visualization);
 
-  useEffect(() => { setMetric(''); setDimension(''); setPreview(null); }, [entityKey]);
+  useEffect(() => { setMetric(''); setDimension(''); setMetricEntityKey(entityKey); setDimensionEntityKey(entityKey); setPreview(null); }, [entityKey]);
   useEffect(() => { if (visualization === 'kpi') setDimension(''); setPreview(null); }, [visualization]);
 
   if (!open) return null;
 
   const definition = () => ({
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
-    visualization, table: entity?.table, metric: metric || null, aggregation,
-    group_by: dimension || null, filters: [], limit: 20,
+    visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation,
+    group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table, filters: [], limit: 20,
   });
 
   const runPreview = async () => {
@@ -77,9 +94,9 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
         <div className="space-y-5 border-r p-6" style={{ borderColor: colors.border }}>
           <Field label={language === 'es' ? '¿Qué quieres analizar?' : 'What do you want to analyze?'} colors={colors}><select value={entityKey} onChange={(e)=>setEntityKey(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(catalog?.entities||[]).map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>
           <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-5 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>setVisualization(item.key)} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
-          <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(entity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></Field>
-          {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={aggregation} onChange={(e)=>setAggregation(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(entity?.metrics?.find(f=>f.key===metric)?.aggregations||[]).filter(a=>a!=='count').map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
-          {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><select value={dimension} onChange={(e)=>setDimension(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(entity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></Field>}
+          <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>
+          {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={aggregation} onChange={(e)=>setAggregation(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(metricEntity?.metrics?.find(f=>f.key===metric)?.aggregations||[]).filter(a=>a!=='count').map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
+          {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>setDimension(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           <Field label={language === 'es' ? 'Título' : 'Title'} colors={colors}><input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder={language === 'es'?'Ej. Ventas por canal':'E.g. Sales by channel'} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}/></Field>
           <button disabled={!canPreview||loading} onClick={runPreview} className="w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{loading?(language==='es'?'Generando...':'Generating...'):(language==='es'?'Generar vista previa':'Generate preview')}</button>
           {preview && <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
