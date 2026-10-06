@@ -79,6 +79,17 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
     setDraggingId(null);
   };
 
+  useEffect(()=>{
+    const reset=()=>{
+      setSizes({});
+      try { localStorage.removeItem(storageKey); localStorage.removeItem(sizeKey); } catch { /* optional */ }
+      setItems((current)=>[...current].sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))));
+      setDraggingId(null);
+    };
+    window.addEventListener('kenneth-layout-reset', reset);
+    return ()=>window.removeEventListener('kenneth-layout-reset', reset);
+  },[storageKey,sizeKey]);
+
   if (error) return <div className="rounded-xl border p-3 text-sm text-red-500" style={{borderColor:colors.border}}>{error}</div>;
   if (!items.length) return null;
 
