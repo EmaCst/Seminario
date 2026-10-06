@@ -315,9 +315,7 @@ export const DashboardView = () => {
             </div>
           </section>
         ) : null },
-        ].filter(item=>item.node)} />}
-
-      </div>
+        ].filter(item=>item.node)} />
 
 
       {/* ======================================
