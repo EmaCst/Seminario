@@ -221,7 +221,7 @@ export const DashboardView = () => {
 
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" columns="sm:grid-cols-2 xl:grid-cols-4" sharedCanvas="retail-canvas" items={[
-          { id: 'total-sales', resizable: false, node: (
+          { id: 'total-sales', resizable: false, span: 'xl:col-span-3', node: (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -245,7 +245,7 @@ export const DashboardView = () => {
             </div>
           </section>
         ) },
-          { id: 'current-month-sales', resizable: false, node: dashboard?.current_month_sales?.available ? (
+          { id: 'current-month-sales', resizable: false, span: 'xl:col-span-3', node: dashboard?.current_month_sales?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -269,7 +269,7 @@ export const DashboardView = () => {
             </div>
           </section>
         ) : null },
-          { id: 'sales-count', resizable: false, node: dashboard?.sales_count?.available ? (
+          { id: 'sales-count', resizable: false, span: 'xl:col-span-3', node: dashboard?.sales_count?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -291,7 +291,7 @@ export const DashboardView = () => {
             </div>
           </section>
         ) : null },
-          { id: 'average-ticket', resizable: false, node: dashboard?.average_ticket?.available ? (
+          { id: 'average-ticket', resizable: false, span: 'xl:col-span-3', node: dashboard?.average_ticket?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -586,7 +586,7 @@ export const DashboardView = () => {
 
       {/* TABLAS: solo reordenables; conservan su tamaño y contenido */}
       <EditableDashboardGrid storageId="retail-canvas" columns="grid-cols-1" sharedCanvas="retail-canvas" items={[
-        dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', resizable: false, node: (
+        dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
@@ -677,7 +677,7 @@ export const DashboardView = () => {
           </div>
         </section>
         ) } : null,
-        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', resizable: false, node: (
+        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
