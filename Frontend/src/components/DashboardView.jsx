@@ -584,11 +584,9 @@ export const DashboardView = () => {
           </section>) }
       ]} />
 
-      {/* ======================================
-          INVENTARIO CRÍTICO
-      ====================================== */}
-
-      {dashboard?.critical_inventory?.available && (
+      {/* TABLAS: solo reordenables; conservan su tamaño y contenido */}
+      <EditableDashboardGrid storageId="retail-tables" columns="grid-cols-1" items={[
+        dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', resizable: false, node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
@@ -678,16 +676,8 @@ export const DashboardView = () => {
             </table>
           </div>
         </section>
-      )}
-
-
-      {/* ======================================
-          TOP PRODUCTOS - TABLA
-      ====================================== */}
-
-      {visibleCharts.topProducts &&
-        dashboard?.top_products?.available && (
-
+        ) } : null,
+        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', resizable: false, node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
@@ -754,7 +744,8 @@ export const DashboardView = () => {
             </table>
           </div>
         </section>
-      )}
+        ) } : null,
+      ].filter(Boolean)} />
 
     </div>
   );
