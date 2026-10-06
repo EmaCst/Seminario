@@ -220,7 +220,7 @@ export const DashboardView = () => {
 
 
 
-        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" columns="sm:grid-cols-2 xl:grid-cols-4" sharedCanvas="retail-canvas" items={[
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" columns="sm:grid-cols-2 xl:grid-cols-4" sharedCanvas="retail-canvas" items={[
           { id: 'total-sales', resizable: false, node: (
           <section
             className="p-5 rounded-2xl border shadow-sm"
@@ -745,7 +745,7 @@ export const DashboardView = () => {
           </div>
         </section>
         ) } : null,
-      ].filter(Boolean)} />
+      ].filter(Boolean)} />\n      </div>
 
     </div>
   );
