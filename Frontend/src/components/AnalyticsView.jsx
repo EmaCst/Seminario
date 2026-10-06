@@ -190,7 +190,7 @@ export const AnalyticsView = () => {
             </div>
           </div>
 
-          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
             { label: 'Período actual', value: trend?.current?.period || '—', detail: roleLabel(trend?.role) },
             { label: 'Actividad actual', value: formatValue(trend?.current?.total), detail: 'registros' },
             { label: 'Cambio mensual', value: trend?.change_pct == null ? '—' : `${trend.change_pct > 0 ? '+' : ''}${trend.change_pct}%`, detail: trend?.change_absolute == null ? 'sin comparación' : `${trend.change_absolute > 0 ? '+' : ''}${formatValue(trend.change_absolute)} registros` },
@@ -343,7 +343,7 @@ export const AnalyticsView = () => {
             resizable: !['kpi','table'].includes(item.definition?.visualization),
             span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
             node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
-          }))} />
+          }))} />\n          </div>
 
           <div className="rounded-2xl border p-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" style={{ backgroundColor: colors.cardSoft, borderColor: colors.border, color: colors.muted }}>
             <span className="font-bold" style={{ color: colors.text }}>Cobertura del análisis:</span>
