@@ -1,8 +1,9 @@
-import { useContext } from 'react';
-import { Check, Moon, Move, Palette, Sun, X } from 'lucide-react';
+import { useContext, useState } from 'react';
+import { Check, Moon, Move, Palette, RotateCcw, Sun, X } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 
 export const CustomizationPanel = () => {
+  const [confirmReset, setConfirmReset] = useState(false);
   const { customizationOpen, setCustomizationOpen, editMode, setEditMode, theme, themeId, themes, setThemeId, colors, isDarkMode, setIsDarkMode, language } = useContext(DashboardContext);
   if (!customizationOpen) return null;
 
@@ -16,6 +17,7 @@ export const CustomizationPanel = () => {
       <section className="mt-7 rounded-2xl border p-4" style={{backgroundColor:colors.card,borderColor:colors.border}}>
         <div className="flex items-center gap-3"><div className="rounded-xl p-2" style={{backgroundColor:colors.accentSoft,color:theme.primary}}><Move size={19}/></div><div><h3 className="font-extrabold" style={{color:colors.text}}>{language==='es'?'Modo edición':'Edit mode'}</h3><p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Prepara el dashboard para mover y organizar elementos.':'Prepare the dashboard to move and organize items.'}</p></div></div>
         <button onClick={()=>setEditMode(!editMode)} className="mt-4 w-full rounded-xl border px-4 py-3 font-bold transition hover:scale-[1.02]" style={{backgroundColor:editMode?theme.primary:colors.cardSoft,borderColor:editMode?theme.primary:colors.border,color:editMode?'#fff':colors.text}}>{editMode?(language==='es'?'Salir del modo edición':'Exit edit mode'):(language==='es'?'Activar modo edición':'Enable edit mode')}</button>
+        <button onClick={()=>setConfirmReset(true)} className="mt-3 w-full rounded-xl border px-4 py-3 font-bold transition hover:scale-[1.02]" style={{backgroundColor:colors.cardSoft,borderColor:colors.border,color:colors.text}}><span className="flex items-center justify-center gap-2"><RotateCcw size={17}/>{language==='es'?'Restablecer distribución':'Reset layout'}</span></button>
       </section>
 
       <section className="mt-4 rounded-2xl border p-4" style={{backgroundColor:colors.card,borderColor:colors.border}}>
@@ -28,5 +30,6 @@ export const CustomizationPanel = () => {
         <div className="mt-4 grid grid-cols-2 gap-3"><button onClick={()=>setIsDarkMode(false)} className="flex items-center justify-center gap-2 rounded-xl border py-3 font-bold transition hover:scale-[1.02]" style={{borderColor:!isDarkMode?theme.primary:colors.border,backgroundColor:!isDarkMode?colors.accentSoft:colors.cardSoft,color:!isDarkMode?theme.primary:colors.text}}><Sun size={18}/>{language==='es'?'Claro':'Light'}</button><button onClick={()=>setIsDarkMode(true)} className="flex items-center justify-center gap-2 rounded-xl border py-3 font-bold transition hover:scale-[1.02]" style={{borderColor:isDarkMode?theme.primary:colors.border,backgroundColor:isDarkMode?colors.accentSoft:colors.cardSoft,color:isDarkMode?theme.primary:colors.text}}><Moon size={18}/>{language==='es'?'Oscuro':'Dark'}</button></div>
       </section>
     </aside>
+    {confirmReset&&<div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-4" onMouseDown={(e)=>e.target===e.currentTarget&&setConfirmReset(false)}><div className="w-full max-w-md rounded-2xl border p-6 shadow-2xl" style={{backgroundColor:colors.panel,borderColor:colors.border}}><div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{backgroundColor:colors.accentSoft,color:theme.primary}}><RotateCcw size={20}/></div><h3 className="mt-4 text-xl font-extrabold" style={{color:colors.text}}>{language==='es'?'¿Restablecer distribución?':'Reset layout?'}</h3><p className="mt-2 text-sm leading-6" style={{color:colors.muted}}>{language==='es'?'Se restaurará el orden y tamaño predeterminado. Tus visualizaciones personalizadas no se eliminarán y se moverán al final.':'Default order and sizes will be restored. Your custom visualizations will not be deleted and will move to the end.'}</p><div className="mt-6 flex gap-3"><button onClick={()=>setConfirmReset(false)} className="flex-1 rounded-xl border px-4 py-2.5 font-bold" style={{borderColor:colors.border,color:colors.text}}>{language==='es'?'Cancelar':'Cancel'}</button><button onClick={()=>{Object.keys(localStorage).filter((key)=>key.startsWith('kenneth-dashboard-')||key.startsWith('kenneth-layout-')).forEach((key)=>localStorage.removeItem(key));setConfirmReset(false);setCustomizationOpen(false);window.dispatchEvent(new Event('kenneth-layout-reset'));}} className="flex-1 rounded-xl px-4 py-2.5 font-bold text-white" style={{backgroundColor:theme.primary}}>{language==='es'?'Restablecer':'Reset'}</button></div></div></div>}
   </div>;
 };
