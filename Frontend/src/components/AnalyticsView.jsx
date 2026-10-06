@@ -24,8 +24,8 @@ import {
   YAxis,
 } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
-import { getAdaptiveAnalytics } from '../services/api';
-import { SavedVisualizations } from './SavedVisualizations';
+import { getAdaptiveAnalytics, getSavedVisualizations } from '../services/api';
+import { CustomVisualizationWidget } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const roleLabel = (role) => String(role || 'datos').replaceAll('_', ' ');
@@ -66,6 +66,7 @@ export const AnalyticsView = () => {
   const [range, setRange] = useState(12);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [customVisualizations, setCustomVisualizations] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -81,6 +82,14 @@ export const AnalyticsView = () => {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadCustom = () => getSavedVisualizations('analytics').then((result)=>{ if(active) setCustomVisualizations(result.items || []); }).catch(()=>{});
+    loadCustom();
+    window.addEventListener('kenneth-custom-visualizations-changed', loadCustom);
+    return ()=>{ active=false; window.removeEventListener('kenneth-custom-visualizations-changed', loadCustom); };
   }, []);
 
   const trend = data?.trend;
@@ -181,16 +190,16 @@ export const AnalyticsView = () => {
             </div>
           </div>
 
-          <EditableDashboardGrid storageId="analytics-kpis" columns="sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6" items={[
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
             { label: 'Período actual', value: trend?.current?.period || '—', detail: roleLabel(trend?.role) },
             { label: 'Actividad actual', value: formatValue(trend?.current?.total), detail: 'registros' },
             { label: 'Cambio mensual', value: trend?.change_pct == null ? '—' : `${trend.change_pct > 0 ? '+' : ''}${trend.change_pct}%`, detail: trend?.change_absolute == null ? 'sin comparación' : `${trend.change_absolute > 0 ? '+' : ''}${formatValue(trend.change_absolute)} registros` },
             { label: 'Promedio mensual', value: formatValue(trend?.average), detail: `${trend?.periods || 0} períodos` },
             { label: 'Mejor período', value: formatValue(trend?.peak?.total), detail: trend?.peak?.period || '—' },
             { label: 'Menor período', value: formatValue(trend?.lowest?.total), detail: trend?.lowest?.period || '—' },
-          ].map((card,index)=>({ id:`analytics-kpi-${index}`, resizable:false, node:<div className="h-full rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}><p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.muted }}>{card.label}</p><p className="mt-2 text-2xl font-extrabold" style={{ color: colors.text }}>{card.value}</p><p className="mt-1 text-xs capitalize" style={{ color: colors.muted }}>{card.detail}</p></div> }))} />
+          ].map((card,index)=>({ id:`analytics-kpi-${index}`, resizable:false, span:'xl:col-span-2', node:<div className="h-full rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}><p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.muted }}>{card.label}</p><p className="mt-2 text-2xl font-extrabold" style={{ color: colors.text }}>{card.value}</p><p className="mt-1 text-xs capitalize" style={{ color: colors.muted }}>{card.detail}</p></div> }))} />
 
-          <EditableDashboardGrid storageId="analytics-primary" items={[
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
             { id:'trend-chart', node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={TrendingUp} title={language === 'es' ? 'Evolución y promedio móvil' : 'Evolution and moving average'} subtitle={`${roleLabel(trend?.role)} · ${range === 0 ? 'histórico completo' : `últimos ${range} meses`}`} theme={theme} colors={colors} />
               <div className="h-[340px]">
@@ -207,7 +216,7 @@ export const AnalyticsView = () => {
                 </ResponsiveContainer>
               </div>
             </div> },
-            { id:'automatic-insights', resizable:false, node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            { id:'automatic-insights', resizable:false, span:'xl:col-span-6', node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Sparkles} title={language === 'es' ? 'Insights automáticos' : 'Automatic insights'} subtitle={language === 'es' ? 'Hallazgos derivados de los datos actuales.' : 'Findings derived from current data.'} theme={theme} colors={colors} />
               <div className="space-y-3 max-h-[330px] overflow-y-auto pr-1">
                 {(data.insights || []).map((insight, index) => (
@@ -220,8 +229,8 @@ export const AnalyticsView = () => {
             </div> },
           ]} />
 
-          <EditableDashboardGrid storageId="analytics-summary-sections" columns="grid-cols-1" items={[
-            { id: 'business-rankings', resizable: false, node: <div>{(data.rankings || []).length > 0 && (
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
+            { id: 'business-rankings', resizable: false, span:'xl:col-span-12', node: <div>{(data.rankings || []).length > 0 && (
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Trophy} title={language === 'es' ? 'Rankings del negocio' : 'Business rankings'} subtitle={language === 'es' ? 'Clasificaciones construidas a partir de relaciones reales del modelo semántico.' : 'Rankings built from real semantic-model relationships.'} theme={theme} colors={colors} />
               <div className={rankingGridClass(data.rankings.length)}>
@@ -244,7 +253,7 @@ export const AnalyticsView = () => {
               </div>
             </div>
           )}</div> },
-            { id: 'secondary-metrics', resizable: false, node: <div>{(data.numeric_metrics || []).length > 0 && (
+            { id: 'secondary-metrics', resizable: false, span:'xl:col-span-12', node: <div>{(data.numeric_metrics || []).length > 0 && (
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Activity} title={language === 'es' ? 'Métricas secundarias' : 'Secondary metrics'} subtitle={language === 'es' ? 'Resumen estadístico de columnas numéricas relevantes detectadas automáticamente.' : 'Statistical summary of relevant numeric columns detected automatically.'} theme={theme} colors={colors} />
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -270,7 +279,7 @@ export const AnalyticsView = () => {
           )}</div> },
           ]} />
 
-          <EditableDashboardGrid storageId="analytics-distributions" items={(data.distributions || []).slice(0, 4).map((distribution) => ({
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={(data.distributions || []).slice(0, 4).map((distribution) => ({
               id: `distribution-${distribution.role}-${distribution.column}`,
               node: <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                 <SectionTitle icon={Layers3} title={distribution.label} subtitle={roleLabel(distribution.role)} theme={theme} colors={colors} />
@@ -289,7 +298,7 @@ export const AnalyticsView = () => {
             }))}
           />
 
-          <EditableDashboardGrid storageId="analytics-detail" items={[{ id:'entity-volume', node:
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[{ id:'entity-volume', node:
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={BarChart3} title={language === 'es' ? 'Volumen por entidad' : 'Volume by entity'} subtitle={language === 'es' ? 'Entidades detectadas y mapeadas por el modelo semántico.' : 'Entities detected and mapped by the semantic model.'} theme={theme} colors={colors} />
               <div className="h-[330px]">
@@ -303,7 +312,7 @@ export const AnalyticsView = () => {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div> }, { id:'historical-detail', resizable:false, node:<div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            </div> }, { id:'historical-detail', resizable:false, span:'xl:col-span-12', node:<div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={CalendarRange} title={language === 'es' ? 'Detalle histórico' : 'Historical detail'} subtitle={language === 'es' ? 'Valores mensuales usados para el análisis temporal.' : 'Monthly values used for time analysis.'} theme={theme} colors={colors} />
               <div className="overflow-x-auto max-h-[330px] overflow-y-auto">
                 <table className="w-full text-sm">
@@ -329,7 +338,12 @@ export const AnalyticsView = () => {
               </div>
             </div> }]} />
 
-          <SavedVisualizations destination="analytics" />
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={customVisualizations.map((item)=>({
+            id: `analytics-custom-${item.id}`,
+            resizable: !['kpi','table'].includes(item.definition?.visualization),
+            span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
+            node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
+          }))} />
 
           <div className="rounded-2xl border p-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" style={{ backgroundColor: colors.cardSoft, borderColor: colors.border, color: colors.muted }}>
             <span className="font-bold" style={{ color: colors.text }}>Cobertura del análisis:</span>
