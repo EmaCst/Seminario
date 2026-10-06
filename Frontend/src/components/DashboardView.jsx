@@ -245,7 +245,7 @@ export const DashboardView = () => {
             </div>
           </section>
         ) },
-          { id: 'month-sales', resizable: false, node: dashboard?.current_month_sales?.available ? (
+          { id: 'current-month-sales', resizable: false, node: dashboard?.current_month_sales?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
