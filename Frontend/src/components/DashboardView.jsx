@@ -20,7 +20,8 @@ import {
   Bar,
 } from 'recharts';
 
-import { getDashboard } from '../services/api';
+import { getDashboard, getSavedVisualizations } from '../services/api';
+import { CustomVisualizationWidget } from './SavedVisualizations';
 
 
 const CustomTooltip = ({
@@ -62,6 +63,7 @@ export const DashboardView = () => {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [customVisualizations, setCustomVisualizations] = useState([]);
 
 
   useEffect(() => {
@@ -91,6 +93,14 @@ export const DashboardView = () => {
 
     loadDashboard();
   }, [language]);
+
+  useEffect(() => {
+    let active = true;
+    const loadCustom = () => getSavedVisualizations('dashboard').then((result)=>{ if(active) setCustomVisualizations(result.items || []); }).catch(()=>{});
+    loadCustom();
+    window.addEventListener('kenneth-custom-visualizations-changed', loadCustom);
+    return ()=>{ active=false; window.removeEventListener('kenneth-custom-visualizations-changed', loadCustom); };
+  }, []);
 
 
   const monthNames = useMemo(() => {
@@ -673,6 +683,12 @@ export const DashboardView = () => {
         </section>
         ) } : null,
       ].filter(Boolean)} />
+      <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={customVisualizations.map((item)=>({
+        id: `custom-${item.id}`,
+        resizable: !['kpi','table'].includes(item.definition?.visualization),
+        span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
+        node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
+      }))} />
       </div>
 
     </div>
