@@ -220,7 +220,8 @@ export const DashboardView = () => {
 
 
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">\n        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[{
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[{
           id: 'retail-kpis-block',
           resizable: false,
           span: 'xl:col-span-12',
@@ -671,7 +672,8 @@ export const DashboardView = () => {
           </div>
         </section>
         ) } : null,
-      ].filter(Boolean)} />\n      </div>
+      ].filter(Boolean)} />
+      </div>
 
     </div>
   );
