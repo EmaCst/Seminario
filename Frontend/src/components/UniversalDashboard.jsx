@@ -30,6 +30,7 @@ import { getAdaptiveDashboard, getDatabaseStatus, getSemanticModel } from '../se
 import { DashboardView } from './DashboardView';
 import { VisualizationBuilder } from './VisualizationBuilder';
 import { SavedVisualizations } from './SavedVisualizations';
+import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const DOMAIN_META = {
   retail: { es: 'Comercio / Retail', en: 'Retail / Commerce', Icon: PackageSearch },
@@ -148,18 +149,18 @@ const BusinessDashboard = ({ data }) => {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {(data?.kpis || []).map((kpi) => (
-          <section key={kpi.role} className="rounded-2xl border p-5 shadow-sm" style={cardStyle}>
-            <div className="text-sm font-semibold" style={{ color: colors.muted }}>{roleLabel(kpi.role, language)}</div>
-            <div className="mt-1 text-3xl font-extrabold" style={{ color: theme.primary }}>{Number(kpi.value || 0).toLocaleString()}</div>
-            <div className="mt-1 text-xs" style={{ color: colors.muted }}>{language === 'es' ? 'Registros detectados' : 'Detected records'}</div>
-          </section>
-        ))}
-      </div>
+      <EditableDashboardGrid storageId="adaptive-kpis" columns="sm:grid-cols-2 xl:grid-cols-4" items={(data?.kpis || []).map((kpi) => ({
+        id: `kpi-${kpi.role}`,
+        resizable: false,
+        node: <section className="h-full rounded-2xl border p-5 shadow-sm" style={cardStyle}>
+          <div className="text-sm font-semibold" style={{ color: colors.muted }}>{roleLabel(kpi.role, language)}</div>
+          <div className="mt-1 text-3xl font-extrabold" style={{ color: theme.primary }}>{Number(kpi.value || 0).toLocaleString()}</div>
+          <div className="mt-1 text-xs" style={{ color: colors.muted }}>{language === 'es' ? 'Registros detectados' : 'Detected records'}</div>
+        </section>,
+      }))} />
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
+      <EditableDashboardGrid storageId="adaptive-charts" items={[
+        { id: 'monthly-trend', node: <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
           <h3 className="font-bold mb-3" style={{ color: theme.primary }}>
             {data?.trend?.available ? `${roleLabel(data.trend.role, language)} ${language === 'es' ? 'por mes' : 'by month'}` : (language === 'es' ? 'Evolución mensual' : 'Monthly trend')}
           </h3>
@@ -178,9 +179,8 @@ const BusinessDashboard = ({ data }) => {
               {language === 'es' ? 'No hay una columna de fecha utilizable o todavía no existen registros.' : 'No usable date column was found or there are no records yet.'}
             </div>
           )}
-        </section>
-
-        <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
+        </section> },
+        { id: 'status-distribution', node: <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
           <h3 className="font-bold mb-3" style={{ color: theme.primary }}>
             {data?.status_distribution?.available ? `${roleLabel(data.status_distribution.role, language)} — ${language === 'es' ? 'distribución por estado' : 'status distribution'}` : (language === 'es' ? 'Distribución por estado' : 'Status distribution')}
           </h3>
@@ -199,10 +199,10 @@ const BusinessDashboard = ({ data }) => {
               {language === 'es' ? 'No se encontró una columna de estado utilizable o todavía no existen registros.' : 'No usable status column was found or there are no records yet.'}
             </div>
           )}
-        </section>
-      </div>
+        </section> },
+      ]} />
 
-      <section className="overflow-hidden rounded-2xl border shadow-sm" style={cardStyle}>
+      <EditableDashboardGrid storageId="adaptive-tables" items={[{ id: 'business-modules', node: <section className="overflow-hidden rounded-2xl border shadow-sm" style={cardStyle}>
         <div className="border-b px-5 py-4" style={{ borderColor: colors.border }}>
           <h3 className="font-bold" style={{ color: theme.primary }}>{language === 'es' ? 'Resumen de módulos del negocio' : 'Business modules summary'}</h3>
         </div>
@@ -228,7 +228,7 @@ const BusinessDashboard = ({ data }) => {
             </tbody>
           </table>
         </div>
-      </section>
+      </section>, resizable: true }]} />
     </div>
   );
 };
