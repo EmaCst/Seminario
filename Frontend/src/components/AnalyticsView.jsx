@@ -220,7 +220,8 @@ export const AnalyticsView = () => {
             </div> },
           ]} />
 
-          {(data.rankings || []).length > 0 && (
+          <EditableDashboardGrid storageId="analytics-summary-sections" columns="grid-cols-1" items={[
+            { id: 'business-rankings', resizable: false, node: <div>{(data.rankings || []).length > 0 && (
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Trophy} title={language === 'es' ? 'Rankings del negocio' : 'Business rankings'} subtitle={language === 'es' ? 'Clasificaciones construidas a partir de relaciones reales del modelo semántico.' : 'Rankings built from real semantic-model relationships.'} theme={theme} colors={colors} />
               <div className={rankingGridClass(data.rankings.length)}>
@@ -242,9 +243,8 @@ export const AnalyticsView = () => {
                 ))}
               </div>
             </div>
-          )}
-
-          {(data.numeric_metrics || []).length > 0 && (
+          )}</div> },
+            { id: 'secondary-metrics', resizable: false, node: <div>{(data.numeric_metrics || []).length > 0 && (
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Activity} title={language === 'es' ? 'Métricas secundarias' : 'Secondary metrics'} subtitle={language === 'es' ? 'Resumen estadístico de columnas numéricas relevantes detectadas automáticamente.' : 'Statistical summary of relevant numeric columns detected automatically.'} theme={theme} colors={colors} />
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -267,7 +267,8 @@ export const AnalyticsView = () => {
                 ))}
               </div>
             </div>
-          )}
+          )}</div> },
+          ]} />
 
           <EditableDashboardGrid storageId="analytics-distributions" items={(data.distributions || []).slice(0, 4).map((distribution) => ({
               id: `distribution-${distribution.role}-${distribution.column}`,
