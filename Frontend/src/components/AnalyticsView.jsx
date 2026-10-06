@@ -213,8 +213,12 @@ export const AnalyticsView = () => {
             </div>,
           }]} />
 
-          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
-            { id:'trend-chart', node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+          <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[{
+            id: 'evolution-insights-block',
+            resizable: false,
+            span: 'xl:col-span-12',
+            node: <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div><div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={TrendingUp} title={language === 'es' ? 'Evolución y promedio móvil' : 'Evolution and moving average'} subtitle={`${roleLabel(trend?.role)} · ${range === 0 ? 'histórico completo' : `últimos ${range} meses`}`} theme={theme} colors={colors} />
               <div className="h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -229,8 +233,8 @@ export const AnalyticsView = () => {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            </div> },
-            { id:'automatic-insights', resizable:false, span:'xl:col-span-12', node:<div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            </div></div>
+              <div><div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={Sparkles} title={language === 'es' ? 'Insights automáticos' : 'Automatic insights'} subtitle={language === 'es' ? 'Hallazgos derivados de los datos actuales.' : 'Findings derived from current data.'} theme={theme} colors={colors} />
               <div className="space-y-3 max-h-[330px] overflow-y-auto pr-1">
                 {(data.insights || []).map((insight, index) => (
@@ -240,8 +244,9 @@ export const AnalyticsView = () => {
                   </div>
                 ))}
               </div>
-            </div> },
-          ]} />
+            </div></div>
+            </div>,
+          }]} />
 
           <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[
             { id: 'business-rankings', resizable: false, span:'xl:col-span-12', node: <div>{(data.rankings || []).length > 0 && (
