@@ -186,6 +186,8 @@ export const DashboardProvider = ({ children }) => {
   const [themeId, setThemeId] = useState(detectTheme);
   const [isDarkMode, setIsDarkMode] = useState(detectDarkMode);
   const [language, setLanguage] = useState(detectLanguage);
+  const [customizationOpen, setCustomizationOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [visibleCharts, setVisibleCharts] = useState({
     monthSales: true,
     salesPerMonth: true,
@@ -241,6 +243,10 @@ export const DashboardProvider = ({ children }) => {
         setIsDarkMode,
         language,
         setLanguage,
+        customizationOpen,
+        setCustomizationOpen,
+        editMode,
+        setEditMode,
         t,
         visibleCharts,
         toggleChart,
