@@ -6,6 +6,7 @@ import {
 } from 'react';
 
 import { DashboardContext } from '../context/DashboardContext';
+import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 import {
   LineChart,
@@ -217,9 +218,10 @@ export const DashboardView = () => {
           KPIs PRINCIPALES
       ====================================== */}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
-        {dashboard?.total_sales?.available && (
+
+        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-kpis" columns="sm:grid-cols-2 xl:grid-cols-4" items={[
+          { id: 'total-sales', resizable: false, node: (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -242,10 +244,8 @@ export const DashboardView = () => {
               )}
             </div>
           </section>
-        )}
-
-
-        {dashboard?.current_month_sales?.available && (
+        ) },
+          { id: 'month-sales', resizable: false, node: dashboard?.current_month_sales?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -268,10 +268,8 @@ export const DashboardView = () => {
               )}
             </div>
           </section>
-        )}
-
-
-        {dashboard?.sales_count?.available && (
+        ) : null },
+          { id: 'sales-count', resizable: false, node: dashboard?.sales_count?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -292,10 +290,8 @@ export const DashboardView = () => {
               {dashboard.sales_count.value}
             </div>
           </section>
-        )}
-
-
-        {dashboard?.average_ticket?.available && (
+        ) : null },
+          { id: 'average-ticket', resizable: false, node: dashboard?.average_ticket?.available ? (
           <section
             className="p-5 rounded-2xl border shadow-sm"
             style={cardStyle}
@@ -318,7 +314,8 @@ export const DashboardView = () => {
               )}
             </div>
           </section>
-        )}
+        ) : null },
+        ].filter(item=>item.node)} />}
 
       </div>
 
