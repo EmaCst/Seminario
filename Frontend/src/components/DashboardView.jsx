@@ -220,7 +220,7 @@ export const DashboardView = () => {
 
 
 
-        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-kpis" columns="sm:grid-cols-2 xl:grid-cols-4" items={[
+        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" columns="sm:grid-cols-2 xl:grid-cols-4" sharedCanvas="retail-canvas" items={[
           { id: 'total-sales', resizable: false, node: (
           <section
             className="p-5 rounded-2xl border shadow-sm"
@@ -319,7 +319,7 @@ export const DashboardView = () => {
 
 
       {/* GRÁFICAS PRINCIPALES: todas participan del mismo drag & drop */}
-      <EditableDashboardGrid storageId="retail-charts" items={[
+      <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[
         { id: 'month-sales', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
@@ -585,7 +585,7 @@ export const DashboardView = () => {
       ]} />
 
       {/* TABLAS: solo reordenables; conservan su tamaño y contenido */}
-      <EditableDashboardGrid storageId="retail-tables" columns="grid-cols-1" items={[
+      <EditableDashboardGrid storageId="retail-canvas" columns="grid-cols-1" sharedCanvas="retail-canvas" items={[
         dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', resizable: false, node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
