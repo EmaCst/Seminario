@@ -64,7 +64,7 @@ export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-col
 
   return <div className={sharedCanvas ? 'contents' : `grid grid-cols-1 gap-5 ${columns}`}>{sorted.map(item=>{
     const large=item.resizable !== false && sizes[item.id]==='large';
-    const sharedSpan=item.resizable===false ? 'xl:col-span-12' : (large?'xl:col-span-12':'xl:col-span-6');
+    const sharedSpan=item.resizable===false ? (item.span || 'xl:col-span-12') : (large?'xl:col-span-12':(item.span || 'xl:col-span-6'));
     return <div key={item.id} style={sharedCanvas?{order:rank.get(item.id) ?? 999}:undefined} draggable={editMode} onDragStart={()=>startDrag(item.id)} onDragOver={(e)=>editMode&&e.preventDefault()} onDrop={()=>drop(item.id)} onDragEnd={()=>{setDragging(null);if(sharedCanvas)window.dispatchEvent(new CustomEvent('kenneth-canvas-sync',{detail:{canvas:canvasId,dragging:null}}));}} className={`${sharedCanvas?sharedSpan:(large?'xl:col-span-2':'')} ${dragging===item.id?'opacity-50 scale-[0.99]':''} transition`}>
       {editMode&&<div className="mb-2 flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold" style={{backgroundColor:colors.accentSoft,borderColor:theme.primary+'44',color:theme.primary}}><span className="flex items-center gap-2 cursor-grab"><GripVertical size={15}/>{language==='es'?'Mover':'Move'}</span>{item.resizable !== false && <button type="button" onClick={()=>setSizes(prev=>({...prev,[item.id]:large?'normal':'large'}))} className="flex items-center gap-1.5 rounded-lg px-2 py-1 transition hover:scale-105" style={{backgroundColor:colors.card}}>{large?<Minimize2 size={14}/>:<Expand size={14}/>} {large?(language==='es'?'Normal':'Normal'):(language==='es'?'Grande':'Large')}</button>}</div>}
       {item.node}
