@@ -13,6 +13,7 @@ AggregationType = Literal["count", "sum", "avg", "min", "max"]
 
 
 class VisualizationFilter(BaseModel):
+    table: str | None = None
     column: str
     operator: Literal["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"] = "eq"
     value: str | int | float | bool | list[str | int | float]
@@ -23,8 +24,10 @@ class VisualizationDefinition(BaseModel):
     visualization: VisualizationType
     table: str
     metric: str | None = None
+    metric_table: str | None = None
     aggregation: AggregationType = "count"
     group_by: str | None = None
+    group_by_table: str | None = None
     filters: list[VisualizationFilter] = Field(default_factory=list)
     limit: int = Field(default=20, ge=1, le=100)
 
@@ -93,23 +96,92 @@ def get_visualization_catalog() -> dict:
     }
 
 
+def _find_join_path(schema, start_table: str, target_table: str):
+    if start_table == target_table:
+        return []
+
+    graph = {name: [] for name in schema.tables}
+    for rel in schema.relationships:
+        graph.setdefault(rel.table, []).append((rel.references_table, rel))
+        graph.setdefault(rel.references_table, []).append((rel.table, rel))
+
+    queue = [(start_table, [])]
+    visited = {start_table}
+    while queue:
+        current, path = queue.pop(0)
+        for neighbor, rel in graph.get(current, []):
+            if neighbor in visited:
+                continue
+            next_path = path + [(current, neighbor, rel)]
+            if neighbor == target_table:
+                return next_path
+            visited.add(neighbor)
+            queue.append((neighbor, next_path))
+    raise ValueError(f"No existe una relación entre '{start_table}' y '{target_table}'.")
+
+
 def _resolve_definition(definition: VisualizationDefinition):
     schema = inspect_database()
-    table = schema.tables.get(definition.table)
-    if table is None:
+    base_table = schema.tables.get(definition.table)
+    if base_table is None:
         raise ValueError(f"La tabla '{definition.table}' no existe.")
 
-    columns = {column.name: column for column in table.columns}
-    requested = [definition.metric, definition.group_by] + [item.column for item in definition.filters]
-    for column in (item for item in requested if item):
-        if column not in columns:
-            raise ValueError(f"La columna '{column}' no existe en '{definition.table}'.")
+    metric_table = definition.metric_table or definition.table
+    group_table = definition.group_by_table or definition.table
+    requested = []
+    if definition.metric:
+        requested.append((metric_table, definition.metric))
+    if definition.group_by:
+        requested.append((group_table, definition.group_by))
+    requested.extend(((item.table or definition.table), item.column) for item in definition.filters)
+
+    for table_name, column_name in requested:
+        table = schema.tables.get(table_name)
+        if table is None:
+            raise ValueError(f"La tabla '{table_name}' no existe.")
+        columns = {column.name: column for column in table.columns}
+        if column_name not in columns:
+            raise ValueError(f"La columna '{column_name}' no existe en '{table_name}'.")
 
     if definition.aggregation in {"sum", "avg"} and definition.metric:
-        if _column_kind(columns[definition.metric].type) != "number":
+        metric_columns = {column.name: column for column in schema.tables[metric_table].columns}
+        if _column_kind(metric_columns[definition.metric].type) != "number":
             raise ValueError(f"'{definition.metric}' no es una métrica numérica.")
 
-    return table, columns
+    target_tables = {table for table, _ in requested}
+    paths = {target: _find_join_path(schema, definition.table, target) for target in target_tables if target != definition.table}
+    return schema, paths
+
+
+def _qualified(table: str, column: str) -> str:
+    return f"{_quote(table)}.{_quote(column)}"
+
+
+def _join_sql(schema, base_table: str, paths: dict) -> str:
+    joins = []
+    joined = {base_table}
+    pending = [edge for path in paths.values() for edge in path]
+    while pending:
+        progressed = False
+        for edge in list(pending):
+            left, right, rel = edge
+            if left not in joined:
+                continue
+            if right in joined:
+                pending.remove(edge)
+                progressed = True
+                continue
+            if rel.table == left and rel.references_table == right:
+                condition = f"{_qualified(left, rel.column)} = {_qualified(right, rel.references_column)}"
+            else:
+                condition = f"{_qualified(left, rel.references_column)} = {_qualified(right, rel.column)}"
+            joins.append(f" LEFT JOIN {_quote(right)} ON {condition}")
+            joined.add(right)
+            pending.remove(edge)
+            progressed = True
+        if not progressed:
+            raise ValueError("No fue posible construir la ruta de relaciones.")
+    return "".join(joins)
 
 
 def _literal(value) -> str:
@@ -120,8 +192,8 @@ def _literal(value) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def _filter_sql(item: VisualizationFilter) -> str:
-    column = _quote(item.column)
+def _filter_sql(item: VisualizationFilter, base_table: str) -> str:
+    column = _qualified(item.table or base_table, item.column)
     if item.operator == "in":
         if not isinstance(item.value, list) or not item.value:
             raise ValueError("El filtro IN necesita una lista con valores.")
@@ -133,16 +205,17 @@ def _filter_sql(item: VisualizationFilter) -> str:
 
 
 def build_visualization_query(definition: VisualizationDefinition) -> str:
-    _resolve_definition(definition)
-    table = _quote(definition.table)
-    metric = "*" if definition.aggregation == "count" and not definition.metric else _quote(definition.metric or "")
+    schema, paths = _resolve_definition(definition)
+    metric_table = definition.metric_table or definition.table
+    group_table = definition.group_by_table or definition.table
+    metric = "*" if definition.aggregation == "count" and not definition.metric else _qualified(metric_table, definition.metric or "")
     expression = f"{definition.aggregation.upper()}({metric})"
 
     select = []
     group = ""
     order = ""
     if definition.group_by:
-        dimension = _quote(definition.group_by)
+        dimension = _qualified(group_table, definition.group_by)
         select.append(f"{dimension} AS dimension")
         group = f" GROUP BY {dimension}"
         order = " ORDER BY value DESC"
@@ -150,7 +223,7 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
 
     where = ""
     if definition.filters:
-        where = " WHERE " + " AND ".join(_filter_sql(item) for item in definition.filters)
+        where = " WHERE " + " AND ".join(_filter_sql(item, definition.table) for item in definition.filters)
 
     provider = database_manager.status().get("provider")
     limit = ""
@@ -161,7 +234,8 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
         else:
             limit = f" LIMIT {definition.limit}"
 
-    return f"SELECT {top}{', '.join(select)} FROM {table}{where}{group}{order}{limit};"
+    joins = _join_sql(schema, definition.table, paths)
+    return f"SELECT {top}{', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}{order}{limit};"
 
 
 def preview_visualization(definition: VisualizationDefinition) -> dict:
