@@ -16,6 +16,11 @@ export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-col
 
   useEffect(()=>{ try { localStorage.setItem(orderKey, JSON.stringify(order)); } catch { /* optional */ } },[order,orderKey]);
   useEffect(()=>{ try { localStorage.setItem(sizeKey, JSON.stringify(sizes)); } catch { /* optional */ } },[sizes,sizeKey]);
+  useEffect(()=>{
+    const reset=()=>{ setOrder([]); setSizes({}); setDragging(null); };
+    window.addEventListener('kenneth-layout-reset', reset);
+    return ()=>window.removeEventListener('kenneth-layout-reset', reset);
+  },[]);
 
   const rank = new Map(order.map((id,index)=>[id,index]));
   const sorted = [...items].sort((a,b)=>(rank.get(a.id) ?? items.findIndex(x=>x.id===a.id))-(rank.get(b.id) ?? items.findIndex(x=>x.id===b.id)));
