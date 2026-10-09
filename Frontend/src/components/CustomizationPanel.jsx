@@ -6,7 +6,7 @@ export const CustomizationPanel = () => {
   const [confirmReset, setConfirmReset] = useState(false);
   const [logoError, setLogoError] = useState('');
   const logoInput = useRef(null);
-  const { customizationOpen, setCustomizationOpen, editMode, setEditMode, theme, themeId, themes, setThemeId, colors, isDarkMode, setIsDarkMode, language, institutionName, setInstitutionName, userName, setUserName, institutionLogo, setInstitutionLogo, logoSize, setLogoSize } = useContext(DashboardContext);
+  const { customizationOpen, setCustomizationOpen, editMode, setEditMode, theme, themeId, themes, setThemeId, colors, isDarkMode, setIsDarkMode, language, institutionName, setInstitutionName, userName, setUserName, institutionLogo, setInstitutionLogo, logoSize, setLogoSize, logoZoom, setLogoZoom } = useContext(DashboardContext);
   if (!customizationOpen) return null;
 
   return <div className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-[2px]" onMouseDown={(e)=>e.target===e.currentTarget&&setCustomizationOpen(false)}>
@@ -28,7 +28,7 @@ export const CustomizationPanel = () => {
         <p className="mt-4 text-sm font-bold" style={{color:colors.text}}>{language==='es'?'Logotipo o foto':'Logo or photo'}</p>
         <div className="mt-2 flex items-center gap-3">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
-            {institutionLogo?<img src={institutionLogo} alt="" className="h-full w-full object-contain"/>:<span className="text-xs" style={{color:colors.muted}}>{language==='es'?'Sin foto':'No photo'}</span>}
+            {institutionLogo?<img src={institutionLogo} alt="" className="h-full w-full object-contain" style={{transform:`scale(${logoZoom / 100})`}}/>:<span className="text-xs" style={{color:colors.muted}}>{language==='es'?'Sin foto':'No photo'}</span>}
           </div>
           <div className="flex flex-col gap-2">
             <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e=>{
@@ -44,6 +44,9 @@ export const CustomizationPanel = () => {
         </div>
         <label className="mt-4 flex items-center justify-between text-sm font-bold" style={{color:colors.text}}><span>{language==='es'?'Tamaño de la imagen':'Image size'}</span><span>{logoSize} px</span></label>
         <input type="range" min="40" max="120" step="4" value={logoSize} onChange={e=>setLogoSize(Number(e.target.value))} className="mt-2 w-full" style={{accentColor:theme.primary}}/>
+        <label className="mt-4 flex items-center justify-between text-sm font-bold" style={{color:colors.text}}><span>{language==='es'?'Zoom del logo':'Logo zoom'}</span><span>{logoZoom}%</span></label>
+        <input type="range" min="100" max="300" step="5" value={logoZoom} onChange={e=>setLogoZoom(Number(e.target.value))} className="mt-2 w-full" style={{accentColor:theme.primary}}/>
+        <button type="button" onClick={()=>setLogoZoom(100)} className="mt-2 text-xs font-semibold" style={{color:theme.primary}}>{language==='es'?'Restablecer zoom':'Reset zoom'}</button>
         {logoError&&<p className="mt-2 text-xs text-red-500">{logoError}</p>}
         <p className="mt-2 text-xs" style={{color:colors.muted}}>{language==='es'?'PNG, JPG o WebP · máximo 1 MB. Se guarda en este navegador.':'PNG, JPG or WebP · max 1 MB. Stored in this browser.'}</p>
       </section>
