@@ -121,12 +121,12 @@ export const AnalyticsView = () => {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="flex gap-2 border-b pb-3" style={{borderColor:colors.border}}>
-        {[{key:'analysis',label:language==='es'?'Análisis':'Analysis'},{key:'library',label:language==='es'?'Mis visualizaciones':'My visualizations'}].map(tab=><button key={tab.key} type="button" onClick={()=>setActiveTab(tab.key)} className="rounded-xl px-4 py-2 text-sm font-bold" style={{backgroundColor:activeTab===tab.key?theme.primary:colors.card,color:activeTab===tab.key?'#fff':colors.text}}>{tab.label}</button>)}
+    <section className="space-y-3">
+      <div className="flex gap-2 border-b pb-2" style={{borderColor:colors.border}}>
+        {[{key:'analysis',label:language==='es'?'Análisis':'Analysis'},{key:'library',label:language==='es'?'Mis visualizaciones':'My visualizations'}].map(tab=><button key={tab.key} type="button" onClick={()=>setActiveTab(tab.key)} className="rounded-xl px-3 py-1.5 text-sm font-bold" style={{backgroundColor:activeTab===tab.key?theme.primary:colors.card,color:activeTab===tab.key?'#fff':colors.text}}>{tab.label}</button>)}
       </div>
       {activeTab === 'library' ? <VisualizationLibrary/> : <>
-      <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-2">
         <div>
           <div className="flex items-center gap-2 mb-1" style={{ color: theme.primary }}>
             <BarChart3 size={22} />
@@ -135,7 +135,7 @@ export const AnalyticsView = () => {
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight" style={{ color: theme.primary }}>
             {language === 'es' ? 'Analítica' : 'Analytics'}
           </h1>
-          <p className="mt-2 max-w-3xl" style={{ color: colors.muted }}>
+          <p className="mt-1 max-w-3xl" style={{ color: colors.muted }}>
             {language === 'es'
               ? 'Explora tendencias, comparaciones, rankings, distribuciones y métricas adaptadas al dominio de la base activa.'
               : 'Explore trends, comparisons, rankings, distributions and metrics adapted to the active database domain.'}
