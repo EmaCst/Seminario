@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.database.database_manager import database_manager
 from app.visualizations.visualization_service import VisualizationDefinition
@@ -20,12 +20,6 @@ _LOCK = RLock()
 class VisualizationPlacement(BaseModel):
     analytics: bool = True
     dashboard: bool = False
-
-    @model_validator(mode="after")
-    def at_least_one_destination(self):
-        if not self.analytics and not self.dashboard:
-            raise ValueError("Selecciona al menos un destino para la visualización.")
-        return self
 
 
 class SavedVisualizationRequest(BaseModel):
