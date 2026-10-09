@@ -29,6 +29,7 @@ from app.visualizations.visualization_store import (
 from app.visualizations.visualization_service import (
     VisualizationDefinition,
     get_visualization_catalog,
+    get_filter_values,
     preview_visualization,
 )
 
@@ -153,6 +154,14 @@ def remove_saved_visualization(visualization_id: str):
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.get("/api/visualizations/filter-values")
+def visualization_filter_values(table: str, column: str, search: str = ""):
+    try:
+        return get_filter_values(table, column, search)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 
 @app.get("/api/visualizations/catalog")
 def visualization_catalog():
