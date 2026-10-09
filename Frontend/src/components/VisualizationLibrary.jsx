@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import { Copy, Pencil } from 'lucide-react';
+import { Copy, Pencil, Plus } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 import { getSavedVisualizations } from '../services/api';
 import { VisualizationBuilder } from './VisualizationBuilder';
@@ -23,7 +23,10 @@ export const VisualizationLibrary = () => {
     window.dispatchEvent(new Event('kenneth-custom-visualizations-changed'));
   };
   return <section className="space-y-4">
-    <div><h2 className="text-2xl font-extrabold" style={{color:colors.text}}>{language==='es'?'Mis visualizaciones':'My visualizations'}</h2><p className="text-sm" style={{color:colors.muted}}>{language==='es'?'Biblioteca de visualizaciones de la fuente activa.':'Visualizations saved for the active data source.'}</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="text-2xl font-extrabold" style={{color:colors.text}}>{language==='es'?'Mis visualizaciones':'My visualizations'}</h2><p className="text-sm" style={{color:colors.muted}}>{language==='es'?'Biblioteca de visualizaciones de la fuente activa.':'Visualizations saved for the active data source.'}</p></div>
+      <button type="button" onClick={()=>launch(null,'create')} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90" style={{backgroundColor:theme.primary}}><Plus size={18}/>{language==='es'?'Nueva visualización':'New visualization'}</button>
+    </div>
     {error&&<p className="text-red-500">{error}</p>}
     {!items.length&&!error&&<p style={{color:colors.muted}}>{language==='es'?'Todavía no hay visualizaciones guardadas.':'No saved visualizations yet.'}</p>}
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
