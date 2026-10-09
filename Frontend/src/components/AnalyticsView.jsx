@@ -368,7 +368,8 @@ export const AnalyticsView = () => {
             resizable: !['kpi','table'].includes(item.definition?.visualization),
             span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
             node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
-          }))} />\n          </div>
+          }))} />
+          </div>
 
           <div className="rounded-2xl border p-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" style={{ backgroundColor: colors.cardSoft, borderColor: colors.border, color: colors.muted }}>
             <span className="font-bold" style={{ color: colors.text }}>Cobertura del análisis:</span>
@@ -381,7 +382,7 @@ export const AnalyticsView = () => {
           </div>
         </>
       )}
-      </>
+      </>}
     </section>
   );
 };
