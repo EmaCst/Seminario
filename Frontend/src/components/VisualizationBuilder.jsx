@@ -2,11 +2,11 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { BarChart3, LineChart, Sigma, Table2, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart as ReLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
-import { getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization } from '../services/api';
+import { getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
 
-export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
+export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = null, mode = 'create' }) => {
   const { colors, theme, language } = useContext(DashboardContext);
   const [catalog, setCatalog] = useState(null);
   const [entityKey, setEntityKey] = useState('');
@@ -52,7 +52,30 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   const dimensionEntity = relatedEntities.find((item) => item.key === dimensionEntityKey) || entity;
   const needsDimension = ['bar', 'line', 'donut'].includes(visualization);
 
-  useEffect(() => { setMetric(''); setDimension(''); setMetricEntityKey(entityKey); setDimensionEntityKey(entityKey); setFilters([]); setPreview(null); }, [entityKey]);
+  useEffect(() => {
+    if (!open || !catalog) return;
+    const def = initialItem?.definition;
+    if (!def) return;
+    const source = catalog.entities?.find(e => e.table === def.table);
+    if (!source) return;
+    setEntityKey(source.key);
+    setMetricEntityKey(catalog.entities.find(e => e.table === (def.metric_table || def.table))?.key || source.key);
+    setDimensionEntityKey(catalog.entities.find(e => e.table === (def.group_by_table || def.table))?.key || source.key);
+    setMetric(def.metric || '');
+    setDimension(def.group_by || '');
+    setAggregation(def.aggregation || 'count');
+    setVisualization(def.visualization || 'bar');
+    setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
+    setFilters((def.filters || []).map(item => ({ ...item, table: item.table || def.table, value: Array.isArray(item.value) ? item.value.join(',') : String(item.value ?? '') })));
+    setShowFilters(Boolean(def.filters?.length));
+    setSaveToAnalytics(initialItem.placement?.analytics ?? true);
+    setSaveToDashboard(initialItem.placement?.dashboard ?? false);
+    setPreview(null);
+  }, [open, catalog, initialItem, mode]);
+  useEffect(() => {
+    if (!open || initialItem) return;
+    setMetric(''); setDimension(''); setMetricEntityKey(entityKey); setDimensionEntityKey(entityKey); setFilters([]); setPreview(null);
+  }, [entityKey, open, initialItem]);
   useEffect(() => { if (visualization === 'kpi') setDimension(''); setPreview(null); }, [visualization]);
 
   if (!open) return null;
@@ -77,7 +100,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
     }
     try {
       setSaving(true); setError('');
-      const saved = await saveVisualization(definition(), { analytics: saveToAnalytics, dashboard: saveToDashboard });
+      const saved = mode === 'edit' && initialItem ? await updateSavedVisualization(initialItem.id, definition(), { analytics: saveToAnalytics, dashboard: saveToDashboard }) : await saveVisualization(definition(), { analytics: saveToAnalytics, dashboard: saveToDashboard });
       onSaved?.(saved);
       onClose();
     } catch (err) { setError(err.message); } finally { setSaving(false); }
@@ -126,7 +149,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
             <p className="mb-3 text-sm font-bold" style={{color:colors.text}}>{language==='es'?'¿Dónde quieres mostrarla?':'Where do you want to show it?'}</p>
             <label className="mb-2 flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToAnalytics} onChange={(e)=>setSaveToAnalytics(e.target.checked)} className="h-4 w-4 accent-current"/><span>{language==='es'?'Analítica':'Analytics'} <small style={{color:colors.muted}}>({language==='es'?'predeterminado':'default'})</small></span></label>
             <label className="flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToDashboard} onChange={(e)=>setSaveToDashboard(e.target.checked)} className="h-4 w-4 accent-current"/><span>Dashboard</span></label>
-            <button disabled={saving||(!saveToAnalytics&&!saveToDashboard)} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?'Guardar visualización':'Save visualization')}</button>
+            <button disabled={saving||(!saveToAnalytics&&!saveToDashboard)} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?(mode==='edit'?'Guardar cambios':mode==='duplicate'?'Guardar copia':'Guardar visualización'):(mode==='edit'?'Save changes':mode==='duplicate'?'Save copy':'Save visualization'))}</button>
           </div>}
           {error&&<p className="text-sm text-red-500">{error}</p>}
         </div>
