@@ -337,7 +337,7 @@ export const AnalyticsView = () => {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div> }, { id:'historical-detail', resizable:false, span:'xl:col-span-12', node:<div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            </div> }, { id:'historical-detail', table: { title: language==='es'?'Detalle histórico':'Historical detail', rows: trendData.slice().reverse(), columns: [{key:'period',label:language==='es'?'Período':'Period'},{key:'total',label:language==='es'?'Actividad':'Activity'},{key:'rolling_average',label:language==='es'?'Prom. 3M':'3M Avg.'},{key:'cumulative',label:language==='es'?'Acumulado':'Cumulative'}] }, resizable:false, span:'xl:col-span-12', node:<div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={CalendarRange} title={language === 'es' ? 'Detalle histórico' : 'Historical detail'} subtitle={language === 'es' ? 'Valores mensuales usados para el análisis temporal.' : 'Monthly values used for time analysis.'} theme={theme} colors={colors} />
               <div className="kenneth-historical-scroll overflow-x-auto max-h-[330px] overflow-y-auto">
                 <table className="w-full text-sm">
