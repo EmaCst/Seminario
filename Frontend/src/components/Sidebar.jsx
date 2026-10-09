@@ -12,14 +12,14 @@ const menuItems = [
 ];
 
 export const Sidebar = () => {
-  const { activeTab, setActiveTab, theme, colors, t, institutionLogo, institutionName } = useContext(DashboardContext);
+  const { activeTab, setActiveTab, theme, colors, t, institutionLogo, institutionName, logoSize } = useContext(DashboardContext);
 
   return (
     <aside
       className="w-[82px] sm:w-56 shrink-0 p-3 sm:p-4 flex flex-col items-center transition-colors duration-300"
       style={{ background: `linear-gradient(180deg, ${colors.sidebar} 0%, ${theme.primaryStrong} 100%)` }}
     >
-      <div className="mb-7 mt-2 w-14 h-14 sm:w-20 sm:h-20 rounded-full flex items-center justify-center overflow-hidden border-[3px] border-white/70 bg-white shadow-lg">
+      <div className="mb-7 mt-2 rounded-full flex items-center justify-center overflow-hidden border-[3px] border-white/70 bg-white shadow-lg" style={{width: `min(${logoSize}px, 100%)`, height: `min(${logoSize}px, 100%)`}}>
         {institutionLogo ? <img src={institutionLogo} alt={institutionName} className="object-contain w-full h-full" /> : <strong className="text-sm sm:text-base" style={{color:'#0B4E8A'}}>{institutionName.split(/\\s+/).filter(Boolean).map(word=>word[0]).slice(0,4).join('').toUpperCase()}</strong>}
       </div>
 
