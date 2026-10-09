@@ -30,12 +30,20 @@ export const TableExplorer = ({ definition }) => {
 
 export const AutomaticTableExplorer = ({ table }) => {
   const [search, setSearch] = useState('');
+  const [remoteRows, setRemoteRows] = useState(null);
+  const [remoteError, setRemoteError] = useState('');
+  useEffect(() => {
+    if (!table.loadAll) return;
+    let active = true;
+    table.loadAll().then(result => { if (active) setRemoteRows(result); }).catch(error => { if (active) setRemoteError(error.message); });
+    return () => { active = false; };
+  }, [table.loadAll]);
   const [sortBy, setSortBy] = useState(table.columns[0]?.key || '');
   const [descending, setDescending] = useState(false);
   const [page, setPage] = useState(1);
   const rows = useMemo(() => {
     const term = search.toLocaleLowerCase();
-    return [...(table.rows || [])].filter(row => !term || table.columns.some(col => String(row[col.key] ?? '').toLocaleLowerCase().includes(term)))
+    return [...(remoteRows || table.rows || [])].filter(row => !term || table.columns.some(col => String(row[col.key] ?? '').toLocaleLowerCase().includes(term)))
       .sort((a, b) => {
         const x = a[sortBy], y = b[sortBy];
         const nx = Number(x), ny = Number(y);
@@ -43,10 +51,12 @@ export const AutomaticTableExplorer = ({ table }) => {
           ? nx - ny : String(x ?? '').localeCompare(String(y ?? ''), undefined, {numeric:true});
         return descending ? -result : result;
       });
-  }, [table, search, sortBy, descending]);
+  }, [table, remoteRows, search, sortBy, descending]);
   const pages = Math.max(1, Math.ceil(rows.length / 25));
   return <div className="flex h-full min-h-0 flex-col gap-3">
     <h3 className="font-bold">{table.title}</h3>
+    {table.loadAll && remoteRows === null && !remoteError && <p className="text-sm opacity-70">Consultando todos los registros...</p>}
+    {remoteError && <p className="text-sm text-red-600">No se pudieron cargar los registros adicionales: {remoteError}</p>}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Buscar en la tabla..." value={search} onChange={e => {setSearch(e.target.value);setPage(1);}} />
       <span className="text-sm opacity-70">{rows.length} registros</span>
