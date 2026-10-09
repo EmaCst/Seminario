@@ -7,6 +7,7 @@ async function parseResponse(response) {
 }
 
 export async function askDatabase(question, history = []) { const response = await fetch(`${API_URL}/ask-db`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, history }) }); return parseResponse(response); }
+export async function getAllTopProducts() { return parseResponse(await fetch(`${API_URL}/api/dashboard/top-products/all`)); }
 export async function getDashboard() { return parseResponse(await fetch(`${API_URL}/api/dashboard`)); }
 export async function getAdaptiveDashboard() { return parseResponse(await fetch(`${API_URL}/api/dashboard/adaptive`)); }
 export async function getAdaptiveAnalytics() { return parseResponse(await fetch(`${API_URL}/api/analytics/adaptive`)); }
