@@ -27,6 +27,7 @@ import { DashboardContext } from '../context/DashboardContext';
 import { getAdaptiveAnalytics, getSavedVisualizations } from '../services/api';
 import { CustomVisualizationWidget } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
+import { VisualizationLibrary } from './VisualizationLibrary';
 
 const roleLabel = (role) => String(role || 'datos').replaceAll('_', ' ');
 
@@ -63,6 +64,7 @@ const SectionTitle = ({ icon: Icon, title, subtitle, theme, colors }) => (
 export const AnalyticsView = () => {
   const { theme, colors, language } = useContext(DashboardContext);
   const [data, setData] = useState(null);
+  const [activeTab, setActiveTab] = useState('analysis');
   const [range, setRange] = useState(12);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -107,7 +109,7 @@ export const AnalyticsView = () => {
     [data],
   );
 
-  if (loading) {
+  if (loading && activeTab === 'analysis') {
     return (
       <section className="min-h-72 flex items-center justify-center">
         <div className="flex items-center gap-3" style={{ color: colors.muted }}>
@@ -120,6 +122,10 @@ export const AnalyticsView = () => {
 
   return (
     <section className="space-y-5">
+      <div className="flex gap-2 border-b pb-3" style={{borderColor:colors.border}}>
+        {[{key:'analysis',label:language==='es'?'Análisis':'Analysis'},{key:'library',label:language==='es'?'Mis visualizaciones':'My visualizations'}].map(tab=><button key={tab.key} type="button" onClick={()=>setActiveTab(tab.key)} className="rounded-xl px-4 py-2 text-sm font-bold" style={{backgroundColor:activeTab===tab.key?theme.primary:colors.card,color:activeTab===tab.key?'#fff':colors.text}}>{tab.label}</button>)}
+      </div>
+      {activeTab === 'library' ? <VisualizationLibrary/> : <>
       <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1" style={{ color: theme.primary }}>
@@ -375,6 +381,7 @@ export const AnalyticsView = () => {
           </div>
         </>
       )}
+      </>
     </section>
   );
 };
