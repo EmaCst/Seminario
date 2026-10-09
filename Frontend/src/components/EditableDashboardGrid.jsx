@@ -87,7 +87,7 @@ export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-col
     {expandedItem && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 md:p-8" onMouseDown={(event)=>{if(event.target===event.currentTarget)setExpandedId(null);}} role="presentation">
       <div role="dialog" aria-modal="true" aria-label={language==='es'?'Visualización ampliada':'Expanded visualization'} className="flex h-[min(86vh,850px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border shadow-2xl" style={{backgroundColor:colors.card,borderColor:colors.border}}>
         <div className="flex shrink-0 items-center justify-between border-b px-5 py-3" style={{borderColor:colors.border,color:colors.text}}><span className="font-bold">{language==='es'?'Vista ampliada':'Expanded view'}</span><button type="button" autoFocus onClick={()=>setExpandedId(null)} aria-label={language==='es'?'Cerrar':'Close'} className="rounded-lg p-2 hover:opacity-70"><X size={22}/></button></div>
-        <div className="kenneth-expanded-chart min-h-0 flex-1 overflow-auto p-4 md:p-6 [&_.recharts-responsive-container]:!h-[min(55vh,500px)] [&_.h-48]:!h-[min(55vh,500px)]">{expandedItem.definition?.visualization === 'table' ? <TableExplorer definition={expandedItem.definition} /> : expandedItem.node}</div>
+        <div className="kenneth-expanded-chart min-h-0 flex-1 overflow-auto p-4 md:p-6 [&_.recharts-responsive-container]:!h-[min(55vh,500px)] [&_.h-48]:!h-[min(55vh,500px)] [&_.max-h-\\[330px\\]]:!max-h-[65vh]">{expandedItem.definition?.visualization === 'table' ? <TableExplorer definition={expandedItem.definition} /> : expandedItem.node}</div>
       </div>
     </div>}
   </div>;
