@@ -258,7 +258,7 @@ def explore_visualization(request: VisualizationPageRequest) -> dict:
         sql = re.sub(r"^SELECT TOP \d+ ", "SELECT ", sql, count=1)
     else:
         sql = re.sub(r" LIMIT \d+;?$", "", sql)
-    sql = sql.rstrip(";")
+    sql = re.sub(r" ORDER BY value DESC;?$", "", sql).rstrip(";")
     columns = ["dimension", "value"] if definition.group_by else ["value"]
     where = ""
     if request.search and definition.group_by:
