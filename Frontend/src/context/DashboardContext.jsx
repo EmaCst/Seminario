@@ -188,6 +188,9 @@ export const DashboardProvider = ({ children }) => {
   const [language, setLanguage] = useState(detectLanguage);
   const [customizationOpen, setCustomizationOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [institutionName, setInstitutionName] = useState(() => readStorage('kenneth-institution-name') || 'Universidad Mariano Gálvez de Guatemala');
+  const [userName, setUserName] = useState(() => readStorage('kenneth-user-name') || 'David Emanuel Castellanos Velásquez');
+  const [institutionLogo, setInstitutionLogo] = useState(() => readStorage('kenneth-institution-logo') || '');
   const [visibleCharts, setVisibleCharts] = useState({
     monthSales: true,
     salesPerMonth: true,
@@ -225,6 +228,13 @@ export const DashboardProvider = ({ children }) => {
     writeStorage('umg-color-theme', themeId);
   }, [themeId]);
 
+  useEffect(() => { writeStorage('kenneth-institution-name', institutionName); }, [institutionName]);
+  useEffect(() => { writeStorage('kenneth-user-name', userName); }, [userName]);
+  useEffect(() => {
+    if (institutionLogo) writeStorage('kenneth-institution-logo', institutionLogo);
+    else { try { localStorage.removeItem('kenneth-institution-logo'); } catch { /* ignored */ } }
+  }, [institutionLogo]);
+
   const toggleChart = (chartName) => {
     setVisibleCharts((prev) => ({ ...prev, [chartName]: !prev[chartName] }));
   };
@@ -247,6 +257,12 @@ export const DashboardProvider = ({ children }) => {
         setCustomizationOpen,
         editMode,
         setEditMode,
+        institutionName,
+        setInstitutionName,
+        userName,
+        setUserName,
+        institutionLogo,
+        setInstitutionLogo,
         t,
         visibleCharts,
         toggleChart,
