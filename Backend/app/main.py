@@ -6,7 +6,7 @@ from app.analysis.adaptive_analytics_service import get_adaptive_analytics
 from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
 from app.analysis.business_domain_detector import inspect_business_domains
 from app.analysis.capability_detector import inspect_capabilities
-from app.analysis.dashboard_service import get_dashboard_summary
+from app.analysis.dashboard_service import get_dashboard_summary, get_top_products
 from app.analysis.semantic_mapper import inspect_semantic_map
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
@@ -110,6 +110,13 @@ def ai_anomalies():
 @app.get("/api/dashboard")
 def dashboard():
     return get_dashboard_summary()
+
+@app.get("/api/dashboard/top-products/all")
+def dashboard_all_top_products():
+    try:
+        return get_top_products(limit=None)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible consultar todos los productos: {exc}") from exc
 
 @app.get("/api/dashboard/adaptive")
 def adaptive_dashboard():
