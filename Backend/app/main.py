@@ -25,6 +25,7 @@ from app.visualizations.visualization_store import (
     list_saved_visualizations,
     save_visualization,
     update_visualization_placement,
+    update_saved_visualization,
 )
 from app.visualizations.visualization_service import (
     VisualizationDefinition,
@@ -139,6 +140,14 @@ def create_saved_visualization(request: SavedVisualizationRequest):
         return save_visualization(request)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.put("/api/visualizations/saved/{visualization_id}")
+def edit_saved_visualization(visualization_id: str, request: SavedVisualizationRequest):
+    try:
+        return update_saved_visualization(visualization_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
 
 @app.put("/api/visualizations/saved/{visualization_id}/placement")
 def change_visualization_placement(visualization_id: str, placement: VisualizationPlacement):
