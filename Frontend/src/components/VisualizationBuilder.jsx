@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { BarChart3, LineChart, Sigma, Table2, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart as ReLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
-import { getVisualizationSemanticCatalog, previewVisualization, saveVisualization } from '../services/api';
+import { getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
 
@@ -113,7 +113,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
                   <select aria-label="Filter entity" value={source?.table||''} onChange={e=>{const next=relatedEntities.find(x=>x.table===e.target.value);update({table:e.target.value,column:next?.filters?.[0]?.key||'',operator:'eq',value:''})}} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{relatedEntities.map(e=><option key={e.table} value={e.table}>{e.label}</option>)}</select>
                   <select aria-label="Filter field" value={filter.column} onChange={e=>update({column:e.target.value,operator:'eq',value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{(source?.filters||[]).map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select>
                   <select aria-label="Filter operator" value={filter.operator} onChange={e=>update({operator:e.target.value,value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{ops.map(op=><option key={op} value={op}>{names[op]}</option>)}</select>
-                  <input aria-label="Filter value" type={field?.kind==='number'&&filter.operator!=='in'?'number':field?.kind==='date'&&filter.operator!=='in'?'date':'text'} value={filter.value} onChange={e=>update({value:e.target.value})} placeholder={filter.operator==='in'?'Valor 1, Valor 2':language==='es'?'Escribe un valor':'Enter a value'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>
+                  <FilterValueInput table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language}/>
                 </div>;
               })}
               <button type="button" onClick={()=>{setFilters(old=>[...old,{table:entity?.table||'',column:entity?.filters?.[0]?.key||'',operator:'eq',value:''}]);setPreview(null)}} className="w-full rounded-lg border px-3 py-2 text-sm font-semibold" style={{borderColor:theme.primary,color:theme.primary}}>{language==='es'?'+ Agregar filtro':'+ Add filter'}</button>
@@ -141,3 +141,40 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
 
 const inputStyle=(colors)=>({backgroundColor:colors.card,borderColor:colors.border,color:colors.text});
 const Field=({label,colors,children})=><label className="block"><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{label}</span>{children}</label>;
+
+
+const FilterValueInput = ({table, field, operator, value, onChange, colors, language}) => {
+  const [options, setOptions] = useState([]);
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const supportsOptions = ['eq','neq','in'].includes(operator) && ['text','boolean'].includes(field?.kind);
+  useEffect(() => {
+    if (!supportsOptions || !table || !field?.key) { setOptions([]); return; }
+    let active = true;
+    setBusy(true); setLoadError(false);
+    const delay = setTimeout(() => {
+      getVisualizationFilterValues(table, field.key, search)
+        .then(data => { if (active) setOptions(data.values || []); })
+        .catch(() => { if (active) { setOptions([]); setLoadError(true); } })
+        .finally(() => { if (active) setBusy(false); });
+    }, 250);
+    return () => { active = false; clearTimeout(delay); };
+  }, [table, field?.key, search, supportsOptions]);
+  useEffect(() => { setSearch(''); }, [table, field?.key, operator]);
+  const selected = value.split(',').map(v => v.trim()).filter(Boolean);
+  if (!supportsOptions) return <input aria-label="Filter value" type={field?.kind==='number'&&operator!=='in'?'number':field?.kind==='date'&&operator!=='in'?'date':'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={language==='es'?'Escribe un valor':'Enter a value'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>;
+  return <div className="space-y-2">
+    <input aria-label={language==='es'?'Buscar valores':'Search values'} value={search} onChange={e=>setSearch(e.target.value)} placeholder={language==='es'?'Buscar valores disponibles...':'Search available values...'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>
+    {operator==='in' ? <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border p-2" style={{borderColor:colors.border}}>
+      {options.map(option=><label key={option} className="flex items-center gap-2 text-sm" style={{color:colors.text}}><input type="checkbox" checked={selected.includes(option)} onChange={e=>onChange(e.target.checked?[...selected,option].join(','):selected.filter(v=>v!==option).join(','))}/>{option}</label>)}
+    </div> : <select aria-label={language==='es'?'Valor disponible':'Available value'} value={value} onChange={e=>onChange(e.target.value)} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>
+      <option value="">{language==='es'?'Selecciona un valor':'Select a value'}</option>
+      {value && !options.includes(value) && <option value={value}>{value}</option>}
+      {options.map(option=><option key={option} value={option}>{option}</option>)}
+    </select>}
+    {busy&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Consultando valores...':'Loading values...'}</p>}
+    {loadError&&<p className="text-xs text-amber-600">{language==='es'?'No se pudieron cargar los valores.':'Could not load values.'}</p>}
+    {options.length===0&&!busy&&!loadError&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'No hay valores disponibles.':'No available values.'}</p>}
+  </div>;
+};
