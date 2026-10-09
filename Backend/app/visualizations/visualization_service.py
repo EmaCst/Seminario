@@ -249,3 +249,28 @@ def preview_visualization(definition: VisualizationDefinition) -> dict:
             "provider": database_manager.status().get("provider"),
         },
     }
+
+
+def get_filter_values(table: str, column: str, search: str = "", limit: int = 50) -> dict:
+    """Return bounded distinct values from a schema-validated field."""
+    schema = inspect_database()
+    selected = schema.tables.get(table)
+    if selected is None or column not in {field.name for field in selected.columns}:
+        raise ValueError("La tabla o columna seleccionada no existe.")
+    if len(search) > 100:
+        raise ValueError("La búsqueda es demasiado larga.")
+    limit = max(1, min(limit, 100))
+    field = f"{_quote(column)}"
+    source = _quote(table)
+    provider = database_manager.status().get("provider")
+    where = f" WHERE {field} IS NOT NULL"
+    if search:
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        cast = f"CAST({field} AS NVARCHAR(4000))" if provider == "sqlserver" else f"CAST({field} AS TEXT)"
+        where += f" AND {cast} LIKE {_literal('%' + escaped + '%')} ESCAPE {_literal(chr(92))}"
+    if provider == "sqlserver":
+        sql = f"SELECT DISTINCT TOP {limit} {field} AS value FROM {source}{where} ORDER BY {field}"
+    else:
+        sql = f"SELECT DISTINCT {field} AS value FROM {source}{where} ORDER BY {field} LIMIT {limit}"
+    rows = execute_query(sql)
+    return {"values": [str(row["value"]) for row in rows if row.get("value") is not None], "limit": limit}
