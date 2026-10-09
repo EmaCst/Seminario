@@ -339,7 +339,7 @@ export const AnalyticsView = () => {
               </div>
             </div> }, { id:'historical-detail', resizable:false, span:'xl:col-span-12', node:<div className="rounded-2xl border p-5 shadow-sm overflow-hidden" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={CalendarRange} title={language === 'es' ? 'Detalle histórico' : 'Historical detail'} subtitle={language === 'es' ? 'Valores mensuales usados para el análisis temporal.' : 'Monthly values used for time analysis.'} theme={theme} colors={colors} />
-              <div className="overflow-x-auto max-h-[330px] overflow-y-auto">
+              <div className="kenneth-historical-scroll overflow-x-auto max-h-[330px] overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0" style={{ backgroundColor: colors.card }}>
                     <tr className="border-b" style={{ borderColor: colors.border, color: colors.muted }}>
