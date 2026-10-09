@@ -20,9 +20,11 @@ import {
   Bar,
 } from 'recharts';
 
-import { getDashboard, getSavedVisualizations } from '../services/api';
+import { getAllTopProducts, getDashboard, getSavedVisualizations } from '../services/api';
 import { CustomVisualizationWidget } from './SavedVisualizations';
 
+
+const loadAllTopProducts = async () => (await getAllTopProducts()).data || [];
 
 const CustomTooltip = ({
   active,
@@ -614,7 +616,7 @@ export const DashboardView = () => {
           </div>
         </section>
         ) } : null,
-        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', table: { title: t.topProducts, rows: topProducts, columns: [{key:'product',label:t.product},{key:'quantity',label:language==='es'?'Unidades vendidas':'Units sold'}] }, resizable: false, span: 'xl:col-span-12', node: (
+        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', table: { title: t.topProducts, rows: topProducts, loadAll: loadAllTopProducts, columns: [{key:'product',label:t.product},{key:'quantity',label:language==='es'?'Unidades vendidas':'Units sold'}] }, resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
