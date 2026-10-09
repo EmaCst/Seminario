@@ -6,7 +6,7 @@ export const CustomizationPanel = () => {
   const [confirmReset, setConfirmReset] = useState(false);
   const [logoError, setLogoError] = useState('');
   const logoInput = useRef(null);
-  const { customizationOpen, setCustomizationOpen, editMode, setEditMode, theme, themeId, themes, setThemeId, colors, isDarkMode, setIsDarkMode, language, institutionName, setInstitutionName, userName, setUserName, institutionLogo, setInstitutionLogo } = useContext(DashboardContext);
+  const { customizationOpen, setCustomizationOpen, editMode, setEditMode, theme, themeId, themes, setThemeId, colors, isDarkMode, setIsDarkMode, language, institutionName, setInstitutionName, userName, setUserName, institutionLogo, setInstitutionLogo, logoSize, setLogoSize } = useContext(DashboardContext);
   if (!customizationOpen) return null;
 
   return <div className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-[2px]" onMouseDown={(e)=>e.target===e.currentTarget&&setCustomizationOpen(false)}>
@@ -42,6 +42,8 @@ export const CustomizationPanel = () => {
             {institutionLogo&&<button onClick={()=>{setInstitutionLogo('');setLogoError('');}} className="text-left text-xs font-semibold" style={{color:theme.primary}}>{language==='es'?'Quitar imagen':'Remove image'}</button>}
           </div>
         </div>
+        <label className="mt-4 flex items-center justify-between text-sm font-bold" style={{color:colors.text}}><span>{language==='es'?'Tamaño de la imagen':'Image size'}</span><span>{logoSize} px</span></label>
+        <input type="range" min="40" max="120" step="4" value={logoSize} onChange={e=>setLogoSize(Number(e.target.value))} className="mt-2 w-full" style={{accentColor:theme.primary}}/>
         {logoError&&<p className="mt-2 text-xs text-red-500">{logoError}</p>}
         <p className="mt-2 text-xs" style={{color:colors.muted}}>{language==='es'?'PNG, JPG o WebP · máximo 1 MB. Se guarda en este navegador.':'PNG, JPG or WebP · max 1 MB. Stored in this browser.'}</p>
       </section>
