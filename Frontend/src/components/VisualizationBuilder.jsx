@@ -17,6 +17,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   const [dimension, setDimension] = useState('');
   const [visualization, setVisualization] = useState('bar');
   const [title, setTitle] = useState('');
+  const [filters, setFilters] = useState([]);
+  const [showFilters, setShowFilters] = useState(false);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,7 +52,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   const dimensionEntity = relatedEntities.find((item) => item.key === dimensionEntityKey) || entity;
   const needsDimension = ['bar', 'line', 'donut'].includes(visualization);
 
-  useEffect(() => { setMetric(''); setDimension(''); setMetricEntityKey(entityKey); setDimensionEntityKey(entityKey); setPreview(null); }, [entityKey]);
+  useEffect(() => { setMetric(''); setDimension(''); setMetricEntityKey(entityKey); setDimensionEntityKey(entityKey); setFilters([]); setPreview(null); }, [entityKey]);
   useEffect(() => { if (visualization === 'kpi') setDimension(''); setPreview(null); }, [visualization]);
 
   if (!open) return null;
@@ -58,7 +60,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   const definition = () => ({
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
     visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation,
-    group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table, filters: [], limit: 20,
+    group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table, filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: 20,
   });
 
   const runPreview = async () => {
@@ -82,7 +84,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
   };
 
   const data = preview?.data || [];
-  const canPreview = entity && (!needsDimension || dimension) && (aggregation === 'count' || metric);
+  const canPreview = entity && (!needsDimension || dimension) && (aggregation === 'count' || metric) && filters.every(f=>f.column&&f.value.trim());
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-[26px] border shadow-2xl" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
@@ -97,6 +99,27 @@ export const VisualizationBuilder = ({ open, onClose, onSaved }) => {
           <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>
           {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={aggregation} onChange={(e)=>setAggregation(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(metricEntity?.metrics?.find(f=>f.key===metric)?.aggregations||[]).filter(a=>a!=='count').map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
           {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>setDimension(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
+            <button type="button" onClick={()=>setShowFilters(!showFilters)} className="flex w-full justify-between text-sm font-bold" style={{color:colors.text}}><span>{language==='es'?'Filtros (opcional)':'Filters (optional)'} ({filters.length})</span><span>{showFilters?'−':'+'}</span></button>
+            {showFilters&&<div className="mt-3 space-y-3">
+              {filters.map((filter,index)=>{
+                const source=relatedEntities.find(e=>e.table===filter.table)||entity;
+                const field=source?.filters?.find(f=>f.key===filter.column);
+                const ops=field?.kind==='text'?['eq','neq','contains','in']:['eq','neq','gt','gte','lt','lte','in'];
+                const names={eq:language==='es'?'Igual a':'Equals',neq:language==='es'?'Distinto de':'Not equal',gt:'>',gte:'≥',lt:'<',lte:'≤',contains:language==='es'?'Contiene':'Contains',in:language==='es'?'Uno de (comas)':'One of (commas)'};
+                const update=patch=>{setFilters(old=>old.map((f,i)=>i===index?{...f,...patch}:f));setPreview(null)};
+                return <div key={index} className="space-y-2 rounded-xl border p-3" style={{borderColor:colors.border,backgroundColor:colors.card}}>
+                  <div className="flex justify-between"><span className="text-xs" style={{color:colors.muted}}>{language==='es'?'Condición':'Condition'}</span><button type="button" className="text-xs text-red-500" onClick={()=>{setFilters(old=>old.filter((_,i)=>i!==index));setPreview(null)}}>{language==='es'?'Quitar':'Remove'}</button></div>
+                  <select aria-label="Filter entity" value={source?.table||''} onChange={e=>{const next=relatedEntities.find(x=>x.table===e.target.value);update({table:e.target.value,column:next?.filters?.[0]?.key||'',operator:'eq',value:''})}} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{relatedEntities.map(e=><option key={e.table} value={e.table}>{e.label}</option>)}</select>
+                  <select aria-label="Filter field" value={filter.column} onChange={e=>update({column:e.target.value,operator:'eq',value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{(source?.filters||[]).map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select>
+                  <select aria-label="Filter operator" value={filter.operator} onChange={e=>update({operator:e.target.value,value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{ops.map(op=><option key={op} value={op}>{names[op]}</option>)}</select>
+                  <input aria-label="Filter value" type={field?.kind==='number'&&filter.operator!=='in'?'number':field?.kind==='date'&&filter.operator!=='in'?'date':'text'} value={filter.value} onChange={e=>update({value:e.target.value})} placeholder={filter.operator==='in'?'Valor 1, Valor 2':language==='es'?'Escribe un valor':'Enter a value'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>
+                </div>;
+              })}
+              <button type="button" onClick={()=>{setFilters(old=>[...old,{table:entity?.table||'',column:entity?.filters?.[0]?.key||'',operator:'eq',value:''}]);setPreview(null)}} className="w-full rounded-lg border px-3 py-2 text-sm font-semibold" style={{borderColor:theme.primary,color:theme.primary}}>{language==='es'?'+ Agregar filtro':'+ Add filter'}</button>
+              {filters.length>1&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Se deben cumplir todas las condiciones (Y).':'All conditions must match (AND).'}</p>}
+            </div>}
+          </div>
           <Field label={language === 'es' ? 'Título' : 'Title'} colors={colors}><input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder={language === 'es'?'Ej. Ventas por canal':'E.g. Sales by channel'} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}/></Field>
           <button disabled={!canPreview||loading} onClick={runPreview} className="w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{loading?(language==='es'?'Generando...':'Generating...'):(language==='es'?'Generar vista previa':'Generate preview')}</button>
           {preview && <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
