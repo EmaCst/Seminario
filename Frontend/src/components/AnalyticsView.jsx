@@ -198,7 +198,7 @@ export const AnalyticsView = () => {
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
           <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[{
-            id: 'analytics-kpis-block',
+            id: 'analytics-kpis-block', expandable: false,
             resizable: false,
             span: 'xl:col-span-12',
             node: <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -367,6 +367,7 @@ export const AnalyticsView = () => {
             id: `analytics-custom-${item.id}`,
             resizable: !['kpi','table'].includes(item.definition?.visualization),
             span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
+            definition: item.definition,
             node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
           }))} />
           </div>
