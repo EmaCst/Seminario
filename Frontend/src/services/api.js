@@ -28,6 +28,12 @@ export async function getSavedVisualizations(destination = '') {
 export async function updateSavedVisualization(id, definition, placement) {
   return parseResponse(await fetch(`${API_URL}/api/visualizations/saved/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ definition, placement }) }));
 }
+export async function updateVisualizationPlacement(id, placement) {
+  return parseResponse(await fetch(`${API_URL}/api/visualizations/saved/${encodeURIComponent(id)}/placement`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(placement) }));
+}
+export async function deleteSavedVisualization(id) {
+  return parseResponse(await fetch(`${API_URL}/api/visualizations/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+}
 export async function saveVisualization(definition, placement) {
   return postJson('/api/visualizations/saved', { definition, placement });
 }
