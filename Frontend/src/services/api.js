@@ -25,6 +25,9 @@ export async function getSavedVisualizations(destination = '') {
   const suffix = destination ? `?destination=${encodeURIComponent(destination)}` : '';
   return parseResponse(await fetch(`${API_URL}/api/visualizations/saved${suffix}`));
 }
+export async function updateSavedVisualization(id, definition, placement) {
+  return parseResponse(await fetch(`${API_URL}/api/visualizations/saved/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ definition, placement }) }));
+}
 export async function saveVisualization(definition, placement) {
   return postJson('/api/visualizations/saved', { definition, placement });
 }
