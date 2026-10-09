@@ -523,7 +523,7 @@ export const DashboardView = () => {
 
       {/* TABLAS: solo reordenables; conservan su tamaño y contenido */}
       <EditableDashboardGrid storageId="retail-canvas" columns="grid-cols-1" sharedCanvas="retail-canvas" items={[
-        dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', resizable: false, span: 'xl:col-span-12', node: (
+        dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', table: { title: language === 'es' ? 'Inventario crítico' : 'Critical inventory', rows: criticalInventory, columns: [{key:'product',label:language==='es'?'Producto':'Product'},{key:'stock',label:'Stock'},{key:'minimum_stock',label:language==='es'?'Mínimo':'Minimum'}] }, resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
@@ -614,7 +614,7 @@ export const DashboardView = () => {
           </div>
         </section>
         ) } : null,
-        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', resizable: false, span: 'xl:col-span-12', node: (
+        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', table: { title: t.topProducts, rows: topProducts, columns: [{key:'product',label:t.product},{key:'quantity',label:language==='es'?'Unidades vendidas':'Units sold'}] }, resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
