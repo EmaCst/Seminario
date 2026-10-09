@@ -29,6 +29,8 @@ from app.visualizations.visualization_store import (
 )
 from app.visualizations.visualization_service import (
     VisualizationDefinition,
+    VisualizationPageRequest,
+    explore_visualization,
     get_visualization_catalog,
     get_filter_values,
     preview_visualization,
@@ -178,6 +180,16 @@ def visualization_catalog():
         return get_visualization_catalog()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir el catálogo de visualizaciones: {exc}") from exc
+
+@app.post("/api/visualizations/explore")
+def visualization_explore(request: VisualizationPageRequest):
+    try:
+        return explore_visualization(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible explorar la tabla: {exc}") from exc
+
 
 @app.post("/api/visualizations/preview")
 def visualization_preview(definition: VisualizationDefinition):
