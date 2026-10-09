@@ -191,6 +191,7 @@ export const DashboardProvider = ({ children }) => {
   const [institutionName, setInstitutionName] = useState(() => readStorage('kenneth-institution-name') || 'Universidad Mariano Gálvez de Guatemala');
   const [userName, setUserName] = useState(() => readStorage('kenneth-user-name') || 'David Emanuel Castellanos Velásquez');
   const [institutionLogo, setInstitutionLogo] = useState(() => readStorage('kenneth-institution-logo') || '');
+  const [logoSize, setLogoSize] = useState(() => Math.min(120, Math.max(40, Number(readStorage('kenneth-logo-size')) || 80)));
   const [visibleCharts, setVisibleCharts] = useState({
     monthSales: true,
     salesPerMonth: true,
@@ -230,6 +231,7 @@ export const DashboardProvider = ({ children }) => {
 
   useEffect(() => { writeStorage('kenneth-institution-name', institutionName); }, [institutionName]);
   useEffect(() => { writeStorage('kenneth-user-name', userName); }, [userName]);
+  useEffect(() => { writeStorage('kenneth-logo-size', String(logoSize)); }, [logoSize]);
   useEffect(() => {
     if (institutionLogo) writeStorage('kenneth-institution-logo', institutionLogo);
     else { try { localStorage.removeItem('kenneth-institution-logo'); } catch { /* ignored */ } }
@@ -263,6 +265,8 @@ export const DashboardProvider = ({ children }) => {
         setUserName,
         institutionLogo,
         setInstitutionLogo,
+        logoSize,
+        setLogoSize,
         t,
         visibleCharts,
         toggleChart,
