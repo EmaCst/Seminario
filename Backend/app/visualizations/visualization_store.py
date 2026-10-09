@@ -108,3 +108,17 @@ def delete_saved_visualization(visualization_id: str) -> None:
         if len(data["visualizations"]) == before:
             raise ValueError("La visualización no existe para la fuente activa.")
         _write(data)
+
+
+def update_saved_visualization(visualization_id: str, request: SavedVisualizationRequest) -> dict:
+    source = _source_key()
+    with _LOCK:
+        data = _load()
+        for item in data["visualizations"]:
+            if item.get("id") == visualization_id and item.get("source") == source:
+                item["definition"] = request.definition.model_dump()
+                item["placement"] = request.placement.model_dump()
+                item["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _write(data)
+                return item
+    raise ValueError("La visualización no existe para la fuente activa.")
