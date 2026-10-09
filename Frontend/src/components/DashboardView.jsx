@@ -232,7 +232,7 @@ export const DashboardView = () => {
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[{
-          id: 'retail-kpis-block',
+          id: 'retail-kpis-block', expandable: false,
           resizable: false,
           span: 'xl:col-span-12',
           node: <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -687,7 +687,8 @@ export const DashboardView = () => {
         id: `custom-${item.id}`,
         resizable: !['kpi','table'].includes(item.definition?.visualization),
         span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
-        node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
+        definition: item.definition,
+            node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
       }))} />
       </div>
 
