@@ -20,6 +20,7 @@ export async function getVisualizationFilterValues(table, column, search = '') {
   const params = new URLSearchParams({ table, column, search });
   return parseResponse(await fetch(`${API_URL}/api/visualizations/filter-values?${params}`));
 }
+export async function exploreVisualization(definition, options = {}) { return postJson('/api/visualizations/explore', { definition, ...options }); }
 export async function previewVisualization(definition) { return postJson('/api/visualizations/preview', definition); }
 export async function getSavedVisualizations(destination = '') {
   const suffix = destination ? `?destination=${encodeURIComponent(destination)}` : '';
