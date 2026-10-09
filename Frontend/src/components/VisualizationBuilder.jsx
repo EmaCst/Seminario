@@ -94,7 +94,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   };
 
   const saveCurrent = async () => {
-    if (!saveToAnalytics && !saveToDashboard) {
+    if (!saveToAnalytics && !saveToDashboard && mode !== 'edit') {
       setError(language === 'es' ? 'Selecciona al menos un destino.' : 'Select at least one destination.');
       return;
     }
@@ -149,7 +149,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
             <p className="mb-3 text-sm font-bold" style={{color:colors.text}}>{language==='es'?'¿Dónde quieres mostrarla?':'Where do you want to show it?'}</p>
             <label className="mb-2 flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToAnalytics} onChange={(e)=>setSaveToAnalytics(e.target.checked)} className="h-4 w-4 accent-current"/><span>{language==='es'?'Analítica':'Analytics'} <small style={{color:colors.muted}}>({language==='es'?'predeterminado':'default'})</small></span></label>
             <label className="flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToDashboard} onChange={(e)=>setSaveToDashboard(e.target.checked)} className="h-4 w-4 accent-current"/><span>Dashboard</span></label>
-            <button disabled={saving||(!saveToAnalytics&&!saveToDashboard)} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?(mode==='edit'?'Guardar cambios':mode==='duplicate'?'Guardar copia':'Guardar visualización'):(mode==='edit'?'Save changes':mode==='duplicate'?'Save copy':'Save visualization'))}</button>
+            <button disabled={saving||(!saveToAnalytics&&!saveToDashboard&&mode!=='edit')} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?(mode==='edit'?'Guardar cambios':mode==='duplicate'?'Guardar copia':'Guardar visualización'):(mode==='edit'?'Save changes':mode==='duplicate'?'Save copy':'Save visualization'))}</button>
           </div>}
           {error&&<p className="text-sm text-red-500">{error}</p>}
         </div>
