@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
-import { Expand, GripVertical, Minimize2 } from 'lucide-react';
+import { Expand, GripVertical, Maximize2, Minimize2, X } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 
 const readJson = (key, fallback) => {
@@ -15,6 +15,13 @@ export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-col
   const [order, setOrder] = useState(()=>readJson(orderKey, []));
   const [sizes, setSizes] = useState(()=>readJson(sizeKey, {}));
   const [dragging, setDragging] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  useEffect(() => {
+    if (!expandedId) return;
+    const onKeyDown = (event) => { if (event.key === 'Escape') setExpandedId(null); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [expandedId]);
 
   useEffect(()=>{
     const existing=readJson(registryKey, []);
@@ -67,7 +74,17 @@ export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-col
     const sharedSpan=item.resizable===false ? (item.span || 'xl:col-span-12') : (large?'xl:col-span-12':(item.span || 'xl:col-span-6'));
     return <div key={item.id} style={sharedCanvas?{order:rank.get(item.id) ?? 999}:undefined} draggable={editMode} onDragStart={()=>startDrag(item.id)} onDragOver={(e)=>editMode&&e.preventDefault()} onDrop={()=>drop(item.id)} onDragEnd={()=>{setDragging(null);if(sharedCanvas)window.dispatchEvent(new CustomEvent('kenneth-canvas-sync',{detail:{canvas:canvasId,dragging:null}}));}} className={`${sharedCanvas?sharedSpan:(large?'xl:col-span-2':'')} ${dragging===item.id?'opacity-50 scale-[0.99]':''} transition`}>
       {editMode&&<div className="mb-2 flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold" style={{backgroundColor:colors.accentSoft,borderColor:theme.primary+'44',color:theme.primary}}><span className="flex items-center gap-2 cursor-grab"><GripVertical size={15}/>{language==='es'?'Mover':'Move'}</span>{item.resizable !== false && <button type="button" onClick={()=>setSizes(prev=>({...prev,[item.id]:large?'normal':'large'}))} className="flex items-center gap-1.5 rounded-lg px-2 py-1 transition hover:scale-105" style={{backgroundColor:colors.card}}>{large?<Minimize2 size={14}/>:<Expand size={14}/>} {large?(language==='es'?'Normal':'Normal'):(language==='es'?'Grande':'Large')}</button>}</div>}
-      {item.node}
+      <div className="relative group/chart">
+        {item.node}
+        {item.expandable !== false && <button type="button" draggable={false} onClick={()=>setExpandedId(item.id)} title={language==='es'?'Ampliar temporalmente':'Expand temporarily'} aria-label={language==='es'?'Ampliar gráfica':'Expand chart'} className="absolute right-3 top-3 z-10 rounded-lg border p-2 opacity-70 shadow-sm transition hover:opacity-100 focus:opacity-100" style={{backgroundColor:colors.card,borderColor:colors.border,color:theme.primary}}><Maximize2 size={16}/></button>}
+      </div>
     </div>;
-  })}</div>;
+  })}
+    {expandedId && sorted.some(item=>item.id===expandedId) && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 md:p-8" onMouseDown={(event)=>{if(event.target===event.currentTarget)setExpandedId(null);}} role="presentation">
+      <div role="dialog" aria-modal="true" aria-label={language==='es'?'Visualización ampliada':'Expanded visualization'} className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border shadow-2xl" style={{backgroundColor:colors.card,borderColor:colors.border}}>
+        <div className="flex shrink-0 items-center justify-between border-b px-5 py-3" style={{borderColor:colors.border,color:colors.text}}><span className="font-bold">{language==='es'?'Vista ampliada':'Expanded view'}</span><button type="button" autoFocus onClick={()=>setExpandedId(null)} aria-label={language==='es'?'Cerrar':'Close'} className="rounded-lg p-2 hover:opacity-70"><X size={22}/></button></div>
+        <div className="kenneth-expanded-chart min-h-0 flex-1 overflow-auto p-4 md:p-6">{sorted.find(item=>item.id===expandedId)?.node}</div>
+      </div>
+    </div>}
+  </div>;
 };
