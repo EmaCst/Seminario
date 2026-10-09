@@ -238,6 +238,45 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
     return f"SELECT {top}{', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}{order}{limit};"
 
 
+
+class VisualizationPageRequest(BaseModel):
+    definition: VisualizationDefinition
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=25, ge=1, le=100)
+    search: str = Field(default="", max_length=100)
+    sort_by: Literal["dimension", "value"] = "value"
+    descending: bool = True
+
+
+def explore_visualization(request: VisualizationPageRequest) -> dict:
+    definition = request.definition
+    if definition.visualization != "table":
+        raise ValueError("La exploración está disponible para tablas.")
+    sql = build_visualization_query(definition)
+    provider = database_manager.status().get("provider")
+    if provider == "sqlserver":
+        sql = re.sub(r"^SELECT TOP \d+ ", "SELECT ", sql, count=1)
+    else:
+        sql = re.sub(r" LIMIT \d+;?$", "", sql)
+    sql = sql.rstrip(";")
+    columns = ["dimension", "value"] if definition.group_by else ["value"]
+    where = ""
+    if request.search and definition.group_by:
+        cast_type = "NVARCHAR(4000)" if provider == "sqlserver" else "TEXT"
+        escaped = request.search.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+        where = f" WHERE CAST(dimension AS {cast_type}) LIKE '%{escaped}%' ESCAPE '\\'"
+    source = f"({sql}) AS results"
+    total = execute_query(f"SELECT COUNT(*) AS total FROM {source}{where}")[0]["total"]
+    sort = request.sort_by if request.sort_by in columns else "value"
+    direction = "DESC" if request.descending else "ASC"
+    offset = (request.page - 1) * request.page_size
+    if provider == "sqlserver":
+        page_sql = f"SELECT * FROM {source}{where} ORDER BY {sort} {direction} OFFSET {offset} ROWS FETCH NEXT {request.page_size} ROWS ONLY"
+    else:
+        page_sql = f"SELECT * FROM {source}{where} ORDER BY {sort} {direction} LIMIT {request.page_size} OFFSET {offset}"
+    return {"data": execute_query(page_sql), "total": total, "page": request.page, "page_size": request.page_size, "columns": columns}
+
+
 def preview_visualization(definition: VisualizationDefinition) -> dict:
     sql = build_visualization_query(definition)
     rows = execute_query(sql)
