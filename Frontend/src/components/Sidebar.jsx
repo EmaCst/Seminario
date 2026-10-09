@@ -12,7 +12,7 @@ const menuItems = [
 ];
 
 export const Sidebar = () => {
-  const { activeTab, setActiveTab, theme, colors, t, institutionLogo, institutionName, logoSize } = useContext(DashboardContext);
+  const { activeTab, setActiveTab, theme, colors, t, institutionLogo, institutionName, logoSize, logoZoom } = useContext(DashboardContext);
 
   return (
     <aside
@@ -20,7 +20,7 @@ export const Sidebar = () => {
       style={{ background: `linear-gradient(180deg, ${colors.sidebar} 0%, ${theme.primaryStrong} 100%)` }}
     >
       <div className="mb-7 mt-2 rounded-full flex items-center justify-center overflow-hidden border-[3px] border-white/70 bg-white shadow-lg" style={{width: `min(${logoSize}px, 100%)`, height: `min(${logoSize}px, 100%)`}}>
-        {institutionLogo ? <img src={institutionLogo} alt={institutionName} className="object-contain w-full h-full" /> : <strong className="text-sm sm:text-base" style={{color:'#0B4E8A'}}>{institutionName.split(/\\s+/).filter(Boolean).map(word=>word[0]).slice(0,4).join('').toUpperCase()}</strong>}
+        {institutionLogo ? <img src={institutionLogo} alt={institutionName} className="object-contain w-full h-full" style={{transform: `scale(${logoZoom / 100})`, transformOrigin: "center"}} /> : <strong className="text-sm sm:text-base" style={{color:'#0B4E8A'}}>{institutionName.split(/\\s+/).filter(Boolean).map(word=>word[0]).slice(0,4).join('').toUpperCase()}</strong>}
       </div>
 
       <nav className="w-full space-y-2">
