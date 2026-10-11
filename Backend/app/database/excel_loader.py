@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import math
 import tempfile
+import uuid
 from datetime import date, datetime, time
 from io import BytesIO
 from pathlib import Path
@@ -27,6 +29,8 @@ def _slug(value: str, fallback: str) -> str:
 
 
 def _json_value(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if hasattr(value, "isoformat"):
@@ -49,6 +53,13 @@ def _infer_type(values: list[Any]) -> str:
     return "text"
 
 
+def _looks_like_header(row: list[Any]) -> bool:
+    filled = [v for v in row if v not in (None, "")]
+    if not filled:
+        return False
+    return len(filled) >= 2 and all(isinstance(v, str) and bool(v.strip()) for v in filled)
+
+
 def _normalize_sheet(sheet) -> dict:
     rows = list(sheet.iter_rows(values_only=True))
     non_empty = [row for row in rows if any(value not in (None, "") for value in row)]
@@ -56,10 +67,15 @@ def _normalize_sheet(sheet) -> dict:
         return {"name": sheet.title, "table_name": _slug(sheet.title, "sheet"), "headers": [], "data_rows": [], "schema": [], "warnings": ["La hoja está vacía."]}
 
     header_row = list(non_empty[0])
+    has_header = _looks_like_header(header_row)
+    if not has_header:
+        header_row = [f'column_{i + 1}' for i in range(max(len(row) for row in non_empty))]
     width = max(len(row) for row in non_empty)
     headers: list[str] = []
     used: set[str] = set()
     warnings: list[str] = []
+    if not has_header:
+        warnings.append('No se identificó una fila de encabezados; se generaron nombres de columna y se conservaron todas las filas.')
 
     for index in range(width):
         raw = header_row[index] if index < len(header_row) else None
@@ -74,7 +90,8 @@ def _normalize_sheet(sheet) -> dict:
         used.add(name)
         headers.append(name)
 
-    data_rows = [list(row) + [None] * (width - len(row)) for row in non_empty[1:]]
+    source_rows = non_empty[1:] if has_header else non_empty
+    data_rows = [list(row) + [None] * (width - len(row)) for row in source_rows]
     schema = []
     for index, header in enumerate(headers):
         values = [row[index] for row in data_rows]
@@ -86,7 +103,10 @@ def _normalize_sheet(sheet) -> dict:
             "non_null": non_null,
             "nulls": len(values) - non_null,
             "unique_values": len({str(value) for value in values if value not in (None, "")}),
+            "mixed_types": len({type(value).__name__ for value in values if value not in (None, "")}) > 1,
         })
+    if any(col["mixed_types"] and col["type"] == "text" for col in schema):
+        warnings.append("Hay columnas con tipos mezclados; se conservarán como texto para evitar pérdida de información.")
     return {"name": sheet.title, "table_name": _slug(sheet.title, "sheet"), "headers": headers, "data_rows": data_rows, "schema": schema, "warnings": warnings}
 
 
@@ -154,9 +174,7 @@ async def activate_excel_upload(file: UploadFile) -> dict:
     temp_dir = Path(tempfile.gettempdir()) / "kenneth_excel_sources"
     temp_dir.mkdir(parents=True, exist_ok=True)
     safe_name = _slug(Path(filename).stem, "excel")
-    db_path = temp_dir / f"{safe_name}.sqlite3"
-    if db_path.exists():
-        db_path.unlink()
+    db_path = temp_dir / f"{safe_name}_{uuid.uuid4().hex[:12]}.sqlite3"
 
     engine = create_engine(f"sqlite:///{db_path}")
     metadata = MetaData()
@@ -176,14 +194,22 @@ async def activate_excel_upload(file: UploadFile) -> dict:
         tables[table_name] = Table(table_name, metadata, *columns)
 
     metadata.create_all(engine)
-    with engine.begin() as connection:
-        for sheet in populated:
-            table = tables[sheet["table_name"]]
-            records = []
-            for row in sheet["data_rows"]:
-                records.append({item["name"]: _db_value(row[index], item["type"]) for index, item in enumerate(sheet["schema"])})
-            if records:
-                connection.execute(insert(table), records)
+    try:
+        with engine.begin() as connection:
+            for sheet in populated:
+                table = tables[sheet["table_name"]]
+                batch = []
+                for row in sheet["data_rows"]:
+                    batch.append({item["name"]: _db_value(row[index], item["type"]) for index, item in enumerate(sheet["schema"])})
+                    if len(batch) >= 500:
+                        connection.execute(insert(table), batch)
+                        batch.clear()
+                if batch:
+                    connection.execute(insert(table), batch)
+    except Exception:
+        engine.dispose()
+        db_path.unlink(missing_ok=True)
+        raise
 
     total_rows = sum(len(sheet["data_rows"]) for sheet in populated)
     status = database_manager.configure_excel(engine=engine, filename=filename, tables=list(tables), rows=total_rows, database_path=str(db_path))
