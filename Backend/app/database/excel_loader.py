@@ -4,6 +4,7 @@ import re
 import math
 import tempfile
 import uuid
+import unicodedata
 from datetime import date, datetime, time
 from io import BytesIO
 from pathlib import Path
@@ -110,9 +111,86 @@ def _normalize_sheet(sheet) -> dict:
     return {"name": sheet.title, "table_name": _slug(sheet.title, "sheet"), "headers": headers, "data_rows": data_rows, "schema": schema, "warnings": warnings}
 
 
+
+def _semantic_name(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value).lower())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+
+def _semantic_profile(sheet: dict) -> dict:
+    """Sugerencias explicables; nunca cambian los datos ni asignan roles definitivos."""
+    from app.analysis.semantic_mapper_v2 import ROLE_PROFILES
+
+    table_name = _semantic_name(sheet["name"])
+    column_names = {_semantic_name(col["name"]) for col in sheet["schema"]}
+    candidates = []
+    for domain, roles in ROLE_PROFILES.items():
+        for role, profile in roles.items():
+            names = {_semantic_name(term) for term in profile.table_terms}
+            matched_table = table_name in names or any(
+                table_name.startswith(term + "_") or table_name.endswith("_" + term)
+                for term in names if len(term) >= 4
+            )
+            matched_columns = sorted(
+                col for col in column_names
+                if any(col == term or col.startswith(term + "_") or col.endswith("_" + term)
+                       for term in profile.column_terms if len(term) >= 3)
+            )
+            score = (4 if matched_table else 0) + min(3, len(matched_columns))
+            if score >= 3:
+                candidates.append({
+                    "domain": domain, "role": role,
+                    "confidence": "high" if score >= 5 else "medium",
+                    "evidence": {"sheet_name": matched_table, "columns": matched_columns[:6]},
+                    "_score": score,
+                })
+    candidates.sort(key=lambda item: (-item["_score"], item["domain"], item["role"]))
+    return {"suggestions": [{key: value for key, value in item.items() if key != "_score"}
+                            for item in candidates[:5]], "requires_confirmation": True}
+
+
+def _suggest_relations(sheets: list[dict]) -> list[dict]:
+    """Propone relaciones por nombres y valores, sin crear claves foráneas."""
+    suggestions = []
+    for child in sheets:
+        for column in child["schema"]:
+            key = _semantic_name(column["name"])
+            if not key.endswith("_id") or key == "id":
+                continue
+            prefix = key[:-3]
+            child_values = {str(row[child["headers"].index(column["name"])])
+                            for row in child["data_rows"] if row[child["headers"].index(column["name"])] not in (None, "")}
+            if not child_values:
+                continue
+            for parent in sheets:
+                if parent is child:
+                    continue
+                parent_name = _semantic_name(parent["name"])
+                if not (parent_name == prefix or parent_name == prefix + "s" or
+                        parent_name.rstrip("es").rstrip("s") == prefix.rstrip("es").rstrip("s")):
+                    continue
+                for parent_key in ("id", key):
+                    if parent_key not in parent["headers"]:
+                        continue
+                    index = parent["headers"].index(parent_key)
+                    values = [str(row[index]) for row in parent["data_rows"] if row[index] not in (None, "")]
+                    if not values or len(values) != len(set(values)):
+                        continue
+                    coverage = len(child_values.intersection(values)) / len(child_values)
+                    if coverage >= 0.8:
+                        suggestions.append({
+                            "from_sheet": child["name"], "from_column": column["name"],
+                            "to_sheet": parent["name"], "to_column": parent_key,
+                            "match_ratio": round(coverage, 3), "confirmed": False,
+                        })
+                        break
+    return suggestions[:30]
+
+
 def _public_profile(sheet: dict) -> dict:
     preview = [{sheet["headers"][i]: _json_value(row[i]) for i in range(len(sheet["headers"]))} for row in sheet["data_rows"][:MAX_PREVIEW_ROWS]]
-    return {"name": sheet["name"], "table_name": sheet["table_name"], "rows": len(sheet["data_rows"]), "columns": len(sheet["headers"]), "headers": sheet["headers"], "schema": sheet["schema"], "preview": preview, "warnings": sheet["warnings"]}
+    return {"name": sheet["name"], "table_name": sheet["table_name"], "rows": len(sheet["data_rows"]), "columns": len(sheet["headers"]), "headers": sheet["headers"], "schema": sheet["schema"], "preview": preview, "warnings": sheet["warnings"], "semantic": _semantic_profile(sheet)}
 
 
 async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict]]:
@@ -142,6 +220,7 @@ async def inspect_excel_upload(file: UploadFile) -> dict:
         "uploaded": True, "source_type": "excel", "filename": filename, "size_bytes": len(content),
         "sheet_count": len(profiles), "populated_sheets": len(populated), "total_data_rows": total_rows,
         "total_columns": sum(sheet["columns"] for sheet in populated), "sheets": profiles,
+        "suggested_relations": _suggest_relations(sheets),
         "interpretation": {"summary": f"Se detectaron {len(populated)} hojas con datos y {total_rows} filas.", "ready_to_import": bool(populated)},
     }
 
@@ -221,5 +300,6 @@ async def activate_excel_upload(file: UploadFile) -> dict:
         "filename": filename,
         "size_bytes": len(content),
         "tables": [_public_profile(sheet) for sheet in populated],
+        "suggested_relations": _suggest_relations(populated),
         "total_data_rows": total_rows,
     }
