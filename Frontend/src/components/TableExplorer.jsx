@@ -32,10 +32,19 @@ export const AutomaticTableExplorer = ({ table }) => {
   const [search, setSearch] = useState('');
   const [remoteRows, setRemoteRows] = useState(null);
   const [remoteError, setRemoteError] = useState('');
+  const [remoteLoading, setRemoteLoading] = useState(Boolean(table.loadAll));
   useEffect(() => {
     if (!table.loadAll) return;
     let active = true;
-    table.loadAll().then(result => { if (active) setRemoteRows(result); }).catch(error => { if (active) setRemoteError(error.message); });
+    setRemoteLoading(true);
+    setRemoteError('');
+    setRemoteRows(null);
+    table.loadAll().then(result => {
+      if (!active) return;
+      if (!Array.isArray(result)) throw new Error('El servidor no devolvió una lista válida.');
+      setRemoteRows(result);
+    }).catch(error => { if (active) setRemoteError(error.message); })
+      .finally(() => { if (active) setRemoteLoading(false); });
     return () => { active = false; };
   }, [table.loadAll]);
   const [sortBy, setSortBy] = useState(table.columns[0]?.key || '');
@@ -43,7 +52,7 @@ export const AutomaticTableExplorer = ({ table }) => {
   const [page, setPage] = useState(1);
   const rows = useMemo(() => {
     const term = search.toLocaleLowerCase();
-    return [...(remoteRows || table.rows || [])].filter(row => !term || table.columns.some(col => String(row[col.key] ?? '').toLocaleLowerCase().includes(term)))
+    return [...(table.loadAll ? (remoteRows || []) : (table.rows || []))].filter(row => !term || table.columns.some(col => String(row[col.key] ?? '').toLocaleLowerCase().includes(term)))
       .sort((a, b) => {
         const x = a[sortBy], y = b[sortBy];
         const nx = Number(x), ny = Number(y);
@@ -55,8 +64,9 @@ export const AutomaticTableExplorer = ({ table }) => {
   const pages = Math.max(1, Math.ceil(rows.length / 25));
   return <div className="flex h-full min-h-0 flex-col gap-3">
     <h3 className="font-bold">{table.title}</h3>
-    {table.loadAll && remoteRows === null && !remoteError && <p className="text-sm opacity-70">Consultando todos los registros...</p>}
-    {remoteError && <p className="text-sm text-red-600">No se pudieron cargar los registros adicionales: {remoteError}</p>}
+    {remoteLoading && <p className="text-sm opacity-70">Consultando todos los registros en la base de datos...</p>}
+    {remoteError && <p role="alert" className="text-sm text-red-600">No se pudo cargar la tabla completa: {remoteError}</p>}
+    {table.loadAll && !remoteLoading && !remoteError && <p className="text-xs opacity-70">Listado completo consultado desde la base de datos.</p>}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Buscar en la tabla..." value={search} onChange={e => {setSearch(e.target.value);setPage(1);}} />
       <span className="text-sm opacity-70">{rows.length} registros</span>
