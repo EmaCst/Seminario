@@ -66,8 +66,8 @@ class AnalyticsTests(unittest.TestCase):
             connection.exec_driver_sql("CREATE TABLE detalle_ventas(id INTEGER PRIMARY KEY, venta_id INTEGER, producto_id INTEGER, cantidad INTEGER, subtotal REAL)")
             connection.exec_driver_sql("INSERT INTO productos VALUES(1,'Café'),(2,'Pan')")
             connection.exec_driver_sql("INSERT INTO clientes VALUES(1,'Ana'),(2,'Luis')")
-            connection.exec_driver_sql("INSERT INTO ventas VALUES(1,'2026-02-03',100,1),(2,'2026-06-03',300,1),(3,'2026-06-04',200,2)")
-            connection.exec_driver_sql("INSERT INTO detalle_ventas VALUES(1,1,1,1,100),(2,2,1,3,300),(3,3,2,2,200)")
+            connection.exec_driver_sql("INSERT INTO ventas VALUES(1,'2026-02-03',100,1),(2,'2026-06-03',290,1),(3,'2026-06-04',210,2)")
+            connection.exec_driver_sql("INSERT INTO detalle_ventas VALUES(1,1,1,1,100),(2,2,1,3,290),(3,3,2,2,210)")
         schema = SimpleNamespace(tables={"detalle_ventas": SimpleNamespace(columns=[
             SimpleNamespace(name="id"), SimpleNamespace(name="venta_id"),
             SimpleNamespace(name="producto_id"), SimpleNamespace(name="cantidad"),
@@ -107,13 +107,13 @@ class AnalyticsTests(unittest.TestCase):
     def test_top_customer_by_revenue(self):
         result = analytics.run_verified_analytics(route_request("nuestro meyor cliente"))
         self.assertIn("Ana", result["answer"])
-        self.assertIn("400.00", result["answer"])
+        self.assertIn("390.00", result["answer"])
 
     def test_attribution_uses_line_totals(self):
         history = [{"role": "user", "content": "diferencia en ventas de junio y febrero"}]
         intent = route_request("qué producto marcó esa diferencia", history)
         result = analytics.run_verified_analytics(intent)
-        self.assertIn("Pan", result["answer"])  # +200 vs Cafe +200; tie is valid
+        self.assertIn("Pan", result["answer"])  # +210 vs Café +190
         self.assertEqual(2, len(result["data"]))
 
     def test_missing_relation_is_not_fabricated(self):
