@@ -380,14 +380,49 @@ def _compare_months(question: str, history: list[dict]) -> dict | None:
     }
 
 
+
+def _conversation_reply(question: str) -> str | None:
+    cleaned = re.sub(r"[^a-záéíóúñü ]", " ", question.lower())
+    cleaned = " ".join(cleaned.split())
+    if re.fullmatch(r"(hola|holi|buenas|buenos días|buenos dias|buenas tardes|buenas noches|hey|hello)( kenneth| kenteh)?", cleaned):
+        return "¡Hola! Soy Kenneth. ¿Qué te gustaría analizar de tu negocio?"
+    if cleaned in {"gracias", "muchas gracias", "perfecto gracias"}:
+        return "¡Con gusto! ¿En qué más puedo ayudarte?"
+    return None
+
+
+def _attribution_followup(question: str, history: list[dict]) -> str | None:
+    text = question.lower()
+    if not any(term in text for term in ("producto", "artículo", "articulo", "item", "ítem")):
+        return None
+    if not any(term in text for term in ("diferencia", "cambio", "incremento", "aumento", "marcó", "marco", "contribuy", "explica")):
+        return None
+    previous = []
+    for item in reversed(history[-10:]):
+        if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+            continue
+        message = str(item.get("content") or item.get("text") or "").strip()
+        if message:
+            previous.insert(0, message)
+        if len(previous) >= 4:
+            break
+    return " ".join(previous + [question])
+
+
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
     intent_text = _intent_text(question, history)
+    conversational = _conversation_reply(question)
+    if conversational:
+        return {"question": question, "mode": "conversation", "sql": None,
+                "data": [], "answer": conversational,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
+    attribution = _attribution_followup(question, history)
 
     try:
-        comparison = _compare_months(question, history)
+        comparison = None if attribution else _compare_months(question, history)
     except Exception:
         comparison = None
     if comparison:
@@ -454,7 +489,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             }
 
     sql_started = perf_counter()
-    sql = generate_sql(question, history=history)
+    sql = generate_sql(attribution or question, history=history)
     sql_generation_seconds = perf_counter() - sql_started
 
     query_started = perf_counter()
