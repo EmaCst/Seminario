@@ -211,4 +211,19 @@ def route_request(question: str, history: list[dict] | None = None) -> Intent:
     if sales and len(direct_months) == 1 and not product and not customer:
         return Intent("monthly_total", metric, tuple(direct_months), year, question)
 
+    if elliptical and history:
+        for previous in reversed(_user_messages(history)[-6:]):
+            previous_text = normalize(previous)
+            if _is_greeting(previous_text):
+                break
+            previous_intent = route_request(previous, [])
+            if previous_intent.kind == "forecast" and re.search(r"\b\d{1,2}\s+mes", text):
+                return Intent("forecast", resolved_question=question)
+            if previous_intent.kind in {"sql", "monthly_total", "monthly_compare",
+                                        "product_top", "customer_top", "product_attribution"}:
+                context = (f"Consulta de referencia: {previous}\n"
+                           f"Consulta actual: {question}\n"
+                           "Responde solo a la consulta actual usando la referencia "
+                           "cuando corresponda, sin repetir el resultado previo.")
+                return Intent("sql", metric, tuple(direct_months), year, context)
     return Intent("sql", metric, tuple(direct_months), year, question)
