@@ -51,6 +51,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const metricEntity = relatedEntities.find((item) => item.key === metricEntityKey) || entity;
   const dimensionEntity = relatedEntities.find((item) => item.key === dimensionEntityKey) || entity;
   const needsDimension = ['bar', 'line', 'donut'].includes(visualization);
+  const metricOptions = metricEntity?.metrics?.find(field => field.key === metric)?.aggregations || [];
+  const effectiveAggregation = metric ? (metricOptions.includes(aggregation) ? aggregation : (metricOptions.includes('sum') ? 'sum' : metricOptions[0] || 'count')) : 'count';
 
   useEffect(() => {
     if (!open || !catalog) return;
@@ -82,13 +84,13 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
 
   const definition = () => ({
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
-    visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation,
+    visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation: effectiveAggregation,
     group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table, filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: 20,
   });
 
   const runPreview = async () => {
     try {
-      setLoading(true); setError('');
+      setLoading(true); setError(''); setPreview(null);
       setPreview(await previewVisualization(definition()));
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
@@ -107,7 +109,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   };
 
   const data = preview?.data || [];
-  const canPreview = entity && (!needsDimension || dimension) && (aggregation === 'count' || metric) && filters.every(f=>f.column&&f.value.trim());
+  const canPreview = entity && (!needsDimension || dimension) && (effectiveAggregation === 'count' || metric) && filters.every(f=>f.column&&f.value.trim());
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-[26px] border shadow-2xl" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
@@ -120,7 +122,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           <Field label={language === 'es' ? '¿Qué quieres analizar?' : 'What do you want to analyze?'} colors={colors}><select value={entityKey} onChange={(e)=>setEntityKey(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(catalog?.entities||[]).map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>
           <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-5 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>setVisualization(item.key)} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
           <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>
-          {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={aggregation} onChange={(e)=>setAggregation(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(metricEntity?.metrics?.find(f=>f.key===metric)?.aggregations||[]).filter(a=>a!=='count').map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
+          {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>setAggregation(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
           {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>setDimension(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
             <button type="button" onClick={()=>setShowFilters(!showFilters)} className="flex w-full justify-between text-sm font-bold" style={{color:colors.text}}><span>{language==='es'?'Filtros (opcional)':'Filters (optional)'} ({filters.length})</span><span>{showFilters?'−':'+'}</span></button>
