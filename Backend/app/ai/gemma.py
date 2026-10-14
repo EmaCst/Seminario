@@ -39,7 +39,7 @@ def _active_dialect() -> str:
 
 
 def _dialect_label() -> str:
-    return "PostgreSQL" if _active_dialect() == "postgresql" else "Microsoft SQL Server"
+    return {"postgresql": "PostgreSQL", "excel": "SQLite (datos importados de Excel)", "sqlserver": "Microsoft SQL Server"}.get(_active_dialect(), "SQL")
 
 
 def _history_text(history: list[dict] | None, limit: int = 6) -> str:
@@ -89,6 +89,12 @@ def _dialect_rules() -> str:
             "Motor PostgreSQL: usa LIMIT, nunca TOP; usa EXTRACT/DATE_TRUNC cuando corresponda. "
             "Puedes usar WITH, LAG, ROW_NUMBER, RANK y otras funciones de ventana nativas de PostgreSQL."
         )
+    if _active_dialect() == "excel":
+        return (
+            "Motor SQLite para datos de Excel: usa LIMIT, nunca TOP; usa strftime para agrupar fechas, "
+            "DATE para fechas y COALESCE cuando sea necesario. No uses DATE_TRUNC, EXTRACT, "
+            "DATEPART, YEAR, MONTH, ni funciones exclusivas de SQL Server o PostgreSQL."
+        )
     return (
         "Motor Microsoft SQL Server: usa TOP, nunca LIMIT; usa funciones de fecha compatibles con SQL Server. "
         "Puedes usar WITH, LAG, ROW_NUMBER, RANK y otras funciones de ventana compatibles con SQL Server."
@@ -101,6 +107,10 @@ def _sql_system_prompt() -> str:
         "sin Markdown ni explicaciones. Puede comenzar con SELECT o con WITH si necesitas CTEs. "
         "Usa exclusivamente tablas, columnas y relaciones presentes en el esquema. No inventes nada. "
         "Respeta PK/FK y usa alias descriptivos para TODAS las métricas calculadas. "
+        "Si las relaciones no son explícitas, solo usa un JOIN cuando los identificadores del esquema "
+        "permitan una correspondencia clara. Evita multiplicar totales al unir tablas de detalle "
+        "con cabeceras: agrega al nivel correcto antes de unir. "
+        "No confundas COUNT(*) con SUM de importes ni COUNT de registros con COUNT DISTINCT de entidades. "
         "La PREGUNTA ACTUAL tiene prioridad; el historial solo sirve para resolver referencias como 'y eso', "
         "'el anterior', 'ese cliente' o 'cuánto representan'. "
         "Interpreta 'cuántas ventas hay' como cantidad de transacciones/filas de ventas con COUNT, "
@@ -212,7 +222,13 @@ SQL EJECUTADO:
             "Responde TODAS las partes de la pregunta usando exclusivamente los resultados recibidos. "
             "Puedes hacer aritmética simple entre valores que sí aparecen en los resultados, por ejemplo diferencias "
             "entre dos posiciones o dos meses. No inventes causas, datos, tendencias ni registros ausentes. "
-            "Si falta algún valor necesario, dilo claramente. No muestres SQL salvo que lo pidan."
+            "Si falta algún valor necesario, dilo claramente. No muestres SQL salvo que lo pidan. "
+            "Distingue conteos, sumas, promedios y porcentajes, indicando su unidad cuando esté disponible. "
+            "Si hay cero filas, indica que no se encontraron registros; no lo conviertas en cero ventas. "
+            "Si hay valores nulos, no los interpretes como cero. "
+            "No atribuyas causas ni recomendaciones específicas sin evidencia. "
+            "Cuando compares periodos, menciona los periodos y la base de comparación. "
+            "No afirmes que una correlación implica causalidad."
         ),
         temperature=0.1,
         num_predict=220,
