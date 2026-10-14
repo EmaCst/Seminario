@@ -4,6 +4,7 @@ from time import perf_counter
 from app.ai.gemma import explain_results, generate_sql, repair_sql
 from app.services.assistant_router import route_request
 from app.services.assistant_analytics import run_verified_analytics
+from app.services.assistant_domain_analytics import run_domain_analytics
 from app.analysis.adaptive_dashboard_service import _monthly_count
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.query_executor import execute_query
@@ -428,8 +429,19 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
                 "data": [], "answer": conversational,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
 
-    if intent.kind in {"monthly_total", "monthly_compare", "product_top",
-                       "product_attribution", "customer_top"}:
+    # Resolve the actual business domain before selecting a retail-only
+    # shortcut. Otherwise "producto" or "ventas" in another sector could
+    # silently be interpreted as retail revenue.
+    try:
+        domain_answer, active_domain = run_domain_analytics(question, history)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Domain routing/analytics failed")
+        domain_answer, active_domain = None, None
+
+    retail_intents = {"monthly_total", "monthly_compare", "product_top",
+                      "product_attribution", "customer_top"}
+    if intent.kind in retail_intents and active_domain == "retail":
         try:
             verified = run_verified_analytics(intent)
         except Exception:
@@ -441,6 +453,10 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
                            "Comprueba la conexión y las relaciones del modelo de datos."),
             }
         return {"question": question, **verified,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
+
+    if domain_answer is not None:
+        return {"question": question, **domain_answer,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
 
     contextual_question = intent.resolved_question or question
