@@ -49,6 +49,15 @@ class RouterTests(unittest.TestCase):
         intent = route_request("ventas de junio", history)
         self.assertIsNone(intent.year)
 
+    def test_followup_changes_period_not_measure(self):
+        history = [{"role": "user", "content": "producto más vendido de junio"}]
+        intent = route_request("¿y en febrero?", history)
+        self.assertEqual("product_top", intent.kind)
+        self.assertEqual("units", intent.metric)
+        self.assertEqual((2,), intent.months)
+        history = [{"role": "user", "content": "pronostica las ventas de los próximos meses"}]
+        self.assertEqual("forecast", route_request("¿y para 6 meses?", history).kind)
+
     def test_top_n_count_is_bounded(self):
         self.assertEqual(3, route_request("top 3 productos").limit)
         self.assertEqual(20, route_request("top 99 clientes").limit)
@@ -105,6 +114,11 @@ class AnalyticsTests(unittest.TestCase):
         count = analytics.run_verified_analytics(route_request("cuántas ventas en junio"))
         self.assertIn("500.00", amount["answer"])
         self.assertIn("2 transacciones", count["answer"])
+
+    def test_units_sold_are_not_invoice_counts(self):
+        result = analytics.run_verified_analytics(route_request("unidades vendidas de junio"))
+        self.assertIn("5", result["answer"])
+        self.assertIn("unidades vendidas", result["answer"])
 
     def test_month_difference(self):
         result = analytics.run_verified_analytics(route_request("diferencia entre ventas junio y febrero"))
