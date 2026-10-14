@@ -73,14 +73,22 @@ class DatabaseManager:
 
     def configure(self, server: str, database: str, username: str | None = None, password: str | None = None, driver: str = "ODBC Driver 18 for SQL Server") -> dict:
         new_engine = self._build_sqlserver_engine(server, database, username, password, driver)
-        with new_engine.connect() as connection:
-            row = connection.exec_driver_sql("SELECT DB_NAME() AS database_name, @@SERVERNAME AS server_name").mappings().first()
+        try:
+            with new_engine.connect() as connection:
+                row = connection.exec_driver_sql("SELECT DB_NAME() AS database_name, @@SERVERNAME AS server_name").mappings().first()
+        except Exception:
+            new_engine.dispose()
+            raise
         return self._activate(new_engine, {"provider": "sqlserver", "server": server, "database": row["database_name"] if row else database, "username": username, "password": password, "driver": driver, "auth": "sql" if username else "windows"})
 
     def configure_postgresql(self, host: str, database: str, username: str, password: str | None = None, port: int = 5432, sslmode: str = "prefer") -> dict:
         new_engine = self._build_postgresql_engine(host, database, username, password, port, sslmode)
-        with new_engine.connect() as connection:
-            row = connection.exec_driver_sql("SELECT current_database() AS database_name, current_user AS current_user").mappings().first()
+        try:
+            with new_engine.connect() as connection:
+                row = connection.exec_driver_sql("SELECT current_database() AS database_name, current_user AS current_user").mappings().first()
+        except Exception:
+            new_engine.dispose()
+            raise
         return self._activate(new_engine, {"provider": "postgresql", "host": host, "port": port, "database": row["database_name"] if row else database, "username": username, "password": password, "sslmode": sslmode, "auth": "password"})
 
     def configure_excel(self, engine: Engine, filename: str, tables: list[str], rows: int, database_path: str) -> dict:
