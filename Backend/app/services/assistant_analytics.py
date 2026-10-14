@@ -261,6 +261,8 @@ def _product_attribution(intent: Intent, model: dict) -> dict:
     if len(intent.months) != 2:
         return _response("¿Qué dos meses deseas comparar para identificar los productos que contribuyeron a la diferencia?")
     sales = model.get("sales") or {}
+    if not sales.get("total_column"):
+        return _response("No hay una métrica monetaria identificada en la cabecera de ventas.")
     series = _monthly_series(sales, "amount")
     year = _period_year(series, intent.months, intent.year)
     if year is None:
@@ -271,22 +273,37 @@ def _product_attribution(intent: Intent, model: dict) -> dict:
         if built is None:
             return _response("No puedo atribuir la diferencia monetaria a productos: necesito el detalle con importes históricos, sus relaciones con productos y ventas, y la fecha de venta.")
         sql, params = built
-        values[month] = {str(row["entity"]): float(row["value"]) for row in _query(sql, params)}
+        # The stable primary-key identifier prevents different products with the
+        # same display name from being merged into a fictitious item.
+        values[month] = {(row["entity_id"], str(row["entity"])): float(row["value"])
+                         for row in _query(sql, params)}
     first, second = intent.months
     all_products = set(values[first]) | set(values[second])
     if not all_products:
         return _response("No encontré ventas detalladas por producto para esos meses.")
-    deltas = [{"product": name, "first": values[first].get(name, 0.0),
-               "second": values[second].get(name, 0.0),
-               "difference": values[first].get(name, 0.0) - values[second].get(name, 0.0)}
-              for name in all_products]
-    deltas.sort(key=lambda row: abs(row["difference"]), reverse=True)
+    deltas = [{"product_id": key[0], "product": key[1],
+               "first": values[first].get(key, 0.0),
+               "second": values[second].get(key, 0.0),
+               "difference": values[first].get(key, 0.0) - values[second].get(key, 0.0)}
+              for key in all_products]
+    header = {(row["year"], row["month"]): row["total"] for row in series}
+    overall = header[(year, first)] - header[(year, second)]
+    # A decrease is explained by negative contributions; an increase by
+    # positive contributions, not by the largest absolute negative movement.
+    deltas.sort(key=lambda row: row["difference"], reverse=overall >= 0)
     biggest = deltas[0]
-    direction = "mayor" if biggest["difference"] >= 0 else "menor"
-    answer = (f"Al comparar el importe por producto entre {MONTH_LABELS[first]} y {MONTH_LABELS[second]} de {year}, "
-              f"{biggest['product']} registró la mayor variación absoluta: "
-              f"{_number(abs(biggest['difference']), money=True)} ({direction} en {MONTH_LABELS[first]}). "
-              "Es una contribución observada en el detalle de ventas, no una causa demostrada de la variación total.")
+    if (overall >= 0 and biggest["difference"] <= 0) or (overall < 0 and biggest["difference"] >= 0):
+        return _response("La evolución monetaria del detalle no permite identificar un producto que contribuya en la dirección del cambio total.", deltas[:10])
+    direction = "aumentó" if biggest["difference"] > 0 else "disminuyó"
+    answer = (f"Al comparar el importe vendido por producto entre {MONTH_LABELS[first]} y {MONTH_LABELS[second]} de {year}, "
+              f"{biggest['product']} fue el producto con mayor contribución en la dirección de la diferencia: "
+              f"su importe {direction} {_number(abs(biggest['difference']), money=True)}. "
+              "Es una contribución observada en ventas, no una causa demostrada.")
+    detail_change = sum(row["difference"] for row in deltas)
+    if abs(detail_change - overall) > 0.01:
+        answer += (" Advertencia: la diferencia acumulada del detalle no coincide con la diferencia "
+                   "de las cabeceras; podrían existir descuentos, impuestos u otros ajustes.")
+    deltas.sort(key=lambda row: abs(row["difference"]), reverse=True)
     return _response(answer, deltas[:10])
 
 
