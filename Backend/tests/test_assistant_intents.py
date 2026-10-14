@@ -11,6 +11,7 @@ from app.services.assistant_service import (
 class AssistantIntentTests(unittest.TestCase):
     def test_greeting_does_not_require_database(self):
         self.assertIn("Hola", _conversation_reply("hola"))
+        self.assertIsNotNone(_conversation_reply("hola kenneth"))
         self.assertIsNone(_conversation_reply("hola, dime las ventas"))
 
     def test_product_attribution_retains_context(self):
