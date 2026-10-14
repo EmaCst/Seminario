@@ -385,11 +385,15 @@ def find_column(table: TableSchema, aliases: tuple[str, ...]) -> str | None:
             if normalize_name(column.name) == alias:
                 return column.name
 
+    # Avoid matching generic tokens such as "id" inside foreign keys or
+    # "fecha" inside unrelated date columns. Prefer unique, meaningful matches.
     for alias in normalized_aliases:
-        alias_tokens = tokens(alias)
-        for column in table.columns:
-            if alias_tokens & tokens(column.name):
-                return column.name
+        if len(alias) < 4 or alias in {"id", "name", "date", "code", "key"}:
+            continue
+        candidates = [column.name for column in table.columns
+                      if alias in tokens(column.name)]
+        if len(candidates) == 1:
+            return candidates[0]
 
     return None
 
@@ -449,11 +453,19 @@ def build_semantic_model(
 
     entities: dict[str, dict] = {}
 
+    used_tables: set[str] = set()
     for role_name, role_profile in ROLE_PROFILES[domain].items():
         match = find_best_table_for_role(schema, role_profile)
         if not match:
             continue
+        # Do not assign the same physical table to unrelated business roles.
+        # Ambiguous matches remain available as alternatives, not asserted facts.
+        if match["table"] in used_tables:
+            continue
+        if match["ambiguous"] and match["confidence"] == "low":
+            continue
 
+        used_tables.add(match["table"])
         table = schema.tables[match["table"]]
         entities[role_name] = {
             "table": match["table"],
