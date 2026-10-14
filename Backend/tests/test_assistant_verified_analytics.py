@@ -116,6 +116,52 @@ class AnalyticsTests(unittest.TestCase):
         self.assertIn("Pan", result["answer"])  # +210 vs Café +190
         self.assertEqual(2, len(result["data"]))
 
+    def test_ranking_top_n_and_month_filter(self):
+        ranked = analytics.run_verified_analytics(route_request("top 2 productos de junio"))
+        self.assertEqual(2, len(ranked["data"]))
+        self.assertIn("Café", ranked["answer"])
+        customers = analytics.run_verified_analytics(route_request("top 2 clientes"))
+        self.assertEqual(2, len(customers["data"]))
+        monthly = analytics.run_verified_analytics(route_request("mejor cliente de junio"))
+        self.assertIn("290.00", monthly["answer"])
+        self.assertNotIn("390.00", monthly["answer"])
+
+    def test_conversation_end_to_end_never_calls_gemma_for_supported_intents(self):
+        from app.services.assistant_service import ask_database
+
+        with patch("app.services.assistant_service.generate_sql",
+                   side_effect=AssertionError("This intent must not reach Gemma")):
+            greeting = ask_database("hola keneth")
+            self.assertEqual("conversation", greeting["mode"])
+
+            june = ask_database("dime las ventas de junio")
+            self.assertIn("500.00", june["answer"])
+
+            comparison = ask_database("diferencia entre ventas de junio y febrero")
+            self.assertIn("400.00", comparison["answer"])
+
+            history = [
+                {"role": "user", "content": "diferencia entre ventas de junio y febrero"},
+                {"role": "assistant", "content": comparison["answer"]},
+            ]
+            followup = ask_database("y cuál fue el producto que marcó esa diferencia?", history)
+            self.assertIn("Pan", followup["answer"])
+
+            product = ask_database("dime el producto más vendido de junio")
+            self.assertIn("Café", product["answer"])
+
+            customer = ask_database("dime nuestro meyor cliente")
+            self.assertIn("Ana", customer["answer"])
+
+    def test_analytic_failure_does_not_fall_back_to_unrelated_sql(self):
+        from app.services.assistant_service import ask_database
+        with patch.object(analytics, "_query", side_effect=RuntimeError("database offline")):
+            with patch("app.services.assistant_service.generate_sql",
+                       side_effect=AssertionError("Do not fabricate another query")):
+                result = ask_database("dime las ventas de junio")
+        self.assertEqual("error", result["mode"])
+        self.assertIn("No pude consultar", result["answer"])
+
     def test_missing_relation_is_not_fabricated(self):
         bad = {key: dict(value) for key, value in SEMANTIC.items()}
         bad["sales"].pop("customer_relationship")
