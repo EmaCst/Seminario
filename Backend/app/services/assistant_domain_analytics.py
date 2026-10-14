@@ -190,7 +190,9 @@ def classify_domain_question(
     if role is None and ellipsis:
         for message in reversed(previous[-5:]):
             context = normalize(message)
-            if context in {"hola", "buenas", "gracias"}:
+            if (context in {"hola", "buenas", "gracias", "adios"}
+                    or context.startswith(("hola ", "buenos dias", "buenas tardes",
+                                           "buenas noches", "muchas gracias"))):
                 break
             role = _matched_role(context, domain)
             if role:
