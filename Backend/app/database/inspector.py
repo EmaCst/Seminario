@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 
 from sqlalchemy import inspect
 
@@ -14,6 +16,63 @@ from app.database.schema import (
 IGNORED_TABLES = {
     "sysdiagrams"
 }
+
+
+
+def _normalized_name(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value.lower())
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]", "", value)
+
+
+def _table_aliases(name: str) -> set[str]:
+    value = _normalized_name(name)
+    aliases = {value}
+    if value.endswith("ies"):
+        aliases.add(value[:-3] + "y")
+    if value.endswith("es"):
+        aliases.add(value[:-2])
+    if value.endswith("s"):
+        aliases.add(value[:-1])
+    return aliases
+
+
+def _infer_identifier_relationships(schema: DatabaseSchema) -> None:
+    """Infer only unambiguous identifier-to-primary-key links.
+
+    These are suggestions for read-only analysis; no database constraints are changed.
+    Avoid guessing relationships to non-unique columns or ambiguous parent tables.
+    """
+    existing = {(rel.table, rel.column) for rel in schema.relationships}
+    parents = {}
+    for table in schema.tables.values():
+        if len(table.primary_key) != 1:
+            continue
+        pk = table.primary_key[0]
+        aliases = _table_aliases(table.name)
+        for alias in aliases:
+            parents.setdefault(alias, []).append((table.name, pk))
+
+    for table in schema.tables.values():
+        for column in table.columns:
+            if (table.name, column.name) in existing or column.name in table.primary_key:
+                continue
+            normalized = _normalized_name(column.name)
+            if not normalized.endswith("id") or len(normalized) <= 2:
+                continue
+            prefix = normalized[:-2]
+            candidates = set(parents.get(prefix, []))
+            candidates.discard((table.name, column.name))
+            if len(candidates) != 1:
+                continue
+            parent_table, parent_pk = next(iter(candidates))
+            if parent_table == table.name:
+                continue
+            schema.relationships.append(RelationshipSchema(
+                table=table.name, column=column.name,
+                references_table=parent_table, references_column=parent_pk,
+            ))
+            existing.add((table.name, column.name))
 
 
 def inspect_database() -> DatabaseSchema:
@@ -99,6 +158,7 @@ def inspect_database() -> DatabaseSchema:
                     )
                 )
 
+    _infer_identifier_relationships(schema)
     return schema
 
 
