@@ -218,7 +218,10 @@ def classify_domain_question(
                   "|".join(MONTH_LABELS.values()) + r")\b", text)
             or any(term in text for term in ("hoy", "ayer", "manana", "esta semana",
                                                "semana pasada", "este ano", "ano pasado",
-                                               "trimestre", "semestre", "ultimos"))):
+                                               "trimestre", "semestre", "ultimos",
+                                               "edad", "anos", "nacidos", "desde",
+                                               "hasta", "antes", "despues",
+                                               "mas de", "menos de"))):
         return None
     match = re.search(r"\b(20\d{2})\b", text)
     year = int(match.group(1)) if match else None
@@ -260,7 +263,9 @@ def classify_domain_question(
         return None  # Qualifiers might require grouping/filtering by another column.
     if any(term in text for term in ("del doctor", "del medico", "del paciente",
                                     "del cliente", "por cliente", "del alumno",
-                                    "del estudiante", "de una sucursal", "por sucursal")):
+                                    "del estudiante", "de una sucursal", "por sucursal",
+                                    "del hotel", "en el hotel", "de la sucursal",
+                                    "en la sucursal")):
         return None
 
     if peak:
@@ -291,6 +296,8 @@ def classify_domain_question(
     if metric == "amount" and (domain, role) not in MONETARY_ROLES:
         return None
     comparing = any(term in text for term in compare_terms)
+    if len(months) == 2 and not comparing:
+        return None  # Two separately requested periods are not a lifetime total.
     if comparing and len(months) == 2:
         return DomainQuery(domain, role, "compare", tuple(months), year, metric)
     if comparing:
