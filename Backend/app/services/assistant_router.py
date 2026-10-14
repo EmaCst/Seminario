@@ -183,6 +183,21 @@ def route_request(question: str, history: list[dict] | None = None) -> Intent:
     if any(term in text for term in ("anomalia", "anomalo", "atipico", "inusual", "outlier")):
         return Intent("anomaly", resolved_question=question)
 
+    # A short "¿y en febrero?" inherits the previous *type of analysis*,
+    # never the preceding result. This preserves units, money and entity type.
+    if direct_months and elliptical and not product and not customer:
+        for previous in reversed(_user_messages(history)[-6:]):
+            previous_text = normalize(previous)
+            if _is_greeting(previous_text):
+                break
+            previous_intent = route_request(previous, [])
+            if previous_intent.kind in {"monthly_total", "product_top", "customer_top"}:
+                return Intent(previous_intent.kind, previous_intent.metric,
+                              tuple(direct_months), year, question,
+                              previous_intent.limit)
+            if previous_intent.kind in {"forecast", "anomaly"}:
+                break
+
     sales = any(term in text for term in ("venta", "vendido", "facturacion", "ingreso"))
     if compare and not product and not customer:
         months = direct_months[:]
