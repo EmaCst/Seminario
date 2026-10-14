@@ -8,7 +8,7 @@ from sklearn.linear_model import LinearRegression
 
 from app.analysis.adaptive_dashboard_service import _monthly_count, DOMAIN_TREND_PRIORITY
 from app.services.assistant_domain_analytics import (
-    MONETARY_ROLES, ROLE_LABELS, _matched_role, _measure, _query_series,
+    ROLE_WORDS, ROLE_LABELS, _matched_role, _measure, _query_series,
 )
 from app.services.assistant_router import normalize
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
@@ -35,6 +35,16 @@ def _find_best_time_series(
     entities = semantic.get("entities") or {}
     normalized = normalize(question)
     requested_role = _matched_role(normalized, domain) if question else None
+    if question and not requested_role:
+        # Mention of an entity from another domain must never pick an
+        # unrelated default time series (e.g. "citas" in an HR database).
+        foreign = [role for other_domain in ROLE_WORDS if other_domain != domain
+                   for role in [_matched_role(normalized, other_domain)] if role]
+        if foreign:
+            raise ValueError(
+                "La entidad solicitada no está identificada de forma única en "
+                "el dominio activo. Especifica qué indicador deseas analizar."
+            )
     if requested_role and requested_role not in entities:
         raise ValueError(f"No encontré una tabla de {ROLE_LABELS.get(requested_role, requested_role)} identificada con suficiente certeza.")
 
