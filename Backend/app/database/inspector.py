@@ -58,9 +58,13 @@ def _infer_identifier_relationships(schema: DatabaseSchema) -> None:
             if (table.name, column.name) in existing or column.name in table.primary_key:
                 continue
             normalized = _normalized_name(column.name)
-            if not normalized.endswith("id") or len(normalized) <= 2:
+            # Both producto_id and id_producto are common business schemas.
+            if normalized.endswith("id") and len(normalized) > 2:
+                prefix = normalized[:-2]
+            elif normalized.startswith("id") and len(normalized) > 2:
+                prefix = normalized[2:]
+            else:
                 continue
-            prefix = normalized[:-2]
             candidates = set(parents.get(prefix, []))
             candidates.discard((table.name, column.name))
             if len(candidates) != 1:
