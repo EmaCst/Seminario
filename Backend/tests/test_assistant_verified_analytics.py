@@ -184,7 +184,11 @@ class AnalyticsTests(unittest.TestCase):
         with patch.object(analytics, "_query", side_effect=RuntimeError("database offline")):
             with patch("app.services.assistant_service.generate_sql",
                        side_effect=AssertionError("Do not fabricate another query")):
-                result = ask_database("dime las ventas de junio")
+                # The simulated failure must be logged, but it should not print a
+                # confusing stack trace during a successful regression test.
+                with patch("logging.Logger.exception") as logged_exception:
+                    result = ask_database("dime las ventas de junio")
+        logged_exception.assert_called_once()
         self.assertEqual("error", result["mode"])
         self.assertIn("No pude consultar", result["answer"])
 
