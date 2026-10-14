@@ -330,11 +330,69 @@ def _monthly_sales_answer(question: str) -> dict | None:
     return {"mode": "analytics", "sql": None, "data": matching, "answer": answer}
 
 
+
+def _compare_months(question: str, history: list[dict]) -> dict | None:
+    if not any(t in question.lower() for t in ("diferencia", "compar", "entre los dos", "variación", "variacion")):
+        return None
+    def months(text):
+        return [number for _, number in sorted((match.start(), number)
+            for name, number in MONTH_NAMES.items()
+            for match in re.finditer(r"\b" + name + r"\b", text.lower()))]
+    found = months(question)
+    for item in reversed(history[-10:]):
+        if len(set(found)) >= 2:
+            break
+        if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+            continue
+        for month in reversed(months(str(item.get("content") or item.get("text") or ""))):
+            if month not in found:
+                found.insert(0, month)
+    found = list(dict.fromkeys(found))
+    if len(found) != 2:
+        return None
+    from app.analysis.dashboard_service import get_sales_by_month
+    report = get_sales_by_month()
+    if not report.get("available"):
+        return None
+    rows = report.get("data") or []
+    year_match = re.search(r"\b(20\d{2})\b", question)
+    year = int(year_match.group(1)) if year_match else max(
+        (int(row["year"]) for row in rows if int(row["month"]) in found), default=None)
+    if year is None:
+        return None
+    totals = {}
+    for month in found:
+        matching = [row for row in rows if int(row["year"]) == year and int(row["month"]) == month]
+        if not matching:
+            return None
+        totals[month] = sum(float(row["total"]) for row in matching)
+    first, second = found
+    name1 = next(name for name, value in MONTH_NAMES.items() if value == first)
+    name2 = next(name for name, value in MONTH_NAMES.items() if value == second)
+    diff = totals[first] - totals[second]
+    return {
+        "mode": "analytics", "sql": None,
+        "data": [{"year": year, "month": month, "total": totals[month]} for month in found],
+        "answer": (f"En {name1} de {year} las ventas fueron {_format_value(totals[first])} "
+                   f"y en {name2} fueron {_format_value(totals[second])}. "
+                   f"La diferencia fue {_format_value(abs(diff))}; "
+                   f"{name1 if diff >= 0 else name2} tuvo mayores ventas."),
+    }
+
+
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
     intent_text = _intent_text(question, history)
+
+    try:
+        comparison = _compare_months(question, history)
+    except Exception:
+        comparison = None
+    if comparison:
+        return {"question": question, **comparison,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
 
     if any(re.search(r"\b" + month + r"\b", question.lower()) for month in MONTH_NAMES):
         try:
