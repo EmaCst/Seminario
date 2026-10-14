@@ -264,6 +264,8 @@ def _fast_answer(question: str, results: list[dict]) -> str | None:
         raw_key = str(key or "").strip()
         key_text = raw_key.lower().replace("_", " ")
         q = question.lower()
+        if value is None:
+            return "La consulta no devolvió un valor para ese indicador. Puede deberse a que no hay registros coincidentes o a valores faltantes."
         value_text = _format_value(value)
 
         if any(term in q for term in ("cuántas ventas", "cuantas ventas", "cantidad de ventas", "número de ventas", "numero de ventas")):
@@ -287,11 +289,61 @@ def _fast_answer(question: str, results: list[dict]) -> str | None:
     return ". ".join(parts) + "."
 
 
+
+MONTH_NAMES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5,
+    "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9,
+    "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+
+
+def _monthly_sales_answer(question: str) -> dict | None:
+    """Answer an explicit monthly sales question using the same source as the dashboard."""
+    normalized = question.lower()
+    if not any(term in normalized for term in ("venta", "vendido", "facturac", "ingreso")):
+        return None
+    month = next((number for name, number in MONTH_NAMES.items()
+                  if re.search(r"\\b" + name + r"\\b", normalized)), None)
+    if month is None:
+        return None
+    from app.analysis.dashboard_service import get_sales_by_month
+    report = get_sales_by_month()
+    if not report.get("available"):
+        return None
+    rows = report.get("data") or []
+    year_match = re.search(r"\\b(20\\d{2})\\b", normalized)
+    year = int(year_match.group(1)) if year_match else (
+        max((int(row["year"]) for row in rows if int(row["month"]) == month), default=None)
+    )
+    if year is None:
+        return {
+            "mode": "analytics", "sql": None, "data": [],
+            "answer": "No hay registros de ventas disponibles para ese mes.",
+        }
+    matching = [row for row in rows if int(row["month"]) == month and int(row["year"]) == year]
+    month_name = next(name for name, number in MONTH_NAMES.items() if number == month)
+    if not matching:
+        answer = f"No hay registros de ventas para {month_name} de {year} en los datos consultados."
+    else:
+        total = sum(float(row["total"]) for row in matching)
+        answer = f"El monto total de ventas de {month_name} de {year} fue {_format_value(total)}."
+    return {"mode": "analytics", "sql": None, "data": matching, "answer": answer}
+
+
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
     intent_text = _intent_text(question, history)
+
+    if any(re.search(r"\\b" + month + r"\\b", question.lower()) for month in MONTH_NAMES):
+        try:
+            monthly_answer = _monthly_sales_answer(question)
+        except Exception:
+            monthly_answer = None  # Fall back to general SQL generation.
+        if monthly_answer:
+            return {"question": question, **monthly_answer,
+                    "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
 
     if _is_prediction_request(intent_text):
         ml_started = perf_counter()
