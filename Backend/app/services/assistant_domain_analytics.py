@@ -212,8 +212,8 @@ def classify_domain_question(
         return None
     # A single-table shortcut may only handle a whole month, not a day or a
     # different time window. Let the general SQL planner handle specific dates.
-    if (re.search(r"\\b(?:[1-9]|[12][0-9]|3[01])\\s+de\\s+(?:" +
-                  "|".join(MONTH_LABELS.values()) + r")\\b", text)
+    if (re.search(r"\b(?:[1-9]|[12][0-9]|3[01])\s+de\s+(?:" +
+                  "|".join(MONTH_LABELS.values()) + r")\b", text)
             or any(term in text for term in ("hoy", "ayer", "manana", "esta semana",
                                                "semana pasada", "este ano", "ano pasado",
                                                "trimestre", "semestre", "ultimos"))):
