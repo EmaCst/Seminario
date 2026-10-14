@@ -303,7 +303,7 @@ def _monthly_sales_answer(question: str) -> dict | None:
     if not any(term in normalized for term in ("venta", "vendido", "facturac", "ingreso")):
         return None
     month = next((number for name, number in MONTH_NAMES.items()
-                  if re.search(r"\\b" + name + r"\\b", normalized)), None)
+                  if re.search(r"\b" + name + r"\b", normalized)), None)
     if month is None:
         return None
     from app.analysis.dashboard_service import get_sales_by_month
@@ -311,7 +311,7 @@ def _monthly_sales_answer(question: str) -> dict | None:
     if not report.get("available"):
         return None
     rows = report.get("data") or []
-    year_match = re.search(r"\\b(20\\d{2})\\b", normalized)
+    year_match = re.search(r"\b(20\d{2})\b", normalized)
     year = int(year_match.group(1)) if year_match else (
         max((int(row["year"]) for row in rows if int(row["month"]) == month), default=None)
     )
@@ -336,7 +336,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
     history = history or []
     intent_text = _intent_text(question, history)
 
-    if any(re.search(r"\\b" + month + r"\\b", question.lower()) for month in MONTH_NAMES):
+    if any(re.search(r"\b" + month + r"\b", question.lower()) for month in MONTH_NAMES):
         try:
             monthly_answer = _monthly_sales_answer(question)
         except Exception:
