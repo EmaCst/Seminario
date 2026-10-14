@@ -96,7 +96,9 @@ def _quality_from_r2(r2: float | None) -> str:
 
 
 def _format_forecast_answer(result: dict) -> str:
-    role = result.get("role", "serie")
+    from app.services.assistant_domain_analytics import ROLE_LABELS
+    role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
+    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad de registros por mes"
     forecast = result.get("forecast") or []
     r2 = result.get("r2_score")
     quality = _quality_from_r2(r2)
@@ -117,15 +119,17 @@ def _format_forecast_answer(result: dict) -> str:
     else:
         explanation = "Tómalo como una estimación orientativa basada en el historial disponible."
 
-    return f"La proyección para {role} es: {values}. {explanation}"
+    return f"La proyección de {metric} de {role} es: {values}. {explanation}"
 
 
 def _format_anomaly_answer(result: dict) -> str:
-    role = result.get("role", "serie")
+    from app.services.assistant_domain_analytics import ROLE_LABELS
+    role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
+    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad mensual de registros"
     anomalies = result.get("anomalies") or []
 
     if not anomalies:
-        return f"No encontré meses que se alejen de forma relevante del comportamiento habitual de {role}."
+        return f"No encontré meses atípicos en {metric} de {role} según el modelo utilizado."
 
     descriptions = []
     for item in anomalies:
@@ -153,7 +157,7 @@ def _format_anomaly_answer(result: dict) -> str:
         )
 
     return (
-        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {role}. "
+        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {metric} de {role}. "
         + " ".join(descriptions)
         + " Vale la pena revisar qué ocurrió en esos periodos para entender el cambio."
     )
@@ -461,10 +465,33 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
 
     contextual_question = intent.resolved_question or question
 
+    # Short follow-ups ("¿y para 6 meses?") inherit the previous request's
+    # entity, not a random temporal table with more data.
+    analysis_question = question
+    if question.strip().lower().startswith(("y ", "¿y ", "en ese ", "para ")):
+        for item in reversed(history[-10:]):
+            if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+                continue
+            previous = str(item.get("content") or item.get("text") or "").strip()
+            if _is_prediction_request(previous.lower()) or _is_anomaly_request(previous.lower()):
+                analysis_question = previous + " " + question
+                break
+
     if intent.kind == "forecast" or _is_prediction_request(intent_text):
         ml_started = perf_counter()
-        horizon = _extract_horizon(question)
-        result = forecast_next_months(horizon=horizon)
+        try:
+            horizon = _extract_horizon(question)
+            result = forecast_next_months(horizon=horizon, question=analysis_question)
+        except ValueError as exc:
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": str(exc), "performance": {
+                        "total_ms": round((perf_counter() - started) * 1000, 1)}}
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Forecast analysis failed")
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": "No pude calcular la predicción con la serie solicitada.",
+                    "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
         return {
             "question": question,
             "mode": "forecast",
@@ -479,7 +506,18 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
 
     if intent.kind == "anomaly" or _is_anomaly_request(intent_text):
         ml_started = perf_counter()
-        result = detect_monthly_anomalies()
+        try:
+            result = detect_monthly_anomalies(question=analysis_question)
+        except ValueError as exc:
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": str(exc), "performance": {
+                        "total_ms": round((perf_counter() - started) * 1000, 1)}}
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Anomaly analysis failed")
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": "No pude comprobar anomalías en la serie solicitada.",
+                    "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
         return {
             "question": question,
             "mode": "anomalies",
