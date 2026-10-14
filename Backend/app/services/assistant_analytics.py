@@ -122,14 +122,21 @@ def _monthly_answer(intent: Intent, sales: dict) -> dict:
     measure = "monto de ventas" if money else ("unidades vendidas" if intent.metric == "units" else "cantidad de ventas")
     if len(months) == 1:
         month = months[0]
-        return _response(f"El {measure} de {MONTH_LABELS[month]} de {year} fue {_number(totals[(year, month)], money=money)}"
-                         + ("." if money or intent.metric == "units" else " transacciones."), selected)
+        total_text = _number(totals[(year, month)], money=money)
+        if intent.metric == "units":
+            answer = f"En {MONTH_LABELS[month]} de {year} se vendieron {total_text} unidades."
+        elif intent.metric == "count":
+            answer = f"En {MONTH_LABELS[month]} de {year} hubo {total_text} transacciones de venta."
+        else:
+            answer = f"El monto total de ventas de {MONTH_LABELS[month]} de {year} fue {total_text}."
+        return _response(answer, selected)
     first, second = months
     first_total, second_total = totals[(year, first)], totals[(year, second)]
     difference = first_total - second_total
     larger = MONTH_LABELS[first if difference >= 0 else second]
     percentage = ((abs(difference) / second_total) * 100) if second_total else None
-    answer = (f"En {MONTH_LABELS[first]} de {year} el {measure} fue {_number(first_total, money=money)} "
+    article = "las" if intent.metric == "units" else ("la" if intent.metric == "count" else "el")
+    answer = (f"En {MONTH_LABELS[first]} de {year} {article} {measure} fue {_number(first_total, money=money)} "
               f"y en {MONTH_LABELS[second]} fue {_number(second_total, money=money)}. "
               f"La diferencia absoluta fue {_number(abs(difference), money=money)}; {larger} registró el valor mayor.")
     if percentage is not None:
