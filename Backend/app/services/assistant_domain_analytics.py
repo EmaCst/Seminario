@@ -233,6 +233,13 @@ def classify_domain_question(
     compare_terms = ("diferencia", "comparar", "comparacion", "frente a", "versus", "variacion", " vs ")
     status_terms = ("por estado", "por estatus", "distribucion por estado", "segun estado")
     rank_terms = ("top ", "mayor", "mas alta", "mas alto", "mejor", "ranking")
+    peak = (("mes" in text or "mensual" in text)
+            and any(term in text for term in ("mas", "mayor", "maximo", "pico"))
+            and any(term in text for term in ("registro", "cantidad", "numero",
+                                              "actividad", "ventas", "citas",
+                                              "reservas", "viajes", "pedidos",
+                                              "inscripciones", "pagos", "nomina",
+                                              "transacciones", "produccion")))
     status_values = ("programada", "programado", "programadas", "programados",
                      "pagada", "pagado", "pagadas", "pagados",
                      "cancelado", "cancelada", "cancelados", "canceladas",
@@ -254,6 +261,12 @@ def classify_domain_question(
                                     "del estudiante", "de una sucursal", "por sucursal")):
         return None
 
+    if peak:
+        amount = any(term in text for term in amount_terms)
+        metric = "amount" if amount else "count"
+        if metric == "amount" and (domain, role) not in MONETARY_ROLES:
+            return None
+        return DomainQuery(domain, role, "peak", (), year, metric)
     if any(term in text for term in rank_terms):
         return None  # Ranking involving joins/semantics should never degrade to COUNT.
     if any(term in text for term in ("promedio", "media", "porcentaje", "tasa", "ocupacion",
@@ -328,6 +341,37 @@ def execute_domain_question(query: DomainQuery, semantic: dict) -> dict:
     if measure is None:
         return {"mode": "analytics", "sql": None, "data": [],
                 "answer": f"No encontré un importe monetario verificable para {label}; no lo sustituiré por un conteo."}
+    if query.operation == "peak":
+        if not (entity.get("columns") or {}).get("date"):
+            return {"mode": "analytics", "sql": None, "data": [],
+                    "answer": f"No hay una columna de fecha identificada para determinar el mes de mayor actividad de {label}."}
+        monthly = _query_series(entity, measure)
+        if query.year is not None:
+            monthly = [item for item in monthly if item["year"] == query.year]
+        if not monthly:
+            return {"mode": "analytics", "sql": None, "data": [],
+                    "answer": f"No encontré una serie mensual para {label} con la métrica solicitada."}
+        highest = max(monthly, key=lambda item: (
+            item["total"], item["year"], item["month"]))
+        prev_year = highest["year"] - (1 if highest["month"] == 1 else 0)
+        prev_month = 12 if highest["month"] == 1 else highest["month"] - 1
+        previous = next((item for item in monthly if (
+            item["year"], item["month"]) == (prev_year, prev_month)), None)
+        unit = "registros" if query.metric == "count" else "de importe registrado"
+        answer = (f"El mes de mayor actividad de {label} fue "
+                  f"{MONTH_LABELS[highest['month']]} de {highest['year']}, "
+                  f"con {_number(highest['total'], money=query.metric == 'amount')} {unit}.")
+        selected = [highest]
+        if previous is None:
+            answer += (" No hay registros del mes calendario inmediatamente anterior "
+                       "para una comparación verificable.")
+        else:
+            selected.append(previous)
+            delta = highest["total"] - previous["total"]
+            answer += (f" En {MONTH_LABELS[prev_month]} de {prev_year} hubo "
+                       f"{_number(previous['total'], money=query.metric == 'amount')}; "
+                       f"la diferencia fue {_number(delta, money=query.metric == 'amount')} {unit}.")
+        return {"mode": "analytics", "sql": None, "data": selected, "answer": answer}
     if query.operation == "total":
         value = _query(f"SELECT {measure} AS total FROM {_quote(entity['table'])} t")
         total = value[0]["total"] if value else None
