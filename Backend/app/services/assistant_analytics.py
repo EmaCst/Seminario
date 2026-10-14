@@ -136,7 +136,8 @@ def _monthly_answer(intent: Intent, sales: dict) -> dict:
     larger = MONTH_LABELS[first if difference >= 0 else second]
     percentage = ((abs(difference) / second_total) * 100) if second_total else None
     article = "las" if intent.metric == "units" else ("la" if intent.metric == "count" else "el")
-    answer = (f"En {MONTH_LABELS[first]} de {year} {article} {measure} fue {_number(first_total, money=money)} "
+    verb = "fueron" if intent.metric == "units" else "fue"
+    answer = (f"En {MONTH_LABELS[first]} de {year} {article} {measure} {verb} {_number(first_total, money=money)} "
               f"y en {MONTH_LABELS[second]} fue {_number(second_total, money=money)}. "
               f"La diferencia absoluta fue {_number(abs(difference), money=money)}; {larger} registró el valor mayor.")
     if percentage is not None:
