@@ -198,7 +198,7 @@ def route_request(question: str, history: list[dict] | None = None) -> Intent:
             if previous_intent.kind in {"forecast", "anomaly"}:
                 break
 
-    sales = any(term in text for term in ("venta", "vendido", "facturacion", "ingreso"))
+    sales = any(term in text for term in ("venta", "vendid", "facturacion", "ingreso"))
     if compare and not product and not customer:
         months = direct_months[:]
         if len(months) < 2:
