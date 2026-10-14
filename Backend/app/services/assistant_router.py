@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from difflib import get_close_matches
 from dataclasses import dataclass
 
 MONTH_NAMES = {
@@ -26,7 +27,18 @@ def normalize(text: str) -> str:
         "meyor": "mejor", "mejro": "mejor", "vendio": "vendio",
         "clietne": "cliente", "produtco": "producto", "ventaz": "ventas",
     }
-    return " ".join(spelling.get(word, word) for word in words)
+    vocabulary = {"venta", "ventas", "producto", "productos", "cliente", "clientes",
+                  "compras", "comprar", "mejor", "junio", "febrero"}
+    normalized_words = []
+    for word in words:
+        if word in spelling:
+            normalized_words.append(spelling[word])
+        elif len(word) >= 5 and word not in vocabulary:
+            candidates = get_close_matches(word, vocabulary, n=1, cutoff=0.86)
+            normalized_words.append(candidates[0] if candidates and candidates[0][0] == word[0] else word)
+        else:
+            normalized_words.append(word)
+    return " ".join(normalized_words)
 
 
 def months_in(text: str) -> list[int]:
@@ -60,7 +72,7 @@ def _context_months(history: list[dict] | None, *, wanted: int) -> list[int]:
     result = []
     for previous in reversed(_user_messages(history)[-6:]):
         norm = normalize(previous)
-        if _is_greeting(norm):
+        if _is_greeting(norm) or any(term in norm for term in ("predic", "pronostic", "anomalia")):
             break
         # Do not borrow periods from a different business topic.
         if not any(term in norm for term in ("venta", "mes", "diferencia", "producto",
@@ -126,17 +138,21 @@ def route_request(question: str, history: list[dict] | None = None) -> Intent:
         return Intent("conversation", resolved_question=question)
 
     direct_months = months_in(question)
-    year = _last_year(question, history) if direct_months or "mes" in text or "diferencia" in text else None
+    explicitly_mentions_year = bool(re.search(r"\b20\d{2}\b", text))
+    elliptical = text.startswith(("y ", "ese ", "esa ", "esos ", "esas ", "del mismo "))
+    year = (_last_year(question, history) if explicitly_mentions_year or elliptical or not direct_months else None)
     metric = _metric(text)
     product = any(term in text.split() for term in ("producto", "productos", "articulo",
                                                      "articulos", "item", "items"))
     customer = any(term in text.split() for term in ("cliente", "clientes", "comprador",
                                                       "compradores"))
     compare = any(term in text for term in ("diferencia", "compar", "variacion",
-                                             "entre los dos", "entre ambos", "frente a"))
+                                             "entre los dos", "entre ambos", "frente a",
+                                             " vs ", "versus", "contra", "respecto a"))
     ranking = any(term in text for term in ("mas vendido", "mejor", "mayor", "top",
                                              "ranking", "mas compra", "mas gasto",
-                                             "mas ventas", "mas unidades"))
+                                             "mas ventas", "mas unidades", "mas dinero",
+                                             "mas compro", "mas ha comprado", "estrella"))
     attribution = product and any(term in text for term in (
         "diferencia", "marco", "contribuy", "explica", "incremento", "aumento", "cambio",
     ))
@@ -159,7 +175,7 @@ def route_request(question: str, history: list[dict] | None = None) -> Intent:
                       tuple(months), year, question, _rank_limit(text, "productos" in text.split()))
 
     if customer and ranking:
-        return Intent("customer_top", "count" if "frecuent" in text or "veces" in text else "amount",
+        return Intent("customer_top", "count" if "frecuent" in text or "veces" in text or "mas compras" in text else "amount",
                       tuple(direct_months), year, question, _rank_limit(text, "clientes" in text.split()))
 
     if any(term in text for term in ("predic", "pronostic", "proyeccion", "forecast")):
