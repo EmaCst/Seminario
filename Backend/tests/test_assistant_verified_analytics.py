@@ -100,6 +100,7 @@ class AnalyticsTests(unittest.TestCase):
             patch.object(analytics, "_quote", side_effect=lambda identifier: '"' + identifier.replace('"', '""') + '"'),
             patch.object(analytics, "get_connection", side_effect=lambda: self.engine.connect()),
             patch("app.database.inspector.inspect_database", return_value=schema),
+            patch("app.services.assistant_service.run_domain_analytics", return_value=(None, "retail")),
         ]
         for item in self.patches:
             item.start()
