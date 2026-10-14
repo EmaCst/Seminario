@@ -447,6 +447,7 @@ def build_semantic_model(
             "domain_confidence": domain_result.get("primary_confidence", "insufficient"),
             "ambiguous_domain": domain_result.get("ambiguous", False),
             "entities": {},
+            "uncertain_entities": {},
             "relations": [],
             "unmapped_tables": sorted(schema.tables.keys()),
         }
@@ -454,15 +455,18 @@ def build_semantic_model(
     entities: dict[str, dict] = {}
 
     used_tables: set[str] = set()
+    uncertain_entities: dict[str, dict] = {}
     for role_name, role_profile in ROLE_PROFILES[domain].items():
         match = find_best_table_for_role(schema, role_profile)
         if not match:
             continue
         # Do not assign the same physical table to unrelated business roles.
         # Ambiguous matches remain available as alternatives, not asserted facts.
-        if match["table"] in used_tables:
-            continue
-        if match["ambiguous"] and match["confidence"] == "low":
+        if match["table"] in used_tables or (match["ambiguous"] and match["confidence"] == "low"):
+            uncertain_entities[role_name] = {
+                **match,
+                "reason": "tabla ya asociada a otro rol" if match["table"] in used_tables else "coincidencia de baja confianza",
+            }
             continue
 
         used_tables.add(match["table"])
@@ -484,6 +488,7 @@ def build_semantic_model(
         "domain_confidence": domain_result.get("primary_confidence", "insufficient"),
         "ambiguous_domain": domain_result.get("ambiguous", False),
         "entities": entities,
+        "uncertain_entities": uncertain_entities,
         "relations": map_relations(schema, entities),
         "unmapped_tables": sorted(set(schema.tables.keys()) - mapped_tables),
     }
