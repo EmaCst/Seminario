@@ -118,7 +118,7 @@ class AnalyticsTests(unittest.TestCase):
     def test_units_sold_are_not_invoice_counts(self):
         result = analytics.run_verified_analytics(route_request("unidades vendidas de junio"))
         self.assertIn("5", result["answer"])
-        self.assertIn("unidades vendidas", result["answer"])
+        self.assertIn("se vendieron 5 unidades", result["answer"])
 
     def test_month_difference(self):
         result = analytics.run_verified_analytics(route_request("diferencia entre ventas junio y febrero"))
