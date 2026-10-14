@@ -109,6 +109,14 @@ class Intent:
     months: tuple[int, ...] = ()
     year: int | None = None
     resolved_question: str = ""
+    limit: int = 1
+
+
+def _rank_limit(text: str, plural: bool) -> int:
+    match = re.search(r"\b(?:top|primeros?|primeras?|mejores?|los|las)\s+(\d{1,2})\b", text)
+    if match:
+        return max(1, min(20, int(match.group(1))))
+    return 5 if plural else 1
 
 
 def route_request(question: str, history: list[dict] | None = None) -> Intent:
@@ -148,11 +156,11 @@ def route_request(question: str, history: list[dict] | None = None) -> Intent:
     if product and ranking:
         months = direct_months or (_context_months(history, wanted=1) if "ese mes" in text else [])
         return Intent("product_top", "amount" if "ingreso" in text or "dinero" in text or "importe" in text else "units",
-                      tuple(months), year, question)
+                      tuple(months), year, question, _rank_limit(text, "productos" in text.split()))
 
     if customer and ranking:
         return Intent("customer_top", "count" if "frecuent" in text or "veces" in text else "amount",
-                      tuple(direct_months), year, question)
+                      tuple(direct_months), year, question, _rank_limit(text, "clientes" in text.split()))
 
     if any(term in text for term in ("predic", "pronostic", "proyeccion", "forecast")):
         return Intent("forecast", resolved_question=question)
