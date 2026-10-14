@@ -129,7 +129,18 @@ def _period_clause(alias: str, column: str, *, month: int | None, year: int | No
     return " WHERE " + clause, params
 
 
-def _product_sql(model: dict, *, metric: str, month: int | None, year: int | None) -> tuple[str, dict] | None:
+def _ranked_sql(sql: str, limit: int) -> str:
+    """Apply a bounded TOP/LIMIT without putting untrusted text into SQL."""
+    limit = max(1, min(20, int(limit)))
+    if _provider() == "sqlserver":
+        return sql.replace("SELECT ", f"SELECT TOP {limit} ", 1)
+    return sql + f" LIMIT {limit}"
+
+
+def _product_sql(
+    model: dict, *, metric: str, month: int | None, year: int | None,
+    limit: int | None = None,
+) -> tuple[str, dict] | None:
     sales = model.get("sales") or {}
     products = model.get("products") or {}
     detail = sales.get("detail_table")
@@ -147,7 +158,7 @@ def _product_sql(model: dict, *, metric: str, month: int | None, year: int | Non
             return None
         measure = f"SUM(d.{_quote(column)})"
     else:
-        # Never substitute current catalogue price for historical sale proceeds.
+        # Historic revenue must come from line totals, not current list prices.
         from app.database.inspector import inspect_database
         detail_schema = inspect_database().tables.get(detail)
         columns = {col.name.lower(): col.name for col in (detail_schema.columns if detail_schema else [])}
@@ -165,36 +176,47 @@ def _product_sql(model: dict, *, metric: str, month: int | None, year: int | Non
         joins += (f" INNER JOIN {_quote(sales['header_table'])} s "
                   f"ON d.{_quote(dfk)} = s.{_quote(hpk)}")
         where, params = _period_clause("s", sales["date_column"], month=month, year=year)
-    label = f"p.{_quote(product_name)}"
-    sql = (f"SELECT {label} AS entity, {measure} AS value"
-           f"{joins}{where} GROUP BY {label} ORDER BY value DESC")
-    return sql, params
+    label, identifier = f"p.{_quote(product_name)}", f"p.{_quote(pk)}"
+    sql = (f"SELECT {identifier} AS entity_id, {label} AS entity, {measure} AS value"
+           f"{joins}{where} GROUP BY {identifier}, {label} ORDER BY value DESC")
+    return (_ranked_sql(sql, limit) if limit is not None else sql), params
 
 
 def _top_product(intent: Intent, model: dict) -> dict:
+    if len(intent.months) > 1:
+        return _response("¿De cuál de esos meses quieres el ranking de productos? También puedo comparar los rankings de ambos.")
     month = intent.months[0] if intent.months else None
     year = intent.year
     if month is not None and year is None:
-        sales = model.get("sales") or {}
-        series = _monthly_series(sales, "count")
+        series = _monthly_series(model.get("sales") or {}, "count")
         year = _period_year(series, (month,), None)
         if year is None:
             return _response(f"No encontré ventas registradas para {MONTH_LABELS[month]}.")
-    built = _product_sql(model, metric=intent.metric, month=month, year=year)
+    built = _product_sql(model, metric=intent.metric, month=month, year=year, limit=intent.limit)
     if built is None:
-        return _response("No puedo identificar el producto más vendido con seguridad: falta una relación comprobable entre productos y detalle de ventas, o la columna de cantidades.")
+        return _response("No puedo elaborar un ranking confiable de productos: falta la relación entre productos y detalle de ventas o la métrica solicitada.")
     sql, params = built
     rows = _query(sql, params)
     if not rows:
         return _response("No encontré productos vendidos en el periodo consultado.")
-    best = rows[0]
     suffix = f" en {MONTH_LABELS[month]} de {year}" if month is not None else ""
-    unit = "unidades" if intent.metric == "units" else "en importe vendido"
-    return _response(f"El producto más vendido{suffix} fue {best['entity']}, con {_number(best['value'], money=intent.metric == 'amount')} {unit}.",
-                     [{"product": row["entity"], "total": float(row["value"])} for row in rows[:10]])
+    unit = "unidades" if intent.metric == "units" else "de importe vendido"
+    result = [{"product": row["entity"], "product_id": row["entity_id"], "total": float(row["value"])}
+              for row in rows]
+    if intent.limit == 1:
+        best = rows[0]
+        answer = (f"El producto más vendido{suffix} fue {best['entity']}, "
+                  f"con {_number(best['value'], money=intent.metric == 'amount')} {unit}.")
+    else:
+        ranked = "; ".join(f"{index}. {row['entity']}: {_number(row['value'], money=intent.metric == 'amount')} {unit}"
+                           for index, row in enumerate(rows, 1))
+        answer = f"Ranking de productos{suffix} por {'unidades' if intent.metric == 'units' else 'importe'}: {ranked}."
+    return _response(answer, result)
 
 
 def _customer_rank(intent: Intent, model: dict) -> dict:
+    if len(intent.months) > 1:
+        return _response("¿En cuál de los meses mencionados quieres ordenar los clientes?")
     sales = model.get("sales") or {}
     customers = model.get("customers") or {}
     relationship = sales.get("customer_relationship")
@@ -202,20 +224,37 @@ def _customer_rank(intent: Intent, model: dict) -> dict:
     customer_table, name = customers.get("table"), customers.get("name_column")
     if not all((relationship, table, customer_table, name)) or (intent.metric == "amount" and not total):
         return _response("No puedo identificar al mejor cliente con seguridad: falta una relación verificable entre clientes y ventas o el importe de las compras.")
+    month = intent.months[0] if intent.months else None
+    if month is not None and not sales.get("date_column"):
+        return _response("No encontré una fecha de venta confiable para filtrar el ranking de clientes por mes.")
+    year = intent.year
+    if month is not None and year is None:
+        year = _period_year(_monthly_series(sales, "count"), (month,), None)
+        if year is None:
+            return _response(f"No encontré ventas registradas para {MONTH_LABELS[month]}.")
     measure = "COUNT(*)" if intent.metric == "count" else f"SUM(s.{_quote(total)})"
-    sql = (f"SELECT c.{_quote(name)} AS entity, {measure} AS value "
+    filter_sql, params = _period_clause("s", sales["date_column"], month=month, year=year) if month is not None else ("", {})
+    identifier, label = f"c.{_quote(relationship['to_column'])}", f"c.{_quote(name)}"
+    sql = (f"SELECT {identifier} AS entity_id, {label} AS entity, {measure} AS value "
            f"FROM {_quote(table)} s INNER JOIN {_quote(customer_table)} c "
-           f"ON s.{_quote(relationship['from_column'])} = c.{_quote(relationship['to_column'])} "
-           f"GROUP BY c.{_quote(name)} ORDER BY value DESC")
-    rows = _query(sql)
+           f"ON s.{_quote(relationship['from_column'])} = {identifier} "
+           f"{filter_sql} GROUP BY {identifier}, {label} ORDER BY value DESC")
+    rows = _query(_ranked_sql(sql, intent.limit), params)
     if not rows:
-        return _response("No encontré compras asociadas a clientes.")
-    first = rows[0]
-    if intent.metric == "count":
-        answer = f"El cliente con más compras registradas es {first['entity']}, con {_number(first['value'])} transacciones."
+        return _response("No encontré compras asociadas a clientes en el periodo consultado.")
+    suffix = f" en {MONTH_LABELS[month]} de {year}" if month is not None else ""
+    unit = "transacciones" if intent.metric == "count" else "en importe de compras"
+    result = [{"customer": row["entity"], "customer_id": row["entity_id"], "total": float(row["value"])}
+              for row in rows]
+    if intent.limit == 1:
+        first = rows[0]
+        answer = (f"El cliente con {'más compras' if intent.metric == 'count' else 'mayor importe de compras'}{suffix} "
+                  f"es {first['entity']}, con {_number(first['value'], money=intent.metric == 'amount')} {unit}.")
     else:
-        answer = f"El cliente que más ha comprado por importe es {first['entity']}, con {_number(first['value'], money=True)} en ventas acumuladas."
-    return _response(answer, [{"customer": row["entity"], "total": float(row["value"])} for row in rows[:10]])
+        ranked = "; ".join(f"{index}. {row['entity']}: {_number(row['value'], money=intent.metric == 'amount')} {unit}"
+                           for index, row in enumerate(rows, 1))
+        answer = f"Ranking de clientes{suffix}: {ranked}."
+    return _response(answer, result)
 
 
 def _product_attribution(intent: Intent, model: dict) -> dict:
