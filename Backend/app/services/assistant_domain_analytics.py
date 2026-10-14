@@ -164,8 +164,10 @@ def _matched_role(text: str, domain: str) -> str | None:
     ]
     if not found:
         return None
-    found.sort(reverse=True)
-    if len({role for a, bb, role in found if (a, bb) == found[0][:2]}) > 1:
+    # A request mentioning patients AND appointments, for example, usually
+    # contains a relationship predicate. Never choose the longest word and
+    # silently count the wrong entity.
+    if len({entry[2] for entry in found}) > 1:
         return None
     return found[0][2]
 
@@ -208,6 +210,14 @@ def classify_domain_question(
                     break
     if len(months) > 2:
         return None
+    # A single-table shortcut may only handle a whole month, not a day or a
+    # different time window. Let the general SQL planner handle specific dates.
+    if (re.search(r"\\b(?:[1-9]|[12][0-9]|3[01])\\s+de\\s+(?:" +
+                  "|".join(MONTH_LABELS.values()) + r")\\b", text)
+            or any(term in text for term in ("hoy", "ayer", "manana", "esta semana",
+                                               "semana pasada", "este ano", "ano pasado",
+                                               "trimestre", "semestre", "ultimos"))):
+        return None
     match = re.search(r"\b(20\d{2})\b", text)
     year = int(match.group(1)) if match else None
     if year is None and ellipsis:
@@ -223,7 +233,9 @@ def classify_domain_question(
     compare_terms = ("diferencia", "comparar", "comparacion", "frente a", "versus", "variacion", " vs ")
     status_terms = ("por estado", "por estatus", "distribucion por estado", "segun estado")
     rank_terms = ("top ", "mayor", "mas alta", "mas alto", "mejor", "ranking")
-    status_values = ("cancelado", "cancelada", "cancelados", "canceladas",
+    status_values = ("programada", "programado", "programadas", "programados",
+                     "pagada", "pagado", "pagadas", "pagados",
+                     "cancelado", "cancelada", "cancelados", "canceladas",
                      "confirmado", "confirmada", "confirmados", "confirmadas",
                      "pendiente", "pendientes", "aprobado", "aprobada",
                      "activo", "activa", "activos", "activas",
@@ -233,6 +245,10 @@ def classify_domain_question(
         return None  # Status predicates need an explicit verified value mapping.
     if year is not None and not months:
         return None  # An annual filter is not the same as lifetime totals.
+    if any(f" {term} " in f" {text} " for term in ("con", "sin", "excepto", "solo",
+                                                    "unicamente", "por", "segun")) and not any(
+            term in text for term in status_terms):
+        return None  # Qualifiers might require grouping/filtering by another column.
     if any(term in text for term in ("del doctor", "del medico", "del paciente",
                                     "del cliente", "por cliente", "del alumno",
                                     "del estudiante", "de una sucursal", "por sucursal")):
