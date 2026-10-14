@@ -105,6 +105,22 @@ class DomainCoverageTests(unittest.TestCase):
                 else:
                     self.assertIsNone(request)
 
+    def test_peak_uses_true_prior_calendar_month(self):
+        semantic = fake_semantic("healthcare", "appointments")
+        query = domain.classify_domain_question(
+            "mes con mas citas comparado con el anterior", [], semantic)
+        self.assertEqual("peak", query.operation)
+        answer = domain.execute_domain_question(query, semantic)
+        self.assertIn("junio de 2026", answer["answer"])
+        self.assertIn("No hay registros del mes calendario inmediatamente anterior", answer["answer"])
+
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "INSERT INTO records VALUES (4,'2026-05-11',60,'pendiente')")
+        answer = domain.execute_domain_question(query, semantic)
+        self.assertIn("mayo de 2026", answer["answer"])
+        self.assertIn("la diferencia fue 1 registros", answer["answer"])
+
     def test_status_month_is_filtered(self):
         semantic = fake_semantic("healthcare", "appointments")
         request = domain.classify_domain_question(
