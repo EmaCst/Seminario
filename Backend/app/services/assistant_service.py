@@ -530,7 +530,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             },
         }
 
-    if _is_peak_month_comparison_request(intent_text):
+    if active_domain == "retail" and _is_peak_month_comparison_request(intent_text):
         analytics_started = perf_counter()
         try:
             result = _monthly_peak_comparison(question)
