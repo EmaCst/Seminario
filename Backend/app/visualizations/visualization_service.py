@@ -117,7 +117,7 @@ def _find_join_path(schema, start_table: str, target_table: str):
                 return next_path
             visited.add(neighbor)
             queue.append((neighbor, next_path))
-    raise ValueError(f"No existe una relación entre '{start_table}' y '{target_table}'.")
+    raise ValueError(f"No se encontró una relación segura entre '{start_table}' y '{target_table}'. Prueba con campos de la misma tabla o verifica que ambas tengan identificadores relacionados (por ejemplo, cliente_id y la clave primaria de Clientes).")
 
 
 def _resolve_definition(definition: VisualizationDefinition):
@@ -146,7 +146,7 @@ def _resolve_definition(definition: VisualizationDefinition):
     if definition.aggregation in {"sum", "avg"} and definition.metric:
         metric_columns = {column.name: column for column in schema.tables[metric_table].columns}
         if _column_kind(metric_columns[definition.metric].type) != "number":
-            raise ValueError(f"'{definition.metric}' no es una métrica numérica.")
+            raise ValueError(f"No se puede calcular {definition.aggregation} sobre '{definition.metric}' porque no es una columna numérica. Utiliza Cantidad de registros o selecciona una métrica numérica.")
 
     target_tables = {table for table, _ in requested}
     paths = {target: _find_join_path(schema, definition.table, target) for target in target_tables if target != definition.table}
@@ -279,7 +279,14 @@ def explore_visualization(request: VisualizationPageRequest) -> dict:
 
 def preview_visualization(definition: VisualizationDefinition) -> dict:
     sql = build_visualization_query(definition)
-    rows = execute_query(sql)
+    try:
+        rows = execute_query(sql)
+    except Exception as exc:
+        raise ValueError(
+            "No fue posible generar la vista previa con los campos seleccionados. "
+            "Revisa las relaciones, los filtros y los tipos de datos. "
+            f"Detalle técnico: {exc}"
+        ) from exc
     return {
         "definition": definition.model_dump(),
         "data": rows,
