@@ -2,6 +2,8 @@ import re
 from time import perf_counter
 
 from app.ai.gemma import explain_results, generate_sql, repair_sql
+from app.services.assistant_router import route_request
+from app.services.assistant_analytics import run_verified_analytics
 from app.analysis.adaptive_dashboard_service import _monthly_count
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.query_executor import execute_query
@@ -413,30 +415,36 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
-    intent_text = _intent_text(question, history)
-    conversational = _conversation_reply(question)
-    if conversational:
+    intent = route_request(question, history)
+    intent_text = question.lower()
+
+    if intent.kind == "conversation":
+        conversational = _conversation_reply(question)
+        if not conversational:
+            conversational = "¡Hola! Soy Kenneth. ¿Qué te gustaría analizar de tu negocio?"
         return {"question": question, "mode": "conversation", "sql": None,
                 "data": [], "answer": conversational,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
-    attribution = _attribution_followup(question, history)
 
-    try:
-        comparison = None if attribution else _compare_months(question, history)
-    except Exception:
-        comparison = None
-    if comparison:
-        return {"question": question, **comparison,
+    if intent.kind in {"monthly_total", "monthly_compare", "product_top",
+                       "product_attribution", "customer_top"}:
+        try:
+            verified = run_verified_analytics(intent)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Failed verified business analytics")
+            verified = {
+                "mode": "error", "sql": None, "data": [],
+                "answer": ("No pude consultar los datos necesarios para ese análisis. "
+                           "Comprueba la conexión y las relaciones del modelo de datos."),
+            }
+        return {"question": question, **verified,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
 
-    if any(re.search(r"\b" + month + r"\b", question.lower()) for month in MONTH_NAMES):
-        try:
-            monthly_answer = _monthly_sales_answer(question)
-        except Exception:
-            monthly_answer = None  # Fall back to general SQL generation.
-        if monthly_answer:
-            return {"question": question, **monthly_answer,
-                    "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
+    # Context belongs to genuinely elliptical follow-ups, never unrelated turns.
+    attribution = _attribution_followup(question, history)
+    if not any(term in question.lower() for term in ("producto", "artículo", "articulo")):
+        attribution = None
 
     if _is_prediction_request(intent_text):
         ml_started = perf_counter()
