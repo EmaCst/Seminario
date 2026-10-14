@@ -242,6 +242,8 @@ def _monthly_peak_comparison(question: str) -> dict:
 
 
 def _format_value(value) -> str:
+    if value is None:
+        return "sin dato"
     if isinstance(value, float):
         if value.is_integer():
             return str(int(value))
