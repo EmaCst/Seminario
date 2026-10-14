@@ -65,6 +65,34 @@ def _build_compact_context(raw_json: str) -> str:
                 f"{relation.get('references_table')}.{relation.get('references_column')}"
             )
 
+    # Provide domain hints without turning uncertain guesses into asserted facts.
+    try:
+        from app.analysis.business_domain_detector import detect_business_domains
+        from app.analysis.semantic_mapper_v2 import build_semantic_model
+        from app.database.schema import ColumnSchema, DatabaseSchema, RelationshipSchema, TableSchema
+
+        schema = DatabaseSchema(database=data.get("database", ""))
+        for name, table in (data.get("tables") or {}).items():
+            schema.tables[name] = TableSchema(
+                name=name,
+                columns=[ColumnSchema(name=col["name"], type=col.get("type", ""), nullable=col.get("nullable", True)) for col in table.get("columns", [])],
+                primary_key=table.get("primary_key") or [],
+            )
+        schema.relationships = [RelationshipSchema(
+            table=rel["table"], column=rel["column"],
+            references_table=rel["references_table"], references_column=rel["references_column"],
+        ) for rel in relationships]
+        domain = detect_business_domains(schema)
+        model = build_semantic_model(schema, domain)
+        if model.get("domain"):
+            lines.append(f"BUSINESS_DOMAIN_HINT (not guaranteed): {model['domain']} ({model['domain_confidence']})")
+        for role, entity in list(model.get("entities", {}).items())[:18]:
+            lines.append(f"SEMANTIC_HINT: {role} = {entity['table']} ({entity['confidence']}); columns={entity.get('columns', {})}")
+        for role, entity in list(model.get("uncertain_entities", {}).items())[:8]:
+            lines.append(f"UNCERTAIN_HINT (verify before use): {role} might be {entity['table']}; alternatives={[a['table'] for a in entity.get('alternatives', [])]}")
+    except (KeyError, TypeError, ValueError):
+        pass  # Raw schema remains authoritative if hints cannot be derived.
+
     return "\n".join(lines)
 
 
