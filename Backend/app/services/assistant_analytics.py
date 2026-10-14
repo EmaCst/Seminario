@@ -72,6 +72,26 @@ def _monthly_series(sales: dict, metric: str) -> list[dict]:
             if r["year"] is not None and r["month"] is not None and r["total"] is not None]
 
 
+def _monthly_units_series(sales: dict) -> list[dict]:
+    """Sum quantities from sale lines, never count invoices as units."""
+    header, detail = sales.get("header_table"), sales.get("detail_table")
+    date, quantity = sales.get("date_column"), sales.get("quantity_column")
+    relation = sales.get("detail_relationship")
+    if not all((header, detail, date, quantity, relation)):
+        return []
+    qdate = f"s.{_quote(date)}"
+    year, month = _year_expr(qdate), _month_expr(qdate)
+    sql = (f"SELECT {year} AS year, {month} AS month, "
+           f"SUM(d.{_quote(quantity)}) AS total "
+           f"FROM {_quote(detail)} d INNER JOIN {_quote(header)} s "
+           f"ON d.{_quote(relation['from_column'])} = s.{_quote(relation['to_column'])} "
+           f"WHERE {qdate} IS NOT NULL "
+           f"GROUP BY {year}, {month} ORDER BY {year}, {month}")
+    return [{"year": int(row["year"]), "month": int(row["month"]),
+             "total": float(row["total"])} for row in _query(sql)
+            if row["year"] is not None and row["month"] is not None and row["total"] is not None]
+
+
 def _period_year(rows: list[dict], months: tuple[int, ...], year: int | None) -> int | None:
     if year is not None:
         return year
@@ -83,11 +103,11 @@ def _period_year(rows: list[dict], months: tuple[int, ...], year: int | None) ->
 
 
 def _monthly_answer(intent: Intent, sales: dict) -> dict:
-    if intent.metric == "units":
-        return _response("Para conocer unidades vendidas necesito los detalles de ventas y sus cantidades; no equivalen al número de facturas ni al monto monetario.")
     if not sales.get("header_table") or not sales.get("date_column") or (intent.metric == "amount" and not sales.get("total_column")):
         return _response("No pude identificar con seguridad la tabla, fecha y métrica de ventas necesarias en esta base de datos.")
-    rows = _monthly_series(sales, intent.metric)
+    if intent.metric == "units" and not all((sales.get("detail_table"), sales.get("quantity_column"), sales.get("detail_relationship"))):
+        return _response("No puedo calcular unidades vendidas sin detalle de ventas, cantidades y relación con las ventas.")
+    rows = _monthly_units_series(sales) if intent.metric == "units" else _monthly_series(sales, intent.metric)
     months = intent.months
     year = _period_year(rows, months, intent.year)
     if year is None:
@@ -99,11 +119,11 @@ def _monthly_answer(intent: Intent, sales: dict) -> dict:
     selected = [{"year": year, "month": month, "total": totals[(year, month)],
                  "metric": intent.metric} for month in months]
     money = intent.metric == "amount"
-    measure = "monto de ventas" if money else "cantidad de ventas"
+    measure = "monto de ventas" if money else ("unidades vendidas" if intent.metric == "units" else "cantidad de ventas")
     if len(months) == 1:
         month = months[0]
         return _response(f"El {measure} de {MONTH_LABELS[month]} de {year} fue {_number(totals[(year, month)], money=money)}"
-                         + ("." if money else " transacciones."), selected)
+                         + ("." if money or intent.metric == "units" else " transacciones."), selected)
     first, second = months
     first_total, second_total = totals[(year, first)], totals[(year, second)]
     difference = first_total - second_total
