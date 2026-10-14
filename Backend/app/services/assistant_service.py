@@ -441,12 +441,9 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
         return {"question": question, **verified,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
 
-    # Context belongs to genuinely elliptical follow-ups, never unrelated turns.
-    attribution = _attribution_followup(question, history)
-    if not any(term in question.lower() for term in ("producto", "artículo", "articulo")):
-        attribution = None
+    contextual_question = intent.resolved_question or question
 
-    if _is_prediction_request(intent_text):
+    if intent.kind == "forecast" or _is_prediction_request(intent_text):
         ml_started = perf_counter()
         horizon = _extract_horizon(question)
         result = forecast_next_months(horizon=horizon)
@@ -462,7 +459,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             },
         }
 
-    if _is_anomaly_request(intent_text):
+    if intent.kind == "anomaly" or _is_anomaly_request(intent_text):
         ml_started = perf_counter()
         result = detect_monthly_anomalies()
         return {
@@ -497,7 +494,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             }
 
     sql_started = perf_counter()
-    sql = generate_sql(attribution or question, history=history)
+    sql = generate_sql(contextual_question, history=history)
     sql_generation_seconds = perf_counter() - sql_started
 
     query_started = perf_counter()
@@ -513,7 +510,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
         repair_started = perf_counter()
         try:
             sql = repair_sql(
-                question=question,
+                question=contextual_question,
                 failed_sql=sql,
                 error=original_error,
                 history=history,
