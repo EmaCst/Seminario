@@ -33,6 +33,9 @@ class RouterTests(unittest.TestCase):
         self.assertEqual("product_top", route_request("dime el producto más vendido de junio").kind)
         self.assertEqual("customer_top", route_request("dime nuestro meyor cliente").kind)
         self.assertEqual("monthly_total", route_request("dime las ventas de junio").kind)
+        self.assertEqual("product_top", route_request("el produtco mas vendido de junio").kind)
+        self.assertEqual("customer_top", route_request("nuestro mejor clietne").kind)
+        self.assertEqual("count", route_request("cliente con mas compras").metric)
         self.assertEqual("count", route_request("¿cuántas ventas hubo en junio?").metric)
 
     def test_product_attribution_recovers_months(self):
@@ -40,6 +43,15 @@ class RouterTests(unittest.TestCase):
         followup = route_request("¿qué producto marcó esa diferencia?", previous)
         self.assertEqual("product_attribution", followup.kind)
         self.assertEqual({2, 6}, set(followup.months))
+
+    def test_explicit_new_period_does_not_inherit_unrelated_year(self):
+        history = [{"role": "user", "content": "ventas de febrero de 2024"}]
+        intent = route_request("ventas de junio", history)
+        self.assertIsNone(intent.year)
+
+    def test_top_n_count_is_bounded(self):
+        self.assertEqual(3, route_request("top 3 productos").limit)
+        self.assertEqual(20, route_request("top 99 clientes").limit)
 
     def test_short_followup_recovers_months(self):
         previous = [{"role": "user", "content": "dime la diferencia entre junio y febrero"}]
