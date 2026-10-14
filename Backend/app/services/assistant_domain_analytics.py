@@ -223,6 +223,21 @@ def classify_domain_question(
     compare_terms = ("diferencia", "comparar", "comparacion", "frente a", "versus", "variacion", " vs ")
     status_terms = ("por estado", "por estatus", "distribucion por estado", "segun estado")
     rank_terms = ("top ", "mayor", "mas alta", "mas alto", "mejor", "ranking")
+    status_values = ("cancelado", "cancelada", "cancelados", "canceladas",
+                     "confirmado", "confirmada", "confirmados", "confirmadas",
+                     "pendiente", "pendientes", "aprobado", "aprobada",
+                     "activo", "activa", "activos", "activas",
+                     "completado", "completada", "completados", "completadas",
+                     "reprobado", "reprobada", "ausentes", "presentes")
+    if any(f" {word} " in f" {text} " for word in status_values):
+        return None  # Status predicates need an explicit verified value mapping.
+    if year is not None and not months:
+        return None  # An annual filter is not the same as lifetime totals.
+    if any(term in text for term in ("del doctor", "del medico", "del paciente",
+                                    "del cliente", "por cliente", "del alumno",
+                                    "del estudiante", "de una sucursal", "por sucursal")):
+        return None
+
     if any(term in text for term in rank_terms):
         return None  # Ranking involving joins/semantics should never degrade to COUNT.
     if any(term in text for term in ("promedio", "media", "porcentaje", "tasa", "ocupacion",
@@ -234,6 +249,14 @@ def classify_domain_question(
 
     amount = any(term in text for term in amount_terms)
     metric = "amount" if amount else "count"
+    if ellipsis and not amount and previous:
+        # "¿y en febrero?" keeps the previous monetary-vs-counting metric.
+        for prior in reversed(previous[-5:]):
+            ptext = normalize(prior)
+            if _matched_role(ptext, domain) == role:
+                if any(term in ptext for term in amount_terms):
+                    metric = "amount"
+                break
     if metric == "amount" and (domain, role) not in MONETARY_ROLES:
         return None
     comparing = any(term in text for term in compare_terms)
@@ -307,13 +330,30 @@ def execute_domain_question(query: DomainQuery, semantic: dict) -> dict:
             return {"mode": "analytics", "sql": None, "data": [],
                     "answer": f"No hay una columna de fecha identificada para filtrar {label} por mes."}
         status = f"t.{_quote(status_column)}"
-        sql = (f"SELECT CAST({status} AS {'NVARCHAR(255)' if _provider() == 'sqlserver' else 'VARCHAR(255)'}) "
-               f"AS label, COUNT(*) AS total FROM {_quote(entity['table'])} t WHERE {status} IS NOT NULL "
-               f"GROUP BY {status} ORDER BY total DESC")
-        # Avoid unconstrained text selection in replies.
-        rows = _query(sql)
+        conditions = [f"{status} IS NOT NULL"]
+        params = {}
+        if query.months:
+            if len(query.months) != 1:
+                return {"mode": "analytics", "sql": None, "data": [],
+                        "answer": "Para distribuir estados, indica un solo mes por consulta."}
+            year = query.year
+            if year is None:
+                series = _query_series(entity, "COUNT(*)")
+                year = _period_year(series, query.months, None)
+            if year is None:
+                return {"mode": "analytics", "sql": None, "data": [],
+                        "answer": "No encontré registros del mes solicitado para distribuir estados."}
+            date = f"t.{_quote((entity.get('columns') or {})['date'])}"
+            conditions.extend([f"{_month_expr(date)} = :month", f"{_year_expr(date)} = :year"])
+            params = {"month": query.months[0], "year": year}
+        rendered = f"CAST({status} AS {'NVARCHAR(255)' if _provider() == 'sqlserver' else 'VARCHAR(255)'})"
+        sql = (f"SELECT {rendered} AS label, COUNT(*) AS total FROM {_quote(entity['table'])} t "
+               f"WHERE {' AND '.join(conditions)} GROUP BY {rendered} ORDER BY total DESC")
+        rows = _query(sql, params)
         summary = "; ".join(f"{item['label']}: {item['total']}" for item in rows[:12])
-        answer = f"Distribución por estado de {label}: {summary}." if rows else f"No encontré estados registrados para {label}."
+        scope = (f" en {MONTH_LABELS[query.months[0]]} de {params['year']}"
+                 if query.months else "")
+        answer = f"Distribución por estado de {label}{scope}: {summary}." if rows else f"No encontré estados registrados para {label}{scope}."
         return {"mode": "analytics", "sql": None, "data": rows[:12], "answer": answer}
     date_column = (entity.get("columns") or {}).get("date")
     if not date_column:
@@ -353,7 +393,7 @@ def run_domain_analytics(question: str, history: list[dict] | None = None) -> tu
     semantic = analysis.get("semantic_model") or {}
     domain = semantic.get("domain")
     if not domain or semantic.get("ambiguous_domain"):
-        return None, domain
+        return None, None
     request = classify_domain_question(question, history, semantic)
     if request is None:
         return None, domain
