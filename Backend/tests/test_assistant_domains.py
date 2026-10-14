@@ -138,6 +138,9 @@ class DomainCoverageTests(unittest.TestCase):
             "reservas del cliente Ana en junio",
             "promedio de reservas de junio",
             "ocupacion de habitaciones en junio",
+            "cuantas reservas entre junio y julio",
+            "cuantas reservas del 12 de junio",
+            "cuantas reservas del hotel Central en junio",
         ):
             with self.subTest(question=question):
                 self.assertIsNone(domain.classify_domain_question(question, [], semantic))
@@ -152,6 +155,14 @@ class DomainCoverageTests(unittest.TestCase):
         semantic["ambiguous_domain"] = False
         semantic["entities"]["appointments"]["ambiguous"] = True
         self.assertIsNone(domain.classify_domain_question("cuantas citas de junio", [], semantic))
+
+    def test_multi_entity_filter_requires_sql_not_total_count(self):
+        semantic = fake_semantic("healthcare", "appointments")
+        semantic["entities"]["patients"] = {
+            "table": "records", "ambiguous": False, "columns": {"date": "fecha"}}
+        request = domain.classify_domain_question(
+            "cuantas citas de pacientes en junio", [], semantic)
+        self.assertIsNone(request)
 
     def test_followup_uses_same_domain_role(self):
         semantic = fake_semantic("transportation", "trips")
