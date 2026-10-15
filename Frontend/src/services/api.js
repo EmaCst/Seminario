@@ -63,5 +63,7 @@ async function uploadFile(path, file) {
 }
 export const uploadSqlServerBackup = (file) => uploadFile('/api/database/upload/sqlserver-bak', file);
 export const uploadPostgreSQLBackup = (file) => uploadFile('/api/database/upload/postgresql-backup', file);
+export const getPostgreSQLBackupSettings = () => parseResponse(fetch(`${API_URL}/api/database/postgresql-backup/settings`));
+export const setPostgreSQLBackupEnabled = (enabled) => parseResponse(fetch(`${API_URL}/api/database/postgresql-backup/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }));
 export const inspectExcel = (file) => uploadFile('/api/database/upload/excel/inspect', file);
 export const uploadExcel = (file) => uploadFile('/api/database/upload/excel', file);
