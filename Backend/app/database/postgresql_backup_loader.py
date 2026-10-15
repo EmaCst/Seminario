@@ -43,6 +43,11 @@ def backup_upload_enabled() -> bool:
     )
 
 
+def runtime_upload_enabled() -> bool:
+    """True only when the interactive (non-persistent) local checkbox enabled it."""
+    return _UPLOAD_ENABLED_OVERRIDE is True
+
+
 def set_backup_upload_enabled(enabled: bool) -> bool:
     global _UPLOAD_ENABLED_OVERRIDE
     if _RESTORE_LOCK.locked():
