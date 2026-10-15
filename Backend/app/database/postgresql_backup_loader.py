@@ -67,6 +67,7 @@ def _client_environment(config: dict) -> dict[str, str]:
         environment["PGPASSWORD"] = str(config["password"])
     environment["PGSSLMODE"] = str(config.get("sslmode") or "prefer")
     environment["PGCONNECT_TIMEOUT"] = "15"
+    environment["PGPASSFILE"] = os.devnull  # Never silently use a workstation .pgpass.
     return environment
 
 
@@ -130,26 +131,45 @@ async def _save_upload(upload: UploadFile, destination: Path) -> int:
         await upload.close()
 
 
-def _create_database(name: str) -> None:
-    # CREATE DATABASE cannot run inside a transaction on PostgreSQL.
-    # The current engine connects to an existing database, never to the target.
-    with database_manager.get_engine().connect().execution_options(
-        isolation_level="AUTOCOMMIT"
-    ) as connection:
-        connection.exec_driver_sql(
-            f"CREATE DATABASE {_quote_identifier(name)} TEMPLATE template0"
-        )
+def _admin_engine(config: dict):
+    """Use the ORIGINAL PostgreSQL connection for create and cleanup.
+
+    An independent engine avoids touching a different provider if someone
+    changes Kenneth's active connection while a long restore is running.
+    """
+    return database_manager._build_postgresql_engine(
+        host=config["host"], database=config["database"],
+        port=config["port"], username=config["username"],
+        password=config.get("password"), sslmode=config.get("sslmode") or "prefer",
+    )
 
 
-def _drop_created_database(name: str) -> None:
-    # Only called for a randomly generated name successfully created by us.
+def _create_database(name: str, config: dict) -> None:
+    # CREATE DATABASE cannot run inside a PostgreSQL transaction.
+    admin = _admin_engine(config)
     try:
-        with database_manager.get_engine().connect().execution_options(
+        with admin.connect().execution_options(
+            isolation_level="AUTOCOMMIT"
+        ) as connection:
+            connection.exec_driver_sql(
+                f"CREATE DATABASE {_quote_identifier(name)} TEMPLATE template0"
+            )
+    finally:
+        admin.dispose()
+
+
+def _drop_created_database(name: str, config: dict) -> None:
+    # Drop ONLY a new database created successfully by this upload request.
+    admin = _admin_engine(config)
+    try:
+        with admin.connect().execution_options(
             isolation_level="AUTOCOMMIT"
         ) as connection:
             connection.exec_driver_sql(f"DROP DATABASE {_quote_identifier(name)}")
     except Exception:
         logger.exception("No pude limpiar la base de restauración fallida %s", name)
+    finally:
+        admin.dispose()
 
 
 def _restore_archive(archive: Path, database_name: str, config: dict, tool: str) -> None:
@@ -195,7 +215,7 @@ def _restore_staged(archive: Path, config: dict, tool: str, filename: str,
     name = _safe_db_name(filename)
     created = False
     try:
-        _create_database(name)
+        _create_database(name, config)
         created = True
         _restore_archive(archive, name, config, tool)
         tables = _verify_restored_database(name, config)
@@ -216,7 +236,7 @@ def _restore_staged(archive: Path, config: dict, tool: str, filename: str,
         }
     except Exception:
         if created:
-            _drop_created_database(name)
+            _drop_created_database(name, config)
         raise
 
 
