@@ -233,6 +233,27 @@ class PostgreSQLBackupHttpTests(unittest.TestCase):
         self.assertEqual("upload_test", payload["database"])
         self.assertEqual("retail", payload["business_domain"]["primary"])
 
+    def test_restore_success_is_preserved_if_semantic_inspection_fails(self):
+        restored = {"restored": True, "database": "upload_test", "table_count": 1}
+        with patch("app.main.restore_postgresql_backup", new_callable=AsyncMock,
+                   return_value=restored):
+            with patch("app.main._current_database_analysis",
+                       side_effect=RuntimeError("schema unavailable")):
+                with patch("app.main.get_adaptive_dashboard_summary") as dashboard:
+                    with TestClient(app) as client:
+                        response = client.post(
+                            "/api/database/upload/postgresql-backup",
+                            files={"file": ("trusted.backup", b"PGDMPfake",
+                                            "application/octet-stream")},
+                        )
+        self.assertEqual(200, response.status_code, response.text)
+        payload = response.json()
+        self.assertTrue(payload["uploaded"])
+        self.assertEqual("upload_test", payload["database"])
+        self.assertIn("análisis", payload["analysis_warning"])
+        self.assertFalse(payload["dashboard"]["available"])
+        dashboard.assert_not_called()
+
     def test_endpoint_returns_422_for_invalid_files(self):
         with patch("app.main.restore_postgresql_backup", new_callable=AsyncMock,
                    side_effect=ValueError("formato no admitido")):
