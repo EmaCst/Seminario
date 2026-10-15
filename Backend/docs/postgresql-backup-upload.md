@@ -28,7 +28,7 @@ PG_BACKUP_UPLOAD_ENABLED=1
 6. Conectar una base PostgreSQL **ya existente**. El usuario requiere permiso `CREATEDB`, posibilidad de conectar a la nueva base y permisos para restaurar los objetos. Extensiones privilegiadas pueden fallar.
 7. Seleccionar el respaldo y pulsar **Cargar, restaurar y analizar**.
 
-**Seguridad:** la casilla remota está bloqueada; la API administrativa exige cliente de loopback y origen exacto de Vite en puerto 5173. Para servidores compartidos o públicos debe existir autenticación y autorización de administradores antes de exponer restauraciones. El control es local y temporal, no un cambio permanente del archivo `.env`.
+**Seguridad:** la casilla remota está bloqueada; la API administrativa exige cliente de loopback y origen exacto de Vite en puerto 5173. Las cargas habilitadas mediante esa casilla también rechazan clientes remotos. Para servidores compartidos o públicos debe existir autenticación y autorización de administradores antes de exponer restauraciones. El control es local y temporal, no un cambio permanente del archivo `.env`.
 
 **API de control:** `GET /api/database/postgresql-backup/settings` devuelve `enabled`, `manageable` y `persistent`. `PUT /api/database/postgresql-backup/settings` acepta `{ "enabled": true | false }` exclusivamente desde la interfaz local. El servidor rechaza solicitudes desde otro origen o IP con HTTP 403.
 
