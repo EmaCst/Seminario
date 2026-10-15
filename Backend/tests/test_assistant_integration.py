@@ -14,6 +14,7 @@ from sqlalchemy import event
 
 from app.main import app
 from app.quality.fixtures import DOMAINS, connected_fixture
+from app.services.assistant_router import route_request
 from app.security.sql_validator import SQLValidationError, validate_sql
 
 
@@ -145,6 +146,16 @@ class HttpIntegrationTests(unittest.TestCase):
                                      for item in recorded_sql))
             finally:
                 event.remove(engine, "before_cursor_execute", capture)
+
+    def test_qualified_questions_never_use_aggregate_fast_path(self):
+        for question in (
+            "cuantas ventas del 3 de junio de 2026",
+            "ventas canceladas de junio",
+            "dime el producto más vendido de junio para el cliente Ana",
+            "mejor cliente en la sucursal Centro",
+        ):
+            with self.subTest(question=question):
+                self.assertEqual("sql", route_request(question).kind)
 
     def test_sql_read_only_guard_against_fixture(self):
         retail = next(item for item in DOMAINS if item.domain == "retail")
