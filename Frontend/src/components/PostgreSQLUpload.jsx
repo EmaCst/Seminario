@@ -1,18 +1,44 @@
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { AlertTriangle, FileArchive, UploadCloud } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
-import { uploadPostgreSQLBackup } from '../services/api';
+import { getPostgreSQLBackupSettings, setPostgreSQLBackupEnabled, uploadPostgreSQLBackup } from '../services/api';
 
 const ALLOWED_EXTENSIONS = ['.backup', '.dump', '.tar'];
 const MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
 export const PostgreSQLUpload = () => {
   const { theme, colors, language } = useContext(DashboardContext);
+  const [permission, setPermission] = useState(null);
+  const [settingLoading, setSettingLoading] = useState(false);
+  const [settingError, setSettingError] = useState('');
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
   const [result, setResult] = useState(null);
   const es = language === 'es';
+
+  useEffect(() => {
+    let mounted = true;
+    getPostgreSQLBackupSettings()
+      .then((data) => { if (mounted) setPermission(data); })
+      .catch((error) => { if (mounted) setSettingError(error.message); });
+    return () => { mounted = false; };
+  }, []);
+
+  const changePermission = async (enabled) => {
+    setSettingLoading(true);
+    setSettingError('');
+    try {
+      const updated = await setPostgreSQLBackupEnabled(enabled);
+      setPermission(updated);
+    } catch (error) {
+      setSettingError(error.message);
+      // Keep the checkbox in sync with the backend, even after a failed write.
+      try { setPermission(await getPostgreSQLBackupSettings()); } catch { /* preserve original error */ }
+    } finally {
+      setSettingLoading(false);
+    }
+  };
 
   const chooseFile = (selected) => {
     setResult(null);
@@ -33,7 +59,7 @@ export const PostgreSQLUpload = () => {
   };
 
   const upload = async () => {
-    if (!file || loading) return;
+    if (!file || loading || !permission?.enabled) return;
     setLoading(true);
     setResult(null);
     setStatus({ type: 'info', message: es
@@ -78,8 +104,35 @@ export const PostgreSQLUpload = () => {
         style={{ borderColor: colors.border, backgroundColor: colors.cardSoft, color: colors.muted }}>
         <AlertTriangle size={18} className="shrink-0 mt-0.5" />
         <span>{es
-          ? 'Solo respaldos confiables. Requiere pg_restore, permiso CREATEDB y PG_BACKUP_UPLOAD_ENABLED=1 en Backend/.env. No sobrescribe la base actual. Archivos .sql no admitidos.'
-          : 'Trusted backups only. Requires pg_restore, CREATEDB and PG_BACKUP_UPLOAD_ENABLED=1 in Backend/.env. Never overwrites the current database. No .sql files.'}</span>
+          ? 'Solo respaldos confiables. Requiere pg_restore y permiso CREATEDB. Habilita la carga con la casilla de abajo; como alternativa, usa PG_BACKUP_UPLOAD_ENABLED=1 en Backend/.env. No sobrescribe la base actual.'
+          : 'Trusted backups only. Requires pg_restore and CREATEDB. Enable restores with the checkbox below, or use PG_BACKUP_UPLOAD_ENABLED=1 in Backend/.env. Never overwrites the active database.'}</span>
+      </div>
+      <div className="mb-5 rounded-xl border p-4" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
+        <label className="flex items-start gap-3" style={{ color: colors.text }}>
+          <input type="checkbox" className="mt-1 h-5 w-5 shrink-0"
+            aria-label={es ? 'Habilitar carga de respaldos PostgreSQL' : 'Enable PostgreSQL backup uploads'}
+            checked={Boolean(permission?.enabled)}
+            disabled={settingLoading || loading || !permission?.manageable}
+            onChange={(event) => changePermission(event.target.checked)}
+            style={{ accentColor: theme.primary }} />
+          <span>
+            <strong className="block text-sm">{es ? 'Habilitar carga de respaldos PostgreSQL' : 'Enable PostgreSQL backup uploads'}</strong>
+            <span className="block mt-1 text-xs" style={{ color: colors.muted }}>
+              {es
+                ? 'Equivale a PG_BACKUP_UPLOAD_ENABLED=1 durante esta sesión del backend. El cambio desde aquí es temporal y solo está permitido en localhost.'
+                : 'Equivalent to PG_BACKUP_UPLOAD_ENABLED=1 for this backend session. Changes here are temporary and only available on localhost.'}
+            </span>
+          </span>
+        </label>
+        {!permission?.manageable && permission && (
+          <p className="mt-3 text-xs" style={{ color: colors.muted }}>
+            {es ? 'Control remoto bloqueado. El administrador puede habilitarlo en Backend/.env.' : 'Remote control blocked. An administrator may enable it in Backend/.env.'}
+          </p>
+        )}
+        {permission === null && !settingError && (
+          <p className="mt-3 text-xs" style={{ color: colors.muted }}>{es ? 'Consultando permiso...' : 'Checking permission...'}</p>
+        )}
+        {settingError && <p role="alert" className="mt-3 text-xs text-red-600">{settingError}</p>}
       </div>
       <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center"
         style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
@@ -93,7 +146,7 @@ export const PostgreSQLUpload = () => {
         <input type="file" accept=".backup,.dump,.tar" disabled={loading} className="hidden"
           onChange={(event) => chooseFile(event.target.files?.[0] || null)} />
       </label>
-      <button type="button" disabled={loading || !file} onClick={upload}
+      <button type="button" disabled={loading || !file || !permission?.enabled} onClick={upload}
         className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
         style={{ backgroundColor: theme.primary }}>
         <UploadCloud size={18} />
