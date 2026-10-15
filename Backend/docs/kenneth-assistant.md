@@ -48,6 +48,10 @@ La serie se elige por la entidad nombrada en la pregunta (o por prioridad del do
 
 Los SQL de la ruta verificada utilizan identificadores obtenidos mediante `inspect_semantic_map`, escapados conforme al proveedor, y valores ligados mediante parámetros. SQL Server, PostgreSQL y SQLite (Excel) tienen expresiones de fecha adaptadas. Las relaciones faltantes impiden atribuciones o rankings que no pueden verificarse.
 
+## Pruebas de integración con bases ficticias
+
+La guía de ejecución, el comando `python -m app.quality.run`, los informes JSON/Markdown y la opción de Ollama están documentados en [Kenneth Quality Gate](kenneth-quality-gate.md). Las comprobaciones automáticas utilizan SQLite temporal y no reemplazan una prueba con SQL Server o PostgreSQL aislados.
+
 ## Pruebas
 
 Desde la carpeta `Backend`:
