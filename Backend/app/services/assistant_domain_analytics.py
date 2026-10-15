@@ -262,7 +262,7 @@ def classify_domain_question(
                      "reprobado", "reprobada", "ausentes", "presentes")
     if any(f" {word} " in f" {text} " for word in status_values):
         return None  # Status predicates need an explicit verified value mapping.
-    if year is not None and not months:
+    if year is not None and not months and not peak:
         return None  # An annual filter is not the same as lifetime totals.
     if any(f" {term} " in f" {text} " for term in ("con", "sin", "excepto", "solo",
                                                     "unicamente", "por", "segun")) and not any(
@@ -275,6 +275,8 @@ def classify_domain_question(
                                     "en la sucursal")):
         return None
 
+    if peak and months:
+        return None  # A specific month cannot be treated as an all-time peak.
     if peak:
         explicit_count = any(term in text for term in ("cuantos", "cuantas", "numero de", "cantidad de"))
         amount = not explicit_count and any(term in text for term in amount_terms)
