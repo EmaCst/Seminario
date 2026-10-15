@@ -234,7 +234,7 @@ def classify_domain_question(
 
     count_terms = ("cuantos", "cuantas", "cantidad", "numero", "total de", "cuanto", "cuanta")
     amount_terms = ("monto", "importe", "dinero", "facturacion", "ingresos",
-                    "recaudacion", "gasto", "pagamos", "pagado", "pagos de", "valor total")
+                    "recaudacion", "gasto", "pagamos", "pagado", "valor total")
     compare_terms = ("diferencia", "comparar", "comparacion", "frente a", "versus", "variacion", " vs ")
     status_terms = ("por estado", "por estatus", "distribucion por estado", "segun estado")
     rank_terms = ("top ", "mayor", "mas alta", "mas alto", "mejor", "ranking")
@@ -269,7 +269,8 @@ def classify_domain_question(
         return None
 
     if peak:
-        amount = any(term in text for term in amount_terms)
+        explicit_count = any(term in text for term in ("cuantos", "cuantas", "numero de", "cantidad de"))
+        amount = not explicit_count and any(term in text for term in amount_terms)
         metric = "amount" if amount else "count"
         if metric == "amount" and (domain, role) not in MONETARY_ROLES:
             return None
@@ -283,7 +284,8 @@ def classify_domain_question(
     if any(term in text for term in status_terms):
         return DomainQuery(domain, role, "status", tuple(months), year)
 
-    amount = any(term in text for term in amount_terms)
+    explicit_count = any(term in text for term in ("cuantos", "cuantas", "numero de", "cantidad de"))
+    amount = not explicit_count and any(term in text for term in amount_terms)
     metric = "amount" if amount else "count"
     if ellipsis and not amount and previous:
         # "¿y en febrero?" keeps the previous monetary-vs-counting metric.
