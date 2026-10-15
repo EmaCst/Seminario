@@ -468,4 +468,13 @@ def run_domain_analytics(question: str, history: list[dict] | None = None) -> tu
     request = classify_domain_question(question, history, semantic)
     if request is None:
         return None, domain
-    return execute_domain_question(request, semantic), domain
+    try:
+        return execute_domain_question(request, semantic), domain
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Verified domain query failed")
+        return {
+            "mode": "error", "sql": None, "data": [],
+            "answer": ("No pude consultar los datos necesarios para este indicador. "
+                       "Comprueba la conexión, las columnas y el formato de fechas de la fuente activa."),
+        }, domain
