@@ -74,11 +74,27 @@ class HttpIntegrationTests(unittest.TestCase):
                     self.assertEqual("analytics", feb["mode"], feb)
                     self.assertEqual(1, feb["data"][0]["total"], feb)
                     compare = self.ask(
-                        f"diferencia de {fixture.question_term} entre junio y febrero")
+                        f"diferencia de cantidad de {fixture.question_term} entre junio y febrero")
                     self.assertEqual("analytics", compare["mode"], compare)
                     totals = {row["month"]: row["total"] for row in compare["data"]}
                     self.assertEqual({6: 2, 2: 1}, totals)
                     self.assertIn("diferencia", compare["answer"].lower())
+
+    def test_retail_comparisons_keep_count_and_money_distinct(self):
+        retail = next(item for item in DOMAINS if item.domain == "retail")
+        with connected_fixture(retail):
+            with patch("app.services.assistant_service.generate_sql",
+                       side_effect=AssertionError("Known retail comparisons are deterministic")):
+                count = self.ask(
+                    "diferencia de cantidad de ventas entre junio y febrero")
+                money = self.ask(
+                    "diferencia de ventas entre junio y febrero")
+        self.assertEqual({6: 2, 2: 1},
+                         {row["month"]: row["total"] for row in count["data"]})
+        self.assertTrue(all(row["metric"] == "count" for row in count["data"]))
+        self.assertEqual({6: 500, 2: 100},
+                         {row["month"]: row["total"] for row in money["data"]})
+        self.assertTrue(all(row["metric"] == "amount" for row in money["data"]))
 
     def test_known_amounts_only_in_supported_domains(self):
         for fixture in DOMAINS:
