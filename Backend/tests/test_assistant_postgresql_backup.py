@@ -87,6 +87,9 @@ class PostgreSQLBackupUnitTests(unittest.TestCase):
         self.assertIn("--no-privileges", args)
         self.assertIn("--no-tablespaces", args)
         self.assertIn("--no-password", args)
+        self.assertIn("--no-publications", args)
+        self.assertIn("--no-subscriptions", args)
+        self.assertIn("--no-security-labels", args)
         self.assertNotIn("secret_testing_only", " ".join(args))
         environment = invoke.call_args.kwargs["environment"]
         self.assertEqual("secret_testing_only", environment["PGPASSWORD"])
