@@ -132,6 +132,15 @@ class DomainCoverageTests(unittest.TestCase):
         self.assertIn("2 registros", domain.execute_domain_question(count, semantic)["answer"])
         self.assertIn("600.00", domain.execute_domain_question(amount, semantic)["answer"])
 
+    def test_peak_can_filter_year_without_changing_to_lifetime_total(self):
+        semantic = fake_semantic("healthcare", "appointments")
+        request = domain.classify_domain_question(
+            "mes con mas citas de 2026", [], semantic)
+        self.assertEqual("peak", request.operation)
+        self.assertEqual(2026, request.year)
+        self.assertIsNone(domain.classify_domain_question(
+            "mes con mas citas en junio", [], semantic))
+
     def test_status_month_is_filtered(self):
         semantic = fake_semantic("healthcare", "appointments")
         request = domain.classify_domain_question(
