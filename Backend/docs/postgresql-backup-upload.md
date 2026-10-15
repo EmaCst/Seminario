@@ -46,7 +46,7 @@ Sube únicamente un respaldo que hayas generado y controles tú mismo. Aunque el
 3. Guarda el archivo en una carpeta temporal privada del backend y limita el tamaño.
 4. Verifica la cabecera Custom cuando corresponde y consulta el contenido con `pg_restore --list` **antes de crear la base**.
 5. Crea un nombre único `upload_<archivo>_<identificador>` y ejecuta `CREATE DATABASE ... TEMPLATE template0` en el mismo servidor; no usa `--clean` ni `--create` de pg_restore.
-6. Restaura con `--no-owner --no-privileges --no-tablespaces --single-transaction --exit-on-error`.
+6. Restaura con `--no-owner --no-privileges --no-tablespaces --no-publications --no-subscriptions --no-security-labels --single-transaction --exit-on-error`.
 7. Verifica que exista al menos una tabla visible en `public` y que el usuario pueda abrir la nueva base.
 8. **Solo después del éxito** activa la base restaurada y ejecuta detección de dominio, modelo semántico y dashboard automático.
 9. Si falla antes de activar, intenta eliminar **solo** la nueva base que creó para esa carga, y conserva intacta la conexión anterior. Los archivos temporales se borran al terminar.
