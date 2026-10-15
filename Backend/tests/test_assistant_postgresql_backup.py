@@ -321,6 +321,21 @@ class PostgreSQLBackupHttpTests(unittest.TestCase):
         self.assertFalse(payload["dashboard"]["available"])
         dashboard.assert_not_called()
 
+    def test_runtime_checkbox_never_authorizes_remote_upload(self):
+        # TestClient has IP "testclient", so it must be denied when the
+        # session checkbox granted only local browser permission.
+        with patch.object(pg, "_UPLOAD_ENABLED_OVERRIDE", True):
+            with patch("app.main.restore_postgresql_backup", new_callable=AsyncMock) as restore:
+                with TestClient(app) as client:
+                    response = client.post(
+                        "/api/database/upload/postgresql-backup",
+                        files={"file": ("trusted.backup", b"PGDMPfake",
+                                        "application/octet-stream")},
+                        headers={"Origin": "http://localhost:5173"},
+                    )
+        self.assertEqual(403, response.status_code)
+        restore.assert_not_called()
+
     def test_endpoint_returns_422_for_invalid_files(self):
         with patch("app.main.restore_postgresql_backup", new_callable=AsyncMock,
                    side_effect=ValueError("formato no admitido")):
