@@ -131,11 +131,36 @@ def _rank_limit(text: str, plural: bool) -> int:
     return 5 if plural else 1
 
 
+def _requires_detailed_sql(question: str) -> bool:
+    """Never discard restrictive business predicates in a fast-path answer."""
+    text = normalize(question)
+    month_pattern = "|".join(MONTH_NAMES)
+    if re.search(r"\b(?:[1-9]|[12][0-9]|3[01])\s+de\s+(?:" +
+                 month_pattern + r")\b", text):
+        return True
+    if any(term in f" {text} " for term in (
+        " cancelada", " canceladas", " cancelado", " cancelados",
+        " pendiente", " pendientes", " confirmados", " confirmadas",
+        " solo ", " solamente ", " excepto ", " sin ",
+    )):
+        return True
+    if any(phrase in text for phrase in (
+        "del cliente", "para el cliente", "del paciente", "del doctor",
+        "de la sucursal", "por sucursal", "en la sucursal", "en el hotel",
+        "entre las", "desde ", "hasta ", "ultimos ", "ultimo ",
+        "semana pasada", "esta semana", " trimestre", " semestre",
+    )):
+        return True
+    return False
+
+
 def route_request(question: str, history: list[dict] | None = None) -> Intent:
     """Classify the actual request before applying conversational context."""
     text = normalize(question)
     if _is_greeting(text):
         return Intent("conversation", resolved_question=question)
+    if _requires_detailed_sql(question):
+        return Intent("sql", resolved_question=question)
 
     direct_months = months_in(question)
     explicitly_mentions_year = bool(re.search(r"\b20\d{2}\b", text))
