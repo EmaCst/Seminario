@@ -13,12 +13,16 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 import platform
 from pathlib import Path
 import sys
 from time import perf_counter
 import traceback
 import unittest
+
+# Set before importing database_manager (which normally activates DB_SERVER from .env).
+os.environ["KENNETH_QUALITY_MODE"] = "1"
 
 from app.quality.fixtures import DOMAINS, connected_fixture
 
