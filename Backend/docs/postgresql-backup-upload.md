@@ -15,17 +15,22 @@ Formatos **admitidos**:
 
 1. Instalar PostgreSQL Client Tools para tener `pg_restore`. Comprobar en PowerShell: `pg_restore --version`.
 2. Si el ejecutable no está en el PATH, definir `PG_RESTORE_BIN` con la ruta absoluta al `pg_restore.exe` correspondiente a la versión de PostgreSQL del respaldo.
-3. Agregar a `Backend/.env`:
+3. En **Configuración → PostgreSQL → Cargar respaldo PostgreSQL**, marca **Habilitar carga de respaldos PostgreSQL**. La casilla consulta el estado real del backend y lo activa/desactiva en tiempo de ejecución. **Solo funciona si frontend y backend se ejecutan en localhost**; el cambio no se guarda en `.env` y se pierde al reiniciar el servidor.
+4. Alternativamente, un administrador puede configurar el valor inicial en `Backend/.env`:
 
 ```dotenv
 PG_BACKUP_UPLOAD_ENABLED=1
-# Opcional, si PostgreSQL/bin no está en PATH del backend:
+# Si pg_restore no está en PATH:
 # PG_RESTORE_BIN=C:\Program Files\PostgreSQL\17\bin\pg_restore.exe
 ```
 
-4. Reiniciar FastAPI para leer las variables de entorno.
-5. En Configuración → PostgreSQL, conectar una base **ya existente** del servidor destino; el usuario necesita permiso `CREATEDB` y permisos suficientes para restaurar los objetos. También debe poder conectarse a la nueva base. Si el respaldo contiene extensiones que requieren privilegios elevados, la restauración puede fallar.
-6. En la sección **Cargar respaldo PostgreSQL**, seleccionar el archivo y pulsar **Cargar, restaurar y analizar**.
+5. Reiniciar FastAPI si editaste `.env` para aplicar el nuevo valor inicial. La casilla puede desactivar temporalmente la restauración aunque el valor inicial haya sido 1.
+6. Conectar una base PostgreSQL **ya existente**. El usuario requiere permiso `CREATEDB`, posibilidad de conectar a la nueva base y permisos para restaurar los objetos. Extensiones privilegiadas pueden fallar.
+7. Seleccionar el respaldo y pulsar **Cargar, restaurar y analizar**.
+
+**Seguridad:** la casilla remota está bloqueada; la API administrativa exige cliente de loopback y origen exacto de Vite en puerto 5173. Para servidores compartidos o públicos debe existir autenticación y autorización de administradores antes de exponer restauraciones. El control es local y temporal, no un cambio permanente del archivo `.env`.
+
+**API de control:** `GET /api/database/postgresql-backup/settings` devuelve `enabled`, `manageable` y `persistent`. `PUT /api/database/postgresql-backup/settings` acepta `{ "enabled": true | false }` exclusivamente desde la interfaz local. El servidor rechaza solicitudes desde otro origen o IP con HTTP 403.
 
 La carga usa la conexión PostgreSQL activa para conocer **host, puerto, usuario, contraseña y SSL**. `pg_restore` es invocado en el backend, sin shell ni contraseña en los argumentos. El límite actual es **2 GB** por carga; para archivos grandes el proceso puede tardar minutos.
 
