@@ -160,8 +160,9 @@ def _create_database(name: str, config: dict) -> None:
 
 def _drop_created_database(name: str, config: dict) -> None:
     # Drop ONLY a new database created successfully by this upload request.
-    admin = _admin_engine(config)
+    admin = None
     try:
+        admin = _admin_engine(config)
         with admin.connect().execution_options(
             isolation_level="AUTOCOMMIT"
         ) as connection:
@@ -169,7 +170,8 @@ def _drop_created_database(name: str, config: dict) -> None:
     except Exception:
         logger.exception("No pude limpiar la base de restauración fallida %s", name)
     finally:
-        admin.dispose()
+        if admin is not None:
+            admin.dispose()
 
 
 def _restore_archive(archive: Path, database_name: str, config: dict, tool: str) -> None:
