@@ -14,7 +14,8 @@ from app.database.database_manager import database_manager
 from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
 from app.database.postgresql_backup_loader import (
-    backup_upload_enabled, restore_postgresql_backup, set_backup_upload_enabled,
+    backup_upload_enabled, restore_postgresql_backup, runtime_upload_enabled,
+    set_backup_upload_enabled,
 )
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
@@ -337,8 +338,15 @@ def update_postgresql_backup_settings(settings: BackupUploadSetting, request: Re
 
 
 @app.post("/api/database/upload/postgresql-backup")
-async def upload_postgresql_archive(file: UploadFile = File(...)):
+async def upload_postgresql_archive(request: Request, file: UploadFile = File(...)):
     """Restore a trusted pg_dump archive to a new PostgreSQL database and analyze it."""
+    # A localhost checkbox cannot grant remote clients backup-import rights.
+    if runtime_upload_enabled() and not _local_backup_control(request):
+        await file.close()
+        raise HTTPException(
+            status_code=403,
+            detail="Una carga habilitada desde la casilla local solo puede usarse desde localhost.",
+        )
     try:
         restored = await restore_postgresql_backup(file)
         # Restoration and activation have succeeded. An optional visualization
