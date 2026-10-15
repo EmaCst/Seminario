@@ -56,6 +56,19 @@ class RecordingResult(unittest.TextTestResult):
         self._record(test, "error", self._exc_info_to_string(err, test))
         super().addError(test, err)
 
+    def addSubTest(self, test, subtest, err):
+        if err is not None:
+            status = "failed" if issubclass(err[0], test.failureException) else "error"
+            self.records.append({
+                "test": test.id(),
+                "subtest": str(subtest),
+                "status": status,
+                "elapsed_ms": round(
+                    (perf_counter() - self._started.get(id(test), perf_counter())) * 1000, 2),
+                "detail": self._exc_info_to_string(err, subtest)[:2000],
+            })
+        super().addSubTest(test, subtest, err)
+
     def addSkip(self, test, reason):
         self._record(test, "skipped", reason)
         super().addSkip(test, reason)
