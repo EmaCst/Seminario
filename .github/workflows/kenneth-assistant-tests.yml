@@ -31,5 +31,15 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Compile Python source
         run: python -m compileall -q app tests
-      - name: Run assistant regression suite without live database or Ollama
-        run: python -m unittest discover -s tests -p 'test_assistant*.py' -v
+      - name: Run Kenneth quality gate (synthetic SQLite, no Ollama)
+        run: python -m app.quality.run --report-dir quality_reports
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kenneth-quality-report
+          path: |
+            Backend/quality_reports/report.json
+            Backend/quality_reports/report.md
+          if-no-files-found: warn
+          retention-days: 14
