@@ -296,11 +296,22 @@ async def upload_postgresql_archive(file: UploadFile = File(...)):
     """Restore a trusted pg_dump archive to a new PostgreSQL database and analyze it."""
     try:
         restored = await restore_postgresql_backup(file)
-        # As in SQL Server, analyze the now-active restored connection.
-        # A restored database stays active even if an optional dashboard fails.
-        analysis = _current_database_analysis()
+        # Restoration and activation have succeeded. An optional visualization
+        # or semantic inspection failure must not be reported as RESTORE failure.
         try:
-            adaptive = get_adaptive_dashboard_summary()
+            analysis = _current_database_analysis()
+        except Exception as exc:
+            analysis = {
+                "database": restored["database"],
+                "analysis_warning": (
+                    "El respaldo se restauró y activó, pero el análisis "
+                    f"automático no terminó: {exc}"
+                ),
+            }
+        try:
+            adaptive = get_adaptive_dashboard_summary() if "analysis_warning" not in analysis else {
+                "available": False, "reason": "Análisis automático pendiente."
+            }
         except Exception as exc:
             adaptive = {"available": False, "reason": str(exc)}
         return {"uploaded": True, "engine": "postgresql", "restore": restored,
