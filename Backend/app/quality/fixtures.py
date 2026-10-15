@@ -14,6 +14,7 @@ from typing import Iterator
 from unittest.mock import patch
 
 from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine
+from sqlalchemy.engine import Engine
 
 from app.database.database_manager import database_manager
 
@@ -136,7 +137,7 @@ def _seed_fixture(engine, fixture: DomainFixture) -> None:
 
 
 @contextmanager
-def connected_fixture(fixture: DomainFixture) -> Iterator[None]:
+def connected_fixture(fixture: DomainFixture) -> Iterator[Engine]:
     """Connect Kenneth to ONLY a throwaway SQLite database in this context.
 
     No global database is activated or disposed; the previous manager is
@@ -163,6 +164,6 @@ def connected_fixture(fixture: DomainFixture) -> Iterator[None]:
                                                  side_effect=engine.connect))
                 stack.enter_context(patch.object(database_manager, "status",
                                                  return_value=status))
-                yield
+                yield engine
         finally:
             engine.dispose()
