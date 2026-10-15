@@ -184,6 +184,13 @@ def classify_domain_question(
     if domain not in ROLE_WORDS:
         return None
     text = normalize(question)
+    # Predictive/anomaly requests belong to the specialized ML pipeline,
+    # even when they also contain count/amount terms and a recognized entity.
+    if any(term in text for term in (
+        "predic", "pronostic", "proyeccion", "forecast",
+        "anomalia", "anomalo", "atipico", "inusual", "outlier",
+    )):
+        return None
     role = _matched_role(text, domain)
     ellipsis = text.startswith(("y ", "ese ", "esa ", "del mismo ", "en ese "))
     previous = _previous_questions(history)
