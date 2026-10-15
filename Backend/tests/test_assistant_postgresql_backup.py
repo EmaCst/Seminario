@@ -193,20 +193,35 @@ class PostgreSQLBackupSettingsTests(unittest.TestCase):
 
     def test_http_checkbox_local_only_and_state_reflects_backend(self):
         headers = {"Origin": "http://localhost:5173"}
-        with TestClient(app) as client:
-            initial = client.get("/api/database/postgresql-backup/settings")
-            self.assertEqual(200, initial.status_code)
-            self.assertTrue(initial.json()["manageable"])
-            enabled = client.put("/api/database/postgresql-backup/settings",
-                                 json={"enabled": True}, headers=headers)
-            self.assertEqual(200, enabled.status_code, enabled.text)
-            self.assertTrue(enabled.json()["enabled"])
-            self.assertFalse(enabled.json()["persistent"])
-            self.assertTrue(client.get("/api/database/postgresql-backup/settings").json()["enabled"])
-            disabled = client.put("/api/database/postgresql-backup/settings",
-                                  json={"enabled": False}, headers=headers)
-            self.assertEqual(200, disabled.status_code)
-            self.assertFalse(disabled.json()["enabled"])
+        # Starlette TestClient uses client IP "testclient", not 127.0.0.1.
+        # Exercise the endpoint separately from the allowlist guard below.
+        with patch("app.main._local_backup_control", return_value=True):
+            with TestClient(app) as client:
+                initial = client.get("/api/database/postgresql-backup/settings")
+                self.assertEqual(200, initial.status_code)
+                self.assertTrue(initial.json()["manageable"])
+                enabled = client.put("/api/database/postgresql-backup/settings",
+                                     json={"enabled": True}, headers=headers)
+                self.assertEqual(200, enabled.status_code, enabled.text)
+                self.assertTrue(enabled.json()["enabled"])
+                self.assertFalse(enabled.json()["persistent"])
+                self.assertTrue(client.get("/api/database/postgresql-backup/settings").json()["enabled"])
+                disabled = client.put("/api/database/postgresql-backup/settings",
+                                      json={"enabled": False}, headers=headers)
+                self.assertEqual(200, disabled.status_code)
+                self.assertFalse(disabled.json()["enabled"])
+
+    def test_local_guard_checks_both_ip_and_origin(self):
+        from app.main import _local_backup_control
+        request = Mock()
+        request.client.host = "127.0.0.1"
+        request.headers = {"origin": "http://localhost:5173"}
+        self.assertTrue(_local_backup_control(request))
+        request.headers = {"origin": "https://malicious.example"}
+        self.assertFalse(_local_backup_control(request))
+        request.headers = {"origin": "http://localhost:5173"}
+        request.client.host = "203.0.113.9"
+        self.assertFalse(_local_backup_control(request))
 
     def test_http_checkbox_rejects_requests_without_trusted_local_origin(self):
         with TestClient(app) as client:
