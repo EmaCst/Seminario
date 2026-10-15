@@ -92,6 +92,7 @@ Desde la interfaz, entra a **Configuración** y elige una fuente:
 - **PostgreSQL:** host, puerto (predeterminado 5432), base de datos, usuario y contraseña.
 - **Excel:** carga un libro compatible para que el sistema lo importe como fuente de datos local.
 - **Respaldo SQL Server (.bak):** requiere un servidor SQL Server activo y permisos de restauración.
+- **Respaldo PostgreSQL (.backup, .dump, .tar):** conecta PostgreSQL primero, instala `pg_restore`, habilita `PG_BACKUP_UPLOAD_ENABLED=1` en `Backend/.env` y utiliza un usuario con permiso `CREATEDB`. Se restaura en una base nueva, sin sobrescribir la conectada. [Guía completa](Backend/docs/postgresql-backup-upload.md).
 
 Una vez conectada la fuente, explora **Dashboard**, **Analítica**, **Predicciones**, el **Creador de visualizaciones** y el asistente **Kenneth**. Las visualizaciones dependen de las tablas y campos disponibles.
 
@@ -136,6 +137,7 @@ Si cambian las dependencias, ejecuta nuevamente `python -m pip install -r requir
 | Kenneth no responde | Que Ollama esté activo y exista el modelo `gemma3:4b` |
 | Error `pyodbc` o conexión SQL Server | ODBC Driver 18, nombre del servidor, permisos y credenciales |
 | Error al conectar PostgreSQL | Servidor activo, puerto, usuario, contraseña y acceso de red |
+| No se puede cargar un respaldo PostgreSQL | Instalar `pg_restore`, habilitar `PG_BACKUP_UPLOAD_ENABLED=1`, conectarse primero a PostgreSQL y comprobar `CREATEDB` |
 | No aparecen estadísticas | Conectar o importar primero una fuente de datos compatible |
 | `npm install` falla por versión de Node | Actualizar Node.js a una versión compatible con Vite 8 |
 
