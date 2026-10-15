@@ -57,9 +57,13 @@ def _find_best_time_series(
         "importe", "monto", "dinero", "ingreso", "facturacion", "recaudacion",
         "valor total", "gasto", "nomina", "salario",
     ))
-    # For explicit sales forecasts, prefer the recorded revenue metric when
-    # available; "ventas" must not silently mean invoice count.
-    if requested_role == "sales" and "venta" in normalized and "cuantas" not in normalized:
+    # For explicit sales forecasts, prefer recorded revenue, but only when
+    # the user has not explicitly requested a count of transactions.
+    explicit_count = any(term in normalized for term in (
+        "cuantos", "cuantas", "numero de", "cantidad de", "transacciones"))
+    if explicit_count:
+        requested_amount = False
+    elif requested_role == "sales" and "venta" in normalized:
         requested_amount = True
 
     candidates = []
