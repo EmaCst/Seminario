@@ -166,6 +166,58 @@ class PostgreSQLBackupUnitTests(unittest.TestCase):
         activate.assert_not_called()
 
 
+class PostgreSQLBackupSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.original_override = pg._UPLOAD_ENABLED_OVERRIDE
+        pg._UPLOAD_ENABLED_OVERRIDE = None
+
+    def tearDown(self):
+        pg._UPLOAD_ENABLED_OVERRIDE = self.original_override
+
+    def test_runtime_checkbox_overrides_environment_without_writing_env(self):
+        with patch.dict(os.environ, {"PG_BACKUP_UPLOAD_ENABLED": "0"}):
+            self.assertFalse(pg.backup_upload_enabled())
+            self.assertTrue(pg.set_backup_upload_enabled(True))
+            self.assertTrue(pg.backup_upload_enabled())
+            self.assertEqual("0", os.environ["PG_BACKUP_UPLOAD_ENABLED"])
+            self.assertFalse(pg.set_backup_upload_enabled(False))
+            self.assertFalse(pg.backup_upload_enabled())
+
+    def test_cannot_change_upload_permission_during_restore(self):
+        self.assertTrue(pg._RESTORE_LOCK.acquire(blocking=False))
+        try:
+            with self.assertRaisesRegex(ValueError, "curso"):
+                pg.set_backup_upload_enabled(True)
+        finally:
+            pg._RESTORE_LOCK.release()
+
+    def test_http_checkbox_local_only_and_state_reflects_backend(self):
+        headers = {"Origin": "http://localhost:5173"}
+        with TestClient(app) as client:
+            initial = client.get("/api/database/postgresql-backup/settings")
+            self.assertEqual(200, initial.status_code)
+            self.assertTrue(initial.json()["manageable"])
+            enabled = client.put("/api/database/postgresql-backup/settings",
+                                 json={"enabled": True}, headers=headers)
+            self.assertEqual(200, enabled.status_code, enabled.text)
+            self.assertTrue(enabled.json()["enabled"])
+            self.assertFalse(enabled.json()["persistent"])
+            self.assertTrue(client.get("/api/database/postgresql-backup/settings").json()["enabled"])
+            disabled = client.put("/api/database/postgresql-backup/settings",
+                                  json={"enabled": False}, headers=headers)
+            self.assertEqual(200, disabled.status_code)
+            self.assertFalse(disabled.json()["enabled"])
+
+    def test_http_checkbox_rejects_requests_without_trusted_local_origin(self):
+        with TestClient(app) as client:
+            for headers in ({}, {"Origin": "https://malicious.example"},
+                            {"Origin": "http://localhost:3000"}):
+                with self.subTest(headers=headers):
+                    res = client.put("/api/database/postgresql-backup/settings",
+                                     json={"enabled": True}, headers=headers)
+                    self.assertEqual(403, res.status_code)
+
+
 class PostgreSQLBackupAsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_disallowed_extension_and_disabled_mode(self):
         upload = UploadFile(file=BytesIO(b"plain sql"), filename="example.sql")
