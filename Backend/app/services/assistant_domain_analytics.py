@@ -244,7 +244,8 @@ def classify_domain_question(
                     "recaudacion", "gasto", "pagamos", "pagado", "valor total")
     compare_terms = ("diferencia", "comparar", "comparacion", "frente a", "versus", "variacion", " vs ")
     status_terms = ("por estado", "por estatus", "distribucion por estado", "segun estado")
-    rank_terms = ("top ", "mayor", "mas alta", "mas alto", "mejor", "ranking")
+    rank_terms = ("top ", "mayor", "mas alta", "mas alto", "mejor", "ranking",
+                  "mas vendido", "mas vendida", "mas vendidos", "mas vendidas")
     peak = (("mes" in text or "mensual" in text)
             and any(term in text for term in ("mas", "mayor", "maximo", "pico"))
             and any(term in text for term in ("registro", "cantidad", "numero",
@@ -264,8 +265,11 @@ def classify_domain_question(
         return None  # Status predicates need an explicit verified value mapping.
     if year is not None and not months and not peak:
         return None  # An annual filter is not the same as lifetime totals.
-    if any(f" {term} " in f" {text} " for term in ("con", "sin", "excepto", "solo",
-                                                    "unicamente", "por", "segun")) and not any(
+    # In "mes con más citas", con is grammatical, not a filter.
+    # Other qualifiers still require a more expressive query planner.
+    qualifiers = ("sin", "excepto", "solo", "unicamente", "por", "segun") if peak else (
+        "con", "sin", "excepto", "solo", "unicamente", "por", "segun")
+    if any(f" {term} " in f" {text} " for term in qualifiers) and not any(
             term in text for term in status_terms):
         return None  # Qualifiers might require grouping/filtering by another column.
     if any(term in text for term in ("del doctor", "del medico", "del paciente",
