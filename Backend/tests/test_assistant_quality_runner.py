@@ -18,6 +18,7 @@ class QualityRunnerTests(unittest.TestCase):
                         "errors": 0, "skipped": 0},
             "duration_ms": 10.0,
             "ollama": {"status": "not_run"},
+            "domain_matrix": [],
             "tests": [{"test": "sample", "status": "passed"}],
         }
         text = _markdown_report(report)
