@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -13,7 +13,9 @@ from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
 from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
-from app.database.postgresql_backup_loader import restore_postgresql_backup
+from app.database.postgresql_backup_loader import (
+    backup_upload_enabled, restore_postgresql_backup, set_backup_upload_enabled,
+)
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
@@ -290,6 +292,49 @@ async def upload_excel_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible activar el archivo Excel: {exc}") from exc
+
+class BackupUploadSetting(BaseModel):
+    enabled: bool
+
+
+def _local_backup_control(request: Request) -> bool:
+    """Only developer-local calls may toggle administrative upload capability.
+
+    Disallow remote clients and foreign origins; no remotely accessible
+    unauthenticated toggle is permitted. Deployments need real authentication.
+    """
+    host = request.client.host if request.client else ""
+    if host not in ("127.0.0.1", "::1"):
+        return False
+    origin = request.headers.get("origin")
+    return origin in ("http://localhost:5173", "http://127.0.0.1:5173")
+
+
+@app.get("/api/database/postgresql-backup/settings")
+def get_postgresql_backup_settings(request: Request):
+    return {
+        "enabled": backup_upload_enabled(),
+        "manageable": _local_backup_control(request),
+        "persistent": False,
+        "source": "runtime_or_env_default",
+    }
+
+
+@app.put("/api/database/postgresql-backup/settings")
+def update_postgresql_backup_settings(settings: BackupUploadSetting, request: Request):
+    if not _local_backup_control(request):
+        raise HTTPException(
+            status_code=403,
+            detail=("Por seguridad, la activación desde la interfaz solo está "
+                    "disponible en el equipo local, desde el frontend de Kenneth."),
+        )
+    try:
+        enabled = set_backup_upload_enabled(settings.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"enabled": enabled, "manageable": True, "persistent": False,
+            "source": "runtime"}
+
 
 @app.post("/api/database/upload/postgresql-backup")
 async def upload_postgresql_archive(file: UploadFile = File(...)):
