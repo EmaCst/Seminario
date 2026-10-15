@@ -24,7 +24,10 @@ class DatabaseManager:
             "password": os.getenv("DB_PASSWORD"),
             "driver": os.getenv("DB_DRIVER") or "ODBC Driver 18 for SQL Server",
         }
-        if env_config["server"] and env_config["database"]:
+        # A quality run must never auto-connect to DB_SERVER from a .env file.
+        # The flag is set by the opt-in synthetic integration runner only.
+        if (env_config["server"] and env_config["database"]
+                and os.getenv("KENNETH_QUALITY_MODE") != "1"):
             self.configure(**env_config)
 
     @staticmethod
