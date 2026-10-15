@@ -42,9 +42,13 @@ export const PostgreSQLUpload = () => {
     try {
       const response = await uploadPostgreSQLBackup(file);
       setResult(response);
-      setStatus({ type: 'success', message: es
-        ? 'Base restaurada y activada correctamente: ' + response.database
-        : 'Database restored and activated: ' + response.database });
+      setStatus(response.analysis_warning
+        ? { type: 'info', message: es
+          ? 'Base restaurada y activada: ' + response.database + '. ' + response.analysis_warning
+          : 'Database restored and activated: ' + response.database + '. Analysis pending: ' + response.analysis_warning }
+        : { type: 'success', message: es
+          ? 'Base restaurada y activada correctamente: ' + response.database
+          : 'Database restored and activated: ' + response.database });
     } catch (error) {
       setStatus({ type: 'error', message: error.message });
     } finally {
@@ -117,7 +121,7 @@ export const PostgreSQLUpload = () => {
           </div>
           <div className="rounded-xl border p-4" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
             <div className="text-xs font-bold uppercase" style={{ color: colors.muted }}>{es ? 'Tablas' : 'Tables'}</div>
-            <div className="mt-1 text-lg font-extrabold" style={{ color: colors.text }}>{result.tables?.length ?? 0}</div>
+            <div className="mt-1 text-lg font-extrabold" style={{ color: colors.text }}>{result.tables?.length ?? result.restore?.table_count ?? 0}</div>
           </div>
         </div>
       )}
