@@ -15,3 +15,5 @@ __pycache__/
 # Sistema operativo
 .DS_Store
 Thumbs.db
+# Informes locales de pruebas de Kenneth (no versionar)
+quality_reports/
