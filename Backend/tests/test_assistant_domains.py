@@ -156,6 +156,19 @@ class DomainCoverageTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertIsNone(domain.classify_domain_question(question, [], semantic))
 
+    def test_domain_query_failure_returns_checked_error(self):
+        semantic = fake_semantic("healthcare", "appointments")
+        with patch.object(domain, "inspect_semantic_model",
+                          return_value={"semantic_model": semantic}):
+            with patch.object(domain, "_query", side_effect=RuntimeError("database offline")):
+                with patch("logging.Logger.exception") as logged:
+                    result, detected = domain.run_domain_analytics(
+                        "cuantas citas en junio", [])
+        self.assertEqual("healthcare", detected)
+        self.assertEqual("error", result["mode"])
+        self.assertIn("No pude consultar", result["answer"])
+        logged.assert_called_once()
+
     def test_no_guesses_when_domain_or_entity_uncertain(self):
         semantic = fake_semantic("healthcare", "appointments")
         semantic["ambiguous_domain"] = True
