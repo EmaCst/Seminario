@@ -30,6 +30,28 @@ ARCHIVE_EXTENSIONS = {".backup", ".dump", ".tar"}
 _RESTORE_LOCK = Lock()
 _TIMEOUT_SECONDS = 1800
 
+# Local runtime control; the .env value is the startup default only.
+# Never write into .env or persist a browser-controlled administrative flag.
+_UPLOAD_ENABLED_OVERRIDE: bool | None = None
+
+
+def backup_upload_enabled() -> bool:
+    if _UPLOAD_ENABLED_OVERRIDE is not None:
+        return _UPLOAD_ENABLED_OVERRIDE
+    return os.getenv("PG_BACKUP_UPLOAD_ENABLED", "").strip().lower() in (
+        "1", "true", "yes"
+    )
+
+
+def set_backup_upload_enabled(enabled: bool) -> bool:
+    global _UPLOAD_ENABLED_OVERRIDE
+    if _RESTORE_LOCK.locked():
+        raise ValueError(
+            "No se puede cambiar la habilitación mientras una restauración está en curso."
+        )
+    _UPLOAD_ENABLED_OVERRIDE = bool(enabled)
+    return backup_upload_enabled()
+
 
 def _safe_db_name(filename: str) -> str:
     """Generate a unique identifier; never trust filenames as SQL identifiers."""
@@ -259,14 +281,12 @@ async def restore_postgresql_backup(upload: UploadFile) -> dict:
             "Carga archivos .backup, .dump (Custom) o .tar de pg_dump. "
             "Los .sql de texto no se admiten por seguridad."
         )
-    if os.getenv("PG_BACKUP_UPLOAD_ENABLED", "").strip().lower() not in (
-        "1", "true", "yes"
-    ):
+    if not backup_upload_enabled():
         await upload.close()
         raise ValueError(
             "La restauración PostgreSQL está deshabilitada por seguridad. "
-            "Un administrador debe definir PG_BACKUP_UPLOAD_ENABLED=1 "
-            "en Backend/.env y reiniciar el backend."
+            "Actívala desde Configuración → PostgreSQL (solo en entorno local) "
+            "o define PG_BACKUP_UPLOAD_ENABLED=1 en Backend/.env."
         )
     try:
         config = database_manager.get_active_config()
