@@ -105,6 +105,28 @@ class DomainCoverageTests(unittest.TestCase):
                 else:
                     self.assertIsNone(request)
 
+    def test_peak_connector_is_not_an_entity_filter(self):
+        semantic = fake_semantic("healthcare", "appointments")
+        for question in (
+            "mes con mas citas comparado con el anterior",
+            "mes con mas citas de 2026",
+        ):
+            with self.subTest(question=question):
+                request = domain.classify_domain_question(question, [], semantic)
+                self.assertIsNotNone(request)
+                self.assertEqual("peak", request.operation)
+        self.assertIsNone(domain.classify_domain_question(
+            "mes con mas citas del doctor Ana", [], semantic))
+
+    def test_nonretail_top_seller_requires_ranking_query(self):
+        semantic = fake_semantic("manufacturing", "products")
+        for question in ("producto más vendido de junio",
+                         "productos más vendidos de junio",
+                         "top 5 productos de junio"):
+            with self.subTest(question=question):
+                self.assertIsNone(domain.classify_domain_question(
+                    question, [], semantic))
+
     def test_peak_uses_true_prior_calendar_month(self):
         semantic = fake_semantic("healthcare", "appointments")
         query = domain.classify_domain_question(
