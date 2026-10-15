@@ -6,10 +6,12 @@ on:
       - feature/custom-visualization-engine
     paths:
       - "Backend/**"
+      - "Frontend/**"
       - ".github/workflows/kenneth-assistant-tests.yml"
   pull_request:
     paths:
       - "Backend/**"
+      - "Frontend/**"
       - ".github/workflows/kenneth-assistant-tests.yml"
   workflow_dispatch:
 
@@ -47,3 +49,23 @@ jobs:
             Backend/quality_reports/report.md
           if-no-files-found: warn
           retention-days: 14
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Validate frontend source
+        run: npm run lint
+      - name: Build React application
+        run: npm run build
