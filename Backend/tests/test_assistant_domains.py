@@ -195,6 +195,17 @@ class DomainCoverageTests(unittest.TestCase):
         self.assertEqual("trips", request.role)
         self.assertEqual((2,), request.months)
 
+    def test_prediction_and_anomaly_intents_reach_specialized_services(self):
+        semantic = fake_semantic("education", "enrollments")
+        for question in (
+            "pronostica la cantidad de inscripciones",
+            "predice las inscripciones de junio",
+            "encuentra anomalías en inscripciones",
+        ):
+            with self.subTest(question=question):
+                self.assertIsNone(
+                    domain.classify_domain_question(question, [], semantic))
+
     def test_generic_domain_preempts_llm_when_verifiable(self):
         from app.services.assistant_service import ask_database
         semantic = fake_semantic("education", "enrollments")
