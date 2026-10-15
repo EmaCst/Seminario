@@ -13,6 +13,7 @@ from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
 from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
+from app.database.postgresql_backup_loader import restore_postgresql_backup
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
@@ -289,6 +290,32 @@ async def upload_excel_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible activar el archivo Excel: {exc}") from exc
+
+@app.post("/api/database/upload/postgresql-backup")
+async def upload_postgresql_archive(file: UploadFile = File(...)):
+    """Restore a trusted pg_dump archive to a new PostgreSQL database and analyze it."""
+    try:
+        restored = await restore_postgresql_backup(file)
+        # As in SQL Server, analyze the now-active restored connection.
+        # A restored database stays active even if an optional dashboard fails.
+        analysis = _current_database_analysis()
+        try:
+            adaptive = get_adaptive_dashboard_summary()
+        except Exception as exc:
+            adaptive = {"available": False, "reason": str(exc)}
+        return {"uploaded": True, "engine": "postgresql", "restore": restored,
+                **analysis, "dashboard": adaptive}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=("No se pudo restaurar el respaldo PostgreSQL. "
+                    "Comprueba que pg_restore esté instalado, que la conexión "
+                    "tenga permiso CREATEDB y que el archivo sea de confianza. "
+                    f"Detalle: {exc}")
+        ) from exc
+
 
 @app.post("/api/database/upload/sqlserver-bak")
 async def upload_sqlserver_backup(file: UploadFile = File(...)):
