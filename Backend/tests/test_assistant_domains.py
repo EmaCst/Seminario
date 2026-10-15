@@ -121,6 +121,17 @@ class DomainCoverageTests(unittest.TestCase):
         self.assertIn("mayo de 2026", answer["answer"])
         self.assertIn("la diferencia fue 1 registros", answer["answer"])
 
+    def test_requested_count_not_monetary_amount(self):
+        semantic = fake_semantic("professional_services", "payments")
+        count = domain.classify_domain_question(
+            "cuantos pagos de junio", [], semantic)
+        amount = domain.classify_domain_question(
+            "monto total de pagos de junio", [], semantic)
+        self.assertEqual("count", count.metric)
+        self.assertEqual("amount", amount.metric)
+        self.assertIn("2 registros", domain.execute_domain_question(count, semantic)["answer"])
+        self.assertIn("600.00", domain.execute_domain_question(amount, semantic)["answer"])
+
     def test_status_month_is_filtered(self):
         semantic = fake_semantic("healthcare", "appointments")
         request = domain.classify_domain_question(
