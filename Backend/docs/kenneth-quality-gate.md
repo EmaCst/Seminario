@@ -32,7 +32,7 @@ Solo la integración real de FastAPI y SQLite:
 python -m app.quality.run --suite integration
 ```
 
-Los reportes se guardan en `Backend/quality_reports/report.json` y `Backend/quality_reports/report.md`. El directorio está excluido de Git. El comando devuelve código de salida 1 cuando hay fallos. GitHub Actions ejecuta la versión sin Ollama y conserva ambos informes como artefacto `kenneth-quality-report`.
+Los reportes se guardan en `Backend/quality_reports/report.json` y `Backend/quality_reports/report.md`. El directorio está excluido de Git. El comando devuelve código de salida 1 cuando hay fallos. GitHub Actions ejecuta la versión sin Ollama y conserva ambos informes como artefactos `kenneth-quality-report-py3.11` y `kenneth-quality-report-py3.12`.
 
 ## Ollama/Gemma — ejecución manual opcional
 
