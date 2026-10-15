@@ -62,5 +62,6 @@ async function uploadFile(path, file) {
   return parseResponse(await fetch(`${API_URL}${path}`, { method: 'POST', body: formData }));
 }
 export const uploadSqlServerBackup = (file) => uploadFile('/api/database/upload/sqlserver-bak', file);
+export const uploadPostgreSQLBackup = (file) => uploadFile('/api/database/upload/postgresql-backup', file);
 export const inspectExcel = (file) => uploadFile('/api/database/upload/excel/inspect', file);
 export const uploadExcel = (file) => uploadFile('/api/database/upload/excel', file);
