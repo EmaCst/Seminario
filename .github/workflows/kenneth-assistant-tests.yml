@@ -43,6 +43,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p "test_seasonal_forecasting.py" -v
           python -m unittest discover -s tests -p "test_robust_ml.py" -v
+          python -m unittest discover -s tests -p "test_anomaly_narrative.py" -v
           python -m unittest discover -s tests -p "test_assistant_prediction_domains.py" -v
       - name: Upload quality reports
         if: always()
