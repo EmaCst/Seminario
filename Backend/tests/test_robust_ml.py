@@ -89,7 +89,7 @@ class ContextualAnomalyTests(unittest.TestCase):
         self.assertEqual(1, len(matching))
         self.assertEqual("drop", matching[0]["direction"])
         self.assertGreater(matching[0]["expected_total"], matching[0]["total"])
-        self.assertIn("estacional", result["warning"].lower())
+        self.assertEqual("annual_calendar_median", matching[0]["expected_basis"])
 
     def test_nonconsecutive_series_warns(self):
         points = synthetic()
