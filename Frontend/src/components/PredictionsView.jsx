@@ -21,6 +21,11 @@ import { DashboardContext } from '../context/DashboardContext';
 import { getAnomalies, getForecast } from '../services/api';
 
 const monthLabel = (year, month) => `${String(month).padStart(2, '0')}/${year}`;
+const fullMonthLabel = (year, month, language) => (
+  new Intl.DateTimeFormat(language === 'es' ? 'es-GT' : 'en-US', {
+    year: 'numeric', month: 'long', timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)))
+);
 
 const qualityFromEvidence = (confidence, language) => {
   const names = {
@@ -264,11 +269,22 @@ export const PredictionsView = () => {
 
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <h2 className="font-extrabold text-lg mb-4" style={{ color: colors.text }}>{language === 'es' ? 'Valores estimados y referencia anual' : 'Estimates and annual benchmark'}</h2>
-              <div className="space-y-3">
+              <p className="text-xs mb-3" style={{ color: colors.muted }}>
+                {language === 'es'
+                  ? 'Desplázate dentro de este panel para consultar todos los períodos sin alargar la página.'
+                  : 'Scroll within this panel to see every period without extending the page.'}
+              </p>
+              <div
+                role="region"
+                aria-label={language === 'es' ? 'Lista desplazable de valores estimados y referencias anuales' : 'Scrollable list of estimated values and annual references'}
+                tabIndex={0}
+                className="max-h-[420px] min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-2 focus-visible:outline-2 focus-visible:outline-offset-2"
+                style={{ scrollbarWidth: 'thin', scrollbarColor: `${colors.border} transparent` }}
+              >
                 {(forecast.forecast || []).map((item) => (
-                  <div key={`${item.year}-${item.month}`} className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
-                    <span className="font-semibold" style={{ color: colors.muted }}>{monthLabel(item.year, item.month)}</span>
-                    <div className="text-right">
+                  <div key={`${item.year}-${item.month}`} className="min-w-0 rounded-xl border p-3 flex items-start justify-between gap-2" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
+                    <span className="shrink-0 pt-1 text-sm font-semibold" style={{ color: colors.muted }}>{monthLabel(item.year, item.month)}</span>
+                    <div className="min-w-0 flex-1 break-words text-right">
                       <span className="font-extrabold text-lg block" style={{ color: theme.primary }}>{item.predicted_total}</span>
                       <span className="text-xs block" style={{ color: colors.muted }}>
                         {item.period_status === 'historical_gap'
@@ -386,18 +402,59 @@ export const PredictionsView = () => {
                   {anomalies.anomalies.map((item) => (
                     <div key={`${item.year}-${item.month}`} className="rounded-xl border p-4" style={{ borderColor: '#F59E0B55', backgroundColor: '#F59E0B10' }}>
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <strong style={{ color: colors.text }}>{monthLabel(item.year, item.month)}</strong>
-                          <span className="ml-2 text-xs font-bold uppercase px-2 py-1 rounded-full" style={{ backgroundColor: colors.accentSoft, color: theme.primary }}>
+                        <div className="min-w-0 space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.muted }}>
+                            {language === 'es' ? 'Fecha de la anomalía' : 'Anomaly period'}
+                          </p>
+                          <time
+                            dateTime={`${item.year}-${String(item.month).padStart(2, '0')}`}
+                            className="block text-base font-extrabold capitalize"
+                            style={{ color: colors.text }}
+                          >
+                            {fullMonthLabel(item.year, item.month, language)}
+                          </time>
+                          <p className="text-xs" style={{ color: colors.muted }}>
+                            {language === 'es' ? 'Análisis mensual (no identifica un día específico)' : 'Monthly analysis (no specific day identified)'}
+                          </p>
+                          <span className="inline-block rounded-full px-2 py-1 text-xs font-bold uppercase" style={{ backgroundColor: colors.accentSoft, color: theme.primary }}>
                             {language === 'es' ? 'Severidad' : 'Severity'}: {severityLabel(item.severity, language)}
                           </span>
                         </div>
                         <strong className="text-xl" style={{ color: '#D97706' }}>{item.total}</strong>
                       </div>
 
-                      <p className="text-sm mt-3 leading-5" style={{ color: colors.text }}>
-                        {item.reason || (language === 'es' ? 'El valor se desvió de su referencia temporal.' : 'The value departed from its time-aware baseline.')}
-                      </p>
+                      <div className="mt-4 space-y-3 rounded-xl border p-3.5" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: colors.text }}>
+                            {language === 'es' ? '¿Qué ocurrió?' : 'What happened?'}
+                          </h3>
+                          <p className="mt-1.5 text-sm leading-6 break-words" style={{ color: colors.text }}>
+                            {item.explanation || item.reason || (language === 'es'
+                              ? 'El valor se alejó del comportamiento histórico esperado.'
+                              : 'The observed value differed from its expected historical behavior.')}
+                          </p>
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: colors.text }}>
+                            {language === 'es' ? '¿Qué indican los datos?' : 'What does the data indicate?'}
+                          </h3>
+                          <p className="mt-1.5 text-sm leading-6 break-words" style={{ color: colors.text }}>
+                            {item.diagnostic_explanation || (language === 'es'
+                              ? 'No se identificó una causa verificable con los datos disponibles.'
+                              : 'The available data do not establish a verified cause.')}
+                          </p>
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold" style={{ color: colors.text }}>
+                            {language === 'es' ? '¿Qué conviene revisar?' : 'What should be investigated?'}
+                          </h3>
+                          <p className="mt-1.5 text-sm leading-6 break-words" style={{ color: colors.muted }}>
+                            {item.recommendation || (language === 'es'
+                              ? 'Revisa los registros del período antes de atribuir una causa.'
+                              : 'Review the period records before attributing a cause.')}
+                          </p>
+                        </div>
+                      </div>
                       <p className="text-xs mt-2" style={{ color: colors.muted }}>
                         {language === 'es' ? 'Esperado según historial' : 'Historically expected'}: {item.expected_total ?? '—'}
                       </p>
