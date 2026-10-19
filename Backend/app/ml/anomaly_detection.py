@@ -31,7 +31,7 @@ def _slope(values: list[float], dates: list[int], annual: bool) -> float:
     return median(pairs) if pairs else 0.0
 
 
-def detect_anomalies(points: list[dict]) -> dict:
+def detect_anomalies(points: list[dict], *, nonnegative: bool = True) -> dict:
     if len(points) < 4:
         raise ValueError("Se requieren al menos 4 meses para buscar anomalías.")
     values, dates, months, gaps = _validated(points)
@@ -47,7 +47,8 @@ def detect_anomalies(points: list[dict]) -> dict:
     effects = {month: (median(group) if len(group) >= 2 else 0.0)
                for month, group in groups.items()} if annual else {month: 0.0 for month in groups}
 
-    expected = [max(0.0, intercept + slope * (date - origin) + effects[month])
+    expected = [max(0.0, intercept + slope * (date - origin) + effects[month]) if nonnegative
+                else intercept + slope * (date - origin) + effects[month]
                 for date, month in zip(dates, months)]
     residuals = [value - fitted for value, fitted in zip(values, expected)]
     dispersion = 1.4826 * _median_absolute_deviation(residuals)
