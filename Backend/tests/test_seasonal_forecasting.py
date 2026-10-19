@@ -16,7 +16,7 @@ def series(months=36, seasonal=True):
 class SeasonalForecastTests(unittest.TestCase):
     def test_repeating_february_dip_and_holiday_peak(self):
         result = forecast_monthly(series(), 12)
-        self.assertIn(result["model"], {"seasonal_trend", "seasonal_naive"})
+        self.assertIn(result["model"], {"seasonal_trend", "seasonal_drift"})
         self.assertGreater(result["forecast"][10]["predicted_total"], result["forecast"][9]["predicted_total"])
         self.assertLess(result["forecast"][1]["predicted_total"], result["forecast"][0]["predicted_total"])
         self.assertIn(2, [p["month"] for p in result["seasonal_patterns"] if p["direction"] == "decrease"])
