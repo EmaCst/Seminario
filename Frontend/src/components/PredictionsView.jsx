@@ -355,6 +355,17 @@ export const PredictionsView = () => {
                                 {segment.dimension}: {segment.category} · {language === 'es' ? 'Variación' : 'Change'} {segment.change > 0 ? '+' : ''}{segment.change}
                               </p>
                             ))}
+                            {(finding.related_indicators || []).length > 0 && (
+                              <p className="text-xs font-bold mt-3" style={{ color: colors.text }}>
+                                {language === 'es' ? 'Indicadores con cambios simultáneos' : 'Indicators with concurrent changes'}
+                              </p>
+                            )}
+                            {(finding.related_indicators || []).map((related) => (
+                              <p key={related.role} className="text-xs mt-1" style={{ color: colors.text }}>
+                                {related.role} · {language === 'es' ? 'Variación' : 'Change'} {related.change > 0 ? '+' : ''}{related.change}
+                                {related.change_pct == null ? '' : ` (${related.change_pct}%)`}
+                              </p>
+                            ))}
                             {finding.limitations.map((notice) => (
                               <p key={notice} className="text-xs mt-1" style={{ color: colors.muted }}>{notice}</p>
                             ))}
@@ -363,9 +374,6 @@ export const PredictionsView = () => {
                             </p>
                           </div>
                         ))}
-                      <p className="text-sm mt-3 leading-5" style={{ color: colors.text }}>
-                      </p>
-
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
                         <div className="rounded-lg p-2" style={{ backgroundColor: colors.card }}>
                           <span style={{ color: colors.muted }}>vs promedio</span>
