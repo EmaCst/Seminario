@@ -35,7 +35,7 @@ export const CustomVisualizationWidget = ({ item, draggable, dragging, large, on
 };
 
 export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
-  const { colors, language, editMode, theme } = useContext(DashboardContext);
+  const { colors, editMode } = useContext(DashboardContext);
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
   const [draggingId, setDraggingId] = useState(null);
@@ -48,13 +48,15 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
     getSavedVisualizations(destination).then((result)=>{
       if (!active) return;
       const incoming = result.items || [];
-      let order = [];
-      try { order = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { order = []; }
+      const order = (() => {
+        try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); }
+        catch { return []; }
+      })();
       const rank = new Map(order.map((id, index) => [id, index]));
       setItems([...incoming].sort((a,b)=>(rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999)));
     }).catch((err)=>active&&setError(err.message));
     return ()=>{active=false};
-  }, [destination, refreshKey]);
+  }, [destination, refreshKey, storageKey]);
 
   const persistOrder = (next) => {
     setItems(next);
