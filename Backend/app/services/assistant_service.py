@@ -98,7 +98,11 @@ def _quality_from_r2(r2: float | None) -> str:
 def _format_forecast_answer(result: dict) -> str:
     from app.services.assistant_domain_analytics import ROLE_LABELS
     role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
-    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad mensual de registros"
+    metric = {
+        "amount": "importe mensual",
+        "quantity": "unidades producidas por mes",
+        "average": "promedio mensual de calificaciones",
+    }.get(result.get("metric"), "cantidad mensual de registros")
     forecast = result.get("forecast") or []
     if not forecast:
         return "No pude generar una predicción con los datos disponibles."
@@ -142,7 +146,11 @@ def _format_forecast_answer(result: dict) -> str:
 def _format_anomaly_answer(result: dict) -> str:
     from app.services.assistant_domain_analytics import ROLE_LABELS
     role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
-    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad mensual de registros"
+    metric = {
+        "amount": "importe mensual",
+        "quantity": "unidades producidas por mes",
+        "average": "promedio mensual de calificaciones",
+    }.get(result.get("metric"), "cantidad mensual de registros")
     anomalies = result.get("anomalies") or []
     if not anomalies:
         warning = result.get("warning") or ""
