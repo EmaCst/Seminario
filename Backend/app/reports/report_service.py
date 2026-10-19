@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from html import escape
 
 from reportlab.graphics.charts.barcharts import HorizontalBarChart
 from reportlab.graphics.charts.linecharts import HorizontalLineChart
@@ -104,7 +105,7 @@ def _kpi_table(dashboard: dict) -> Table | None:
     value_style = ParagraphStyle("KpiValue", fontName="Helvetica-Bold", fontSize=18, textColor=DARK_BLUE, alignment=TA_CENTER)
     for item in kpis[:4]:
         cells.append(Table([
-            [Paragraph(_role(item.get("role")).title(), label_style)],
+            [Paragraph(escape(_role(item.get("role")).title()), label_style)],
             [Paragraph(_fmt(item.get("value")), value_style)],
         ], colWidths=[39 * mm], rowHeights=[8 * mm, 13 * mm]))
     row = Table([cells], colWidths=[41 * mm] * len(cells))
@@ -381,15 +382,15 @@ def _add_narrative(story, styles, paragraphs: list[str], title: str):
         return
     story.append(Paragraph(title, styles["SubsectionTitle"]))
     for text in paragraphs:
-        story.append(Paragraph(text, styles["BodyTextReport"]))
+        story.append(Paragraph(escape(str(text)), styles["BodyTextReport"]))
         story.append(Spacer(1, 2 * mm))
 
 
 def _add_executive(story, styles, dashboard: dict, analytics: dict):
     _add_section(story, styles, "Resumen ejecutivo")
     story.append(Paragraph(
-        f"Este reporte resume el comportamiento de la base <b>{dashboard.get('database') or '-'}</b>, identificada como dominio "
-        f"<b>{dashboard.get('domain') or 'generic'}</b> sobre <b>{dashboard.get('provider') or '-'}</b>. El objetivo es explicar qué está ocurriendo "
+        f"Este reporte resume el comportamiento de la base <b>{escape(str(dashboard.get('database') or '-'))}</b>, identificada como dominio "
+        f"<b>{escape(str(dashboard.get('domain') or 'generic'))}</b> sobre <b>{escape(str(dashboard.get('provider') or '-'))}</b>. El objetivo es explicar qué está ocurriendo "
         "en el negocio y complementar los indicadores con una lectura ejecutiva.",
         styles["BodyTextReport"],
     ))
@@ -406,7 +407,7 @@ def _add_executive(story, styles, dashboard: dict, analytics: dict):
     if insights:
         story.append(Paragraph("Hallazgos destacados", styles["SubsectionTitle"]))
         for insight in insights[:5]:
-            story.append(Paragraph(f"<b>{insight.get('title', 'Insight')}:</b> {insight.get('text', '')}", styles["BodyTextReport"]))
+            story.append(Paragraph(f"<b>{escape(str(insight.get('title', 'Insight')))}:</b> {escape(str(insight.get('text', '')))}", styles["BodyTextReport"]))
             story.append(Spacer(1, 1.5 * mm))
 
 
@@ -497,7 +498,7 @@ def _add_predictive(story, styles, forecast: dict | None, anomalies: dict | None
             styles["NoteText"],
         ))
         if forecast.get("warning"):
-            story.append(Paragraph(str(forecast["warning"]), styles["NoteText"]))
+            story.append(Paragraph(escape(str(forecast["warning"])), styles["NoteText"]))
     else:
         story.append(Paragraph("No hay suficientes datos para generar un pronóstico confiable.", styles["BodyTextReport"]))
     story.append(Spacer(1, 5 * mm))
@@ -516,9 +517,9 @@ def _add_predictive(story, styles, forecast: dict | None, anomalies: dict | None
         story.append(_table(rows, widths=[30 * mm, 32 * mm, 35 * mm, 35 * mm, 33 * mm]))
         for item in (anomalies.get("anomalies") or [])[:3]:
             if item.get("explanation"):
-                story.append(Paragraph(str(item["explanation"]), styles["BodyTextReport"]))
+                story.append(Paragraph(escape(str(item["explanation"])), styles["BodyTextReport"]))
                 if item.get("diagnostic_explanation"):
-                    story.append(Paragraph(str(item["diagnostic_explanation"]), styles["NoteText"]))
+                    story.append(Paragraph(escape(str(item["diagnostic_explanation"])), styles["NoteText"]))
             story.append(Spacer(1, 2 * mm))
     else:
         story.append(Paragraph("No hay suficientes datos para ejecutar la detección de anomalías.", styles["BodyTextReport"]))
