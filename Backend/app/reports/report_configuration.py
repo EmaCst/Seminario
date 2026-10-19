@@ -220,14 +220,16 @@ def _period_visualization(definition: VisualizationDefinition,
     date_columns = [col.name for col in table.columns if _column_kind(col.type) == "date"]
     # Excel imports can store ISO date strings as TEXT, so use an unambiguous
     # date verified by the same semantic mapper as the rest of Kenneth.
-    semantic = (inspect_semantic_model().get("semantic_model") or {}).get("entities") or {}
-    semantic_dates = {
-        mapped.get("columns", {}).get("date") for mapped in semantic.values()
-        if mapped.get("table") == base and not mapped.get("ambiguous")
-        and (mapped.get("columns") or {}).get("date")
-    }
-    known_columns = {col.name for col in table.columns}
-    candidates = sorted(set(date_columns) | (semantic_dates & known_columns))
+    candidates = date_columns
+    if len(candidates) != 1:
+        semantic = (inspect_semantic_model().get("semantic_model") or {}).get("entities") or {}
+        semantic_dates = {
+            (mapped.get("columns") or {}).get("date") for mapped in semantic.values()
+            if mapped.get("table") == base and not mapped.get("ambiguous")
+            and (mapped.get("columns") or {}).get("date")
+        }
+        known_columns = {col.name for col in table.columns}
+        candidates = sorted(semantic_dates & known_columns)
     if len(candidates) != 1:
         raise ValueError("Se necesita exactamente una columna de fecha verificable en la tabla.")
     start, end = config.period_bounds
