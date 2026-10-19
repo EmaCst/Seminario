@@ -93,9 +93,8 @@ export const PredictionsView = () => {
 
   const quality = qualityFromR2(forecast?.r2_score);
   const anomalyCount = anomalies?.anomalies?.length || 0;
-  const explainedVariation = typeof forecast?.r2_score === 'number'
-    ? Math.max(0, forecast.r2_score * 100).toFixed(2)
-    : null;
+  const validation = forecast?.validation;
+  const modelName = forecast?.model === 'seasonal_trend' ? 'Tendencia + estacionalidad' : 'Regresión lineal';
 
   if (loading) {
     return (
@@ -174,15 +173,15 @@ export const PredictionsView = () => {
               </div>
             </div>
             <div className="text-sm" style={{ color: colors.muted }}>
-              {language === 'es' ? 'Motor' : 'Engine'}: <strong style={{ color: colors.text }}>Linear Regression + Isolation Forest</strong>
+              {language === 'es' ? 'Motor' : 'Engine'}: <strong style={{ color: colors.text }}>{modelName} + Isolation Forest</strong>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {[
               { icon: CalendarRange, label: language === 'es' ? 'Meses de entrenamiento' : 'Training months', value: forecast.training_months },
-              { icon: TrendingUp, label: 'R²', value: forecast.r2_score ?? '—' },
-              { icon: BrainCircuit, label: language === 'es' ? 'Calidad de ajuste' : 'Fit quality', value: quality.label },
+              { icon: TrendingUp, label: 'R² (validación)', value: forecast.r2_score ?? '—' },
+              { icon: BrainCircuit, label: language === 'es' ? 'Calidad predictiva' : 'Forecast quality', value: quality.label },
               { icon: AlertTriangle, label: language === 'es' ? 'Anomalías detectadas' : 'Detected anomalies', value: anomalyCount },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
@@ -222,7 +221,7 @@ export const PredictionsView = () => {
                 {(forecast.forecast || []).map((item) => (
                   <div key={`${item.year}-${item.month}`} className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
                     <span className="font-semibold" style={{ color: colors.muted }}>{monthLabel(item.year, item.month)}</span>
-                    <span className="font-extrabold text-lg" style={{ color: theme.primary }}>{item.predicted_total}</span>
+                    <div className="text-right"><span className="font-extrabold text-lg block" style={{ color: theme.primary }}>{item.predicted_total}</span>{item.lower_estimate != null && <span className="text-xs" style={{ color: colors.muted }}>±MAE: {item.lower_estimate}–{item.upper_estimate}</span>}</div>
                   </div>
                 ))}
               </div>
@@ -243,15 +242,25 @@ export const PredictionsView = () => {
                   {quality.label}
                 </p>
                 <p className="mt-3 text-lg font-extrabold" style={{ color: colors.text }}>
-                  R² = {forecast.r2_score ?? (language === 'es' ? 'N/D' : 'N/A')}
+                  R² de validación = {forecast.r2_score ?? (language === 'es' ? 'N/D' : 'N/A')}
                 </p>
 
-                {explainedVariation != null && (
-                  <p className="mt-3 max-w-md text-sm leading-6" style={{ color: colors.muted }}>
-                    {language === 'es'
-                      ? <>El modelo explica aproximadamente el <strong style={{ color: colors.text }}>{explainedVariation}%</strong> de la variación observada en los datos históricos.</>
-                      : <>The model explains approximately <strong style={{ color: colors.text }}>{explainedVariation}%</strong> of the variation observed in the historical data.</>}
-                  </p>
+                <p className="mt-3 max-w-md text-sm leading-6" style={{ color: colors.muted }}>
+                  {validation?.months
+                    ? `Evaluación temporal con ${validation.months} meses no utilizados para entrenar cada predicción. MAE: ${validation.selected?.mae ?? '—'} · RMSE: ${validation.selected?.rmse ?? '—'} · WAPE: ${validation.selected?.wape ?? '—'}%.`
+                    : 'Historial insuficiente para medir la precisión fuera del entrenamiento.'}
+                </p>
+                {forecast.seasonal_patterns?.length > 0 && (
+                  <div className="mt-3 text-left w-full max-w-md rounded-xl border p-3" style={{ borderColor: colors.border }}>
+                    <p className="font-bold text-sm mb-2" style={{ color: colors.text }}>Patrones estacionales observados</p>
+                    <div className="flex flex-wrap gap-2">
+                      {forecast.seasonal_patterns.map((pattern) => (
+                        <span key={pattern.month} className="rounded-lg px-2 py-1 text-xs" style={{ backgroundColor: colors.cardSoft, color: colors.text }}>
+                          {monthLabel(2026, pattern.month).slice(0, 2)}: {pattern.direction === 'increase' ? '↑' : '↓'} {Math.abs(pattern.estimated_effect)} ({pattern.observations} años)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 )}
 
                 <div
