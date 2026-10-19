@@ -207,9 +207,14 @@ def detect_monthly_anomalies(question: str = "") -> dict:
                 point, series.metric, investigations_by_period.get(key),
             ),
         })
+    review_points = [
+        {**point, **narrate_monthly_anomaly(point, series.metric)}
+        for point in result.get("review_points") or []
+    ]
     return {
         **result,
         "anomalies": narrated,
+        "review_points": review_points,
         "role": series.role, "metric": series.metric,
         "table": series.table, "date_column": series.date_column,
         "diagnostics": diagnostics,
