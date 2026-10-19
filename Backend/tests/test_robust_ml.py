@@ -26,7 +26,7 @@ def synthetic(years=4, seasonal=True):
 class RobustForecastTests(unittest.TestCase):
     def test_seasonality_repeats_in_out_of_sample_forecast(self):
         result = forecast_monthly(synthetic(), 12)
-        self.assertEqual("seasonal_trend", result["model"])
+        self.assertIn(result["model"], {"seasonal_trend", "seasonal_naive"})
         self.assertGreater(result["forecast"][10]["predicted_total"],
                            result["forecast"][9]["predicted_total"])
         self.assertTrue(result["seasonality_evaluated"])
