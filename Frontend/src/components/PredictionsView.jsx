@@ -99,7 +99,7 @@ export const PredictionsView = () => {
   const anomalyCount = anomalies?.anomalies?.length || 0;
   const validation = forecast?.validation;
   const forecastBasis = forecast?.forecast_basis;
-  const containsPastPeriods = forecast?.forecast?.some((point) => point.period_status === 'historical_gap');
+  const containsPastPeriods = forecast?.forecast?.some((point) => point.period_status !== 'future');
   const modelName = ({
     seasonal_trend: 'Tendencia + estacionalidad',
     seasonal_drift: 'Patrón anual + evolución histórica',
@@ -210,8 +210,8 @@ export const PredictionsView = () => {
               {containsPastPeriods && (
                 <p className="font-semibold">
                   {language === 'es'
-                    ? 'Atención: algunos períodos estimados ya transcurrieron. La proyección empieza después del último dato registrado, no después de hoy.'
-                    : 'Warning: some estimated periods are already in the past. Estimates begin after the last recorded month, not after today.'}
+                    ? 'Atención: algunos períodos estimados ya transcurrieron o corresponden al mes actual. La proyección empieza después del último dato registrado, no después de hoy.'
+                    : 'Warning: some estimated periods have elapsed or belong to the current month. Estimates begin after the last recorded month, not after today.'}
                 </p>
               )}
               {forecastBasis.model_origin === 'baseline_reference' && (
