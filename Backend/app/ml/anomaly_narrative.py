@@ -19,6 +19,8 @@ DIMENSION_LABELS = {
     "origin": "origen",
     "destination": "destino",
 }
+
+
 def _metric_phrase(metric: str, value: float) -> str:
     formatted = _num(value)
     if metric == "amount":
@@ -89,6 +91,7 @@ def narrate_monthly_anomaly(
             )
 
     facts = []
+    evidence_found = False
     reference = (investigation or {}).get("reference_period")
     if reference:
         ref_label = _period(int(reference["year"]), int(reference["month"]))
@@ -100,6 +103,7 @@ def narrate_monthly_anomaly(
 
         contributors = (investigation or {}).get("contributors") or []
         if contributors:
+            evidence_found = True
             primary = max(contributors, key=lambda row: abs(float(row.get("change") or 0)))
             key = DIMENSION_LABELS.get(primary.get("dimension"), "categoría")
             category = str(primary.get("category", "(sin dato)"))
@@ -115,6 +119,7 @@ def narrate_monthly_anomaly(
 
         related = (investigation or {}).get("related_indicators") or []
         if related:
+            evidence_found = True
             related_item = related[0]
             role = ROLE_LABELS.get(related_item.get("role"), str(related_item.get("role")))
             change = float(related_item.get("change") or 0)
@@ -125,10 +130,14 @@ def narrate_monthly_anomaly(
             )
 
     if facts:
-        diagnostic = " ".join(facts) + (
+        evidence_limit = (
             " Son cambios observados que orientan la investigación, "
             "pero no demuestran la causa de la anomalía."
+            if evidence_found else
+            " La comparación por sí sola no aporta evidencia suficiente "
+            "para explicar el comportamiento inusual."
         )
+        diagnostic = " ".join(facts) + evidence_limit
     else:
         diagnostic = (
             "No se identificaron desgloses ni indicadores comparables suficientes "
