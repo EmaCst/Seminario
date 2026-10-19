@@ -51,7 +51,7 @@ export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-col
     const registry=readJson(registryKey, []);
     const base=order.length ? order : registry;
     return [...base, ...registry.filter((id)=>!base.includes(id))];
-  },[order,items,registryKey]);
+  },[order,registryKey]);
 
   const rank = new Map(effectiveOrder.map((id,index)=>[id,index]));
   const sorted = sharedCanvas ? items : [...items].sort((a,b)=>(rank.get(a.id) ?? items.findIndex(x=>x.id===a.id))-(rank.get(b.id) ?? items.findIndex(x=>x.id===b.id)));
