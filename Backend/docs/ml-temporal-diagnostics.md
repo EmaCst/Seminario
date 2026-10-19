@@ -6,13 +6,17 @@ El mismo núcleo estadístico se aplica a series mensuales reconocidas en los di
 
 ## Pronóstico y validación
 
-- Compiten modelos de último valor observado, tendencia lineal, mismo mes del año anterior y tendencia con estacionalidad anual.
+- Se comparan último valor observado, tendencia lineal, mismo mes del año anterior (referencia), tendencia con estacionalidad anual y un estimador estacional con deriva interanual robusta.
+- El modelo de mismo mes del año anterior (seasonal_naive) **solo es una referencia de evaluación y no puede seleccionarse como un pronóstico calculado**. El modelo seasonal_drift combina varias observaciones del mismo mes de años distintos, ajustadas mediante la mediana del cambio interanual, para reducir la dependencia de un único año.
 - La estacionalidad se habilita con 26 o más meses consecutivos y orígenes de prueba con al menos 24 meses de entrenamiento.
 - Backtesting temporal rolling-origin: para cada origen solo se utilizan fechas anteriores; se evalúan horizontes de 1 a 12 meses. Los candidatos comparten los mismos orígenes y objetivos.
 - Selección por MAE y desempate con RMSE; evita seleccionar estacionalidad por mejoras inferiores al 3 % frente al mejor modelo sencillo.
 - Se muestran MAE, RMSE, WAPE, R² fuera de entrenamiento cuando sea válido, comparaciones con modelos base y calidad de datos.
 - Los rangos inferior y superior usan el percentil 80 del error absoluto histórico: son bandas descriptivas, **no intervalos de confianza calibrados**.
 - Los meses ausentes no se rellenan con cero. Se comunican explícitamente y desactivan la evaluación estacional.
+- Si ninguno de los modelos calculados supera la referencia de copiar el mismo mes del año anterior, Kenneth informa esa limitación en vez de ocultarla.
+- Se entrega la fecha del último mes realmente registrado, el primer/último mes estimado y, para cada estimación, la cifra real del mismo mes del año anterior y su diferencia respecto al estimado.
+- Las estimaciones empiezan después del último dato disponible, **no necesariamente después del mes actual**. El API y la interfaz distinguen períodos ya transcurridos, mes actual y períodos realmente futuros. Un histórico atrasado no se etiqueta como pronóstico futuro.
 - El campo confidence representa evidencia heurística, no probabilidad de acierto.
 
 ## Anomalías ajustadas al calendario
@@ -29,7 +33,7 @@ Se restringe a tres dimensiones por anomalía y cuarenta categorías completas p
 
 ## API e interfaz
 
-Se conservan las respuestas de /api/ai/forecast y /api/ai/anomalies y se agregan validación de modelos, calidad de datos, patrones estacionales, valores esperados y desgloses descriptivos. El chatbot y la pantalla Predicciones interpretan estos nuevos campos. La lógica sigue adaptándose a SQL Server, PostgreSQL y Excel convertido a SQLite a través del modelo semántico.
+Se conservan las respuestas de /api/ai/forecast y /api/ai/anomalies y se agregan validación de modelos, calidad de datos, patrones estacionales, valores esperados y desgloses descriptivos. Las respuestas del pronóstico ahora incluyen forecast_basis, prior_year_total, change_vs_prior_year, period_status y value_kind; se presentan también en la vista, el asistente y los informes PDF. El chatbot y la pantalla Predicciones interpretan estos nuevos campos. La lógica sigue adaptándose a SQL Server, PostgreSQL y Excel convertido a SQLite a través del modelo semántico.
 
 ## Pruebas
 
