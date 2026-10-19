@@ -127,7 +127,10 @@ def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
             "Se requieren al menos 3 meses para generar una predicción básica."
         )
 
-    prediction = forecast_monthly(points, horizon)
+    prediction = forecast_monthly(
+        points, horizon,
+        nonnegative=not (series.domain == "finance_accounting" and series.metric == "amount"),
+    )
     return {
         **prediction,
         "role": series.role,
@@ -142,7 +145,10 @@ def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
 def detect_monthly_anomalies(question: str = "") -> dict:
     """Detect contextual anomalies and inspect verified business dimensions."""
     series = _find_best_time_series(question, minimum_points=4)
-    result = detect_anomalies(series.data)
+    result = detect_anomalies(
+        series.data,
+        nonnegative=not (series.domain == "finance_accounting" and series.metric == "amount"),
+    )
     diagnostics = explain_deviations(
         result["anomalies"], series.data,
         domain=series.domain, role=series.role,
