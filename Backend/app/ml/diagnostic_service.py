@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import text
 
-from app.analysis.adaptive_dashboard_service import _provider, _quote
+from app.analysis.adaptive_dashboard_service import _monthly_count, _provider, _quote
 from app.database.connection import get_connection
 from app.services.assistant_analytics import _month_expr, _year_expr
 from app.services.assistant_domain_analytics import _measure
@@ -56,6 +56,7 @@ def explain_deviations(
     anomalies: list[dict], historical: list[dict], *,
     domain: str, role: str, entity: dict, metric: str,
     max_periods: int = 5,
+    related_entities: dict | None = None,
 ) -> dict:
     """Compare anomalous periods with the same month a year earlier, or prior month.
 
@@ -65,6 +66,25 @@ def explain_deviations(
     known = {(int(p["year"]), int(p["month"])) for p in historical}
     investigations = []
     dimensions = [key for key in DIMENSIONS if (entity.get("columns") or {}).get(key)][:3]
+    # Independent, verified entity counts may reveal correlated changes.
+    # They are contextual clues only; no join or causal inference is made.
+    related_series = {}
+    for other_role, mapped in (related_entities or {}).items():
+        if other_role == role or mapped.get("ambiguous") or not mapped.get("table"):
+            continue
+        date_column = (mapped.get("columns") or {}).get("date")
+        if not date_column:
+            continue
+        try:
+            observations = _monthly_count(mapped["table"], date_column)
+        except Exception:
+            continue
+        related_series[other_role] = {
+            (int(item["year"]), int(item["month"])): float(item["total"])
+            for item in observations
+        }
+        if len(related_series) >= 6:
+            break
     for point in sorted(anomalies, key=lambda item: abs(float(item.get("deviation") or 0)),
                         reverse=True)[:max_periods]:
         year, month = int(point["year"]), int(point["month"])
@@ -80,7 +100,7 @@ def explain_deviations(
             "reference_type": ("same_month_previous_year"
                                if reference == previous_year else "previous_month")
                               if reference else None,
-            "contributors": [], "limitations": [],
+            "contributors": [], "related_indicators": [], "limitations": [],
             "causality": "not_established",
         }
         if reference is None:
@@ -107,7 +127,26 @@ def explain_deviations(
             ]
             deltas.sort(key=lambda item: abs(item["change"]), reverse=True)
             finding["contributors"].extend(deltas[:3])
-        if not finding["contributors"]:
+        if reference:
+            related = []
+            for other_role, observations in related_series.items():
+                if (year, month) not in observations or reference not in observations:
+                    continue
+                current_count, previous_count = observations[(year, month)], observations[reference]
+                delta = current_count - previous_count
+                relative = (round(100 * delta / abs(previous_count), 2)
+                            if previous_count else None)
+                related.append({
+                    "role": other_role, "metric": "count",
+                    "current": round(current_count, 2),
+                    "reference": round(previous_count, 2),
+                    "change": round(delta, 2), "change_pct": relative,
+                    "relationship": "temporal_coincidence_only",
+                })
+            related.sort(key=lambda item: abs(item["change_pct"])
+                         if item["change_pct"] is not None else abs(item["change"]), reverse=True)
+            finding["related_indicators"] = related[:4]
+        if not finding["contributors"] and not finding["related_indicators"]:
             finding["limitations"].append(
                 "El modelo semántico no identificó desgloses categóricos verificables "
                 "en la tabla temporal seleccionada.")
@@ -120,7 +159,7 @@ def explain_deviations(
         "metric": metric, "investigated": len(investigations),
         "investigations": investigations,
         "warning": (
-            "Los cambios por segmento son asociaciones descriptivas frente a un período "
+            "Los cambios por segmento y los indicadores relacionados son asociaciones descriptivas frente a un período "
             "de referencia; no demuestran causas ni explican automáticamente el "
             "residuo respecto al pronóstico estacional."
         ),
