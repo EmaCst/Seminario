@@ -64,8 +64,16 @@ export const PredictionsView = () => {
   };
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+    Promise.all([getForecast(horizon), getAnomalies()])
+      .then(([forecastData, anomalyData]) => {
+        if (!active) return;
+        setForecast(forecastData);
+        setAnomalies(anomalyData);
+      })
+      .catch((err) => { if (active) setError(err.message || 'No fue posible generar el análisis predictivo.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [horizon]);
 
   const chartData = useMemo(() => {
