@@ -25,6 +25,10 @@ Se estima una tendencia robusta usando medianas de variaciones comparables y efe
 
 La detección es **retrospectiva** y puede utilizar observaciones posteriores al período evaluado; no constituye backtesting de pronósticos ni un juicio causal.
 
+Cada anomalía incluye el período explícito como mes/año (`period_iso`, `period_label`, `period_granularity=month`) sin fingir una fecha exacta del evento. `explanation` explica en lenguaje natural el valor observado, el nivel esperado y su desviación. `diagnostic_explanation` resume categorías e indicadores observados en períodos de comparación y señala cuándo falta evidencia. `recommendation` orienta una revisión posterior sin afirmar que se haya demostrado causalidad. Si el valor esperado es cero, no se inventa un porcentaje.
+
+En Predicciones, la tarjeta muestra fecha del mes, interpretación, evidencia y próximos pasos por encima de las estadísticas. La lista de «Valores estimados y referencia anual» tiene altura limitada y desplazamiento vertical independiente, conservando el gráfico y la disposición adaptable de la página. Los mensajes del chatbot también utilizan las explicaciones verificables.
+
 ## Investigación de cambios por segmentos
 
 El módulo diagnóstico compara hasta cinco períodos anómalos con el mismo mes del año anterior, o con el mes previo si no existe. Solo agrupa por columnas categóricas reconocidas de la **misma tabla**: estado, tipo, método, origen y destino, si están disponibles.
@@ -40,6 +44,7 @@ Se conservan las respuestas de /api/ai/forecast y /api/ai/anomalies y se agregan
 Ejecutar desde Backend:
 
 - python -m unittest discover -s tests -p 'test_robust_ml.py' -v
+- python -m unittest discover -s tests -p 'test_anomaly_narrative.py' -v
 - python -m unittest discover -s tests -p 'test_seasonal_forecasting.py' -v
 - python -m unittest discover -s tests -p 'test_assistant_prediction_domains.py' -v
 - python -m app.quality.run --report-dir quality_reports
