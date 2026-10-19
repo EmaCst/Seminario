@@ -7,6 +7,7 @@ import {
 
 import { DashboardContext } from '../context/DashboardContext';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
+import { ChartAxisHint } from './ChartAxisHint';
 
 import {
   LineChart,
@@ -270,6 +271,7 @@ export const DashboardView = () => {
               {t.monthSales}
             </h3>
 
+            <ChartAxisHint className="mb-1" x={language === 'es' ? 'Mes' : 'Month'} y={language === 'es' ? 'Importe de ventas' : 'Sales amount'} language={language} colors={colors} />
             <ResponsiveContainer
               width="100%"
               height="82%"
@@ -344,6 +346,7 @@ export const DashboardView = () => {
                 : 'Top products'}
             </h3>
 
+            <ChartAxisHint className="mb-1" x={language === 'es' ? 'Producto' : 'Product'} y={language === 'es' ? 'Unidades vendidas' : 'Units sold'} language={language} colors={colors} />
             <ResponsiveContainer
               width="100%"
               height="82%"
@@ -412,6 +415,7 @@ export const DashboardView = () => {
                 : 'Top customers'}
             </h3>
 
+            <ChartAxisHint className="mb-1" x={language === 'es' ? 'Cliente' : 'Customer'} y={language === 'es' ? 'Importe comprado' : 'Purchase amount'} language={language} colors={colors} />
             <ResponsiveContainer
               width="100%"
               height="82%"
@@ -473,6 +477,7 @@ export const DashboardView = () => {
                 : 'Sales by category'}
             </h3>
 
+            <ChartAxisHint className="mb-1" x={language === 'es' ? 'Categoría' : 'Category'} y={language === 'es' ? 'Importe de ventas' : 'Sales amount'} language={language} colors={colors} />
             <ResponsiveContainer
               width="100%"
               height="82%"
