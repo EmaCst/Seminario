@@ -201,6 +201,35 @@ class ReportPdfTests(unittest.TestCase):
         data, _ = render_report_snapshot(snapshot)
         self.assertTrue(data.startswith(b"%PDF-"))
 
+    def test_pdf_forecast_with_real_out_of_sample_metadata_and_anomalies(self):
+        from app.ml.seasonal_forecasting import forecast_monthly
+        snapshot = self._snapshot()
+        snapshot["configuration"]["sections"] = ["predictive", "methodology"]
+        snapshot["sections"] = ["predictive", "methodology"]
+        snapshot["configuration"]["visualization_ids"] = []
+        snapshot["visualizations"] = []
+        points = series(start_year=2023, count=36)
+        predicted = forecast_monthly(points, 3)
+        snapshot["forecast"] = {**predicted, "training_points": points}
+        snapshot["anomalies"] = {"anomalies": [{
+            "year": 2025, "month": 11, "total": 19, "expected_total": 120,
+            "deviation": -101, "severity": "alta", "pct_vs_expected": -84.17,
+            "explanation": "Noviembre fue inferior a la referencia histórica.",
+            "diagnostic_explanation": "No se ha demostrado una causa.",
+        }]}
+        data, name = render_report_snapshot(snapshot)
+        self.assertTrue(data.startswith(b"%PDF-"))
+        self.assertGreater(len(data), 3000)
+        self.assertIn("predictive", name)
+
+    def test_pdf_uses_sanitized_filename(self):
+        snapshot = self._snapshot()
+        snapshot["source"]["database"] = "clinica/con datos \\ externos"
+        data, name = render_report_snapshot(snapshot)
+        self.assertTrue(data.startswith(b"%PDF-"))
+        self.assertNotIn("/", name)
+        self.assertNotIn("\\\\", name)
+
     def test_pdf_predictive_section_with_insufficient_data(self):
         snapshot = self._snapshot()
         snapshot["configuration"]["sections"] = ["predictive", "methodology"]
