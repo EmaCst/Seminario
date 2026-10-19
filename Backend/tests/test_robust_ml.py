@@ -71,7 +71,7 @@ class RobustForecastTests(unittest.TestCase):
                                "current_month" if ordinal == reference else "future")
             self.assertEqual(expected_status, item["period_status"])
         if not result["forecast_basis"]["all_periods_future"]:
-            self.assertIn("después del último registro", result["warning"])
+            self.assertIn("posteriores al último registro", result["warning"])
 
     def test_consistent_flat_annual_pattern_can_legitimately_repeat(self):
         points = synthetic(years=4, seasonal=True)
