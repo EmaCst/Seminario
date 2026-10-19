@@ -178,5 +178,39 @@ class ContextualAnomalyTests(unittest.TestCase):
 
 
 
+    def test_signed_accounting_amounts_are_not_clipped_to_zero(self):
+        negatives = [
+            {"year": 2023 + i // 12, "month": i % 12 + 1,
+             "total": -80 - i * 3}
+            for i in range(36)
+        ]
+        result = forecast_monthly(negatives, 3, nonnegative=False)
+        self.assertLess(result["forecast"][0]["predicted_total"], 0)
+        detected = detect_anomalies(negatives, nonnegative=False)
+        self.assertLess(detected["series"][-1]["expected_total"], 0)
+
+    def test_related_indicators_use_verified_monthly_series(self):
+        from app.ml import diagnostic_service as diag
+        entity = {"table": "citas", "columns": {"date": "fecha"}, "ambiguous": False}
+        related = {"admissions": {"table": "admisiones",
+                                  "columns": {"date": "fecha"}, "ambiguous": False}}
+        with patch.object(diag, "_monthly_count", return_value=[
+            {"year": 2024, "month": 11, "total": 10},
+            {"year": 2025, "month": 11, "total": 4},
+        ]) as monthly:
+            result = explain_deviations(
+                [{"year": 2025, "month": 11, "deviation": -100}],
+                [{"year": 2024, "month": 11}, {"year": 2025, "month": 11}],
+                domain="healthcare", role="appointments", entity=entity,
+                metric="count", related_entities=related,
+            )
+        change = result["investigations"][0]["related_indicators"][0]
+        self.assertEqual("admissions", change["role"])
+        self.assertEqual(-6, change["change"])
+        self.assertEqual("temporal_coincidence_only", change["relationship"])
+        monthly.assert_called_once_with("admisiones", "fecha")
+
+
+
 if __name__ == "__main__":
     unittest.main()
