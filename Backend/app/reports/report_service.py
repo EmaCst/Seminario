@@ -332,8 +332,8 @@ def _predictive_narrative(forecast: dict | None, anomalies: dict | None) -> list
         first, last = projected[0], projected[-1]
         r2 = forecast.get("r2_score")
         paragraphs.append(
-            f"El modelo de regresión lineal proyecta {_fmt(first.get('predicted_total'))} para {int(first['month']):02d}/{first['year']} y "
-            f"{_fmt(last.get('predicted_total'))} para {int(last['month']):02d}/{last['year']}. La calidad de ajuste es {_quality_label(r2)}"
+            f"El modelo {'estacional' if forecast.get('model') == 'seasonal_trend' else 'de tendencia lineal'} proyecta {_fmt(first.get('predicted_total'))} para {int(first['month']):02d}/{first['year']} y "
+            f"{_fmt(last.get('predicted_total'))} para {int(last['month']):02d}/{last['year']}. La calidad predictiva evaluada con meses posteriores al entrenamiento es {_quality_label(r2)}"
             + (f" (R²={float(r2):.2f})" if isinstance(r2, (int, float)) else "")
             + ", por lo que la proyección debe interpretarse como una tendencia orientativa y no como una certeza."
         )
@@ -455,7 +455,7 @@ def _add_predictive(story, styles, forecast: dict | None, anomalies: dict | None
         story.append(_table(rows, widths=[70 * mm, 95 * mm]))
         story.append(Spacer(1, 3 * mm))
         story.append(Paragraph(
-            f"Calidad de ajuste: <b>{_quality_label(forecast.get('r2_score')).title()}</b> · R² = {_fmt(forecast.get('r2_score'))}. "
+            f"Calidad predictiva: <b>{_quality_label(forecast.get('r2_score')).title()}</b> · R² validado = {_fmt(forecast.get('r2_score'))}. "
             f"{forecast.get('warning') or ''}", styles["NoteText"]
         ))
     else:
