@@ -377,7 +377,7 @@ export const PredictionsView = () => {
               </div>
             </div>
 
-            <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            <div className="self-start min-w-0 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <h2 className="font-extrabold text-lg mb-3" style={{ color: colors.text }}>{language === 'es' ? 'Comportamientos atípicos' : 'Anomalous behavior'}</h2>
 
               {anomalies?.baseline && (
@@ -398,7 +398,60 @@ export const PredictionsView = () => {
               )}
 
               {anomalyCount === 0 ? (
-                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'No se detectaron desviaciones significativas respecto al patrón esperado.' : 'No anomalous months were detected.'}</p>
+                <div className="space-y-4">
+                  <div className="rounded-xl border p-4" style={{ backgroundColor: colors.cardSoft, borderColor: colors.border }}>
+                    <p className="text-sm font-extrabold" style={{ color: colors.text }}>
+                      {language === 'es' ? 'No se encontraron anomalías bajo los criterios actuales' : 'No anomalies under the current criteria'}
+                    </p>
+                    <p className="mt-2 text-sm leading-6" style={{ color: colors.muted }}>
+                      {language === 'es'
+                        ? `Kenneth revisó ${anomalies?.months_evaluated ?? '—'} períodos mensuales de esta serie. Que no haya alertas no significa que los valores sean idénticos ni que no existan cambios que valga la pena revisar.`
+                        : `Kenneth reviewed ${anomalies?.months_evaluated ?? '—'} monthly periods in this series. No alerts does not mean the values never changed or that further review is unnecessary.`}
+                    </p>
+                    {anomalies?.screening && (
+                      <p className="mt-2 text-xs leading-5" style={{ color: colors.muted }}>
+                        {language === 'es'
+                          ? `Criterio actual: desviación superior a ${anomalies.screening.absolute_threshold} unidades y al 20% respecto al valor esperado, ajustado al historial${anomalies.screening.seasonality_adjusted ? ' y al mes del año' : ''}.`
+                          : `Current rule: a deviation greater than ${anomalies.screening.absolute_threshold} units and 20% relative to expected values, adjusted to historical behavior${anomalies.screening.seasonality_adjusted ? ' and calendar seasonality' : ''}.`}
+                      </p>
+                    )}
+                  </div>
+                  {(anomalies?.review_points || []).length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-sm" style={{ color: colors.text }}>
+                        {language === 'es' ? 'Variaciones que sí se observaron' : 'Noteworthy observed variations'}
+                      </h3>
+                      <p className="text-xs leading-5" style={{ color: colors.muted }}>
+                        {language === 'es'
+                          ? 'Estos períodos son los que más se alejaron de su valor esperado, pero no alcanzaron el umbral de anomalía. No son alertas.'
+                          : 'These periods diverged most from their expected values without meeting the anomaly threshold. They are not alerts.'}
+                      </p>
+                      <div className="max-h-[420px] space-y-2 overflow-y-auto overscroll-contain pr-1" role="region"
+                        aria-label={language === 'es' ? 'Variaciones históricas para revisar' : 'Historical variations to review'} tabIndex={0}>
+                        {(anomalies.review_points || []).map((point) => (
+                          <div key={`${point.year}-${point.month}`} className="rounded-xl border p-3.5 space-y-2"
+                            style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <time className="font-bold capitalize text-sm" dateTime={`${point.year}-${String(point.month).padStart(2, '0')}`}
+                                style={{ color: colors.text }}>{fullMonthLabel(point.year, point.month, language)}</time>
+                              <span className="text-xs font-semibold" style={{ color: colors.muted }}>
+                                {language === 'es' ? 'Variación habitual / no confirmada como anomalía' : 'Variation / not a confirmed anomaly'}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-6" style={{ color: colors.text }}>
+                              {point.explanation || (language === 'es'
+                                ? `Valor registrado: ${point.total}; esperado: ${point.expected_total}.`
+                                : `Recorded: ${point.total}; expected: ${point.expected_total}.`)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!!anomalies?.warning && (
+                    <p className="text-xs leading-5" style={{ color: colors.muted }}>{anomalies.warning}</p>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-4">
                   {anomalies.anomalies.map((item) => (
