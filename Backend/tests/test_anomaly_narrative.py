@@ -115,7 +115,7 @@ class AnomalyNarrativeTests(unittest.TestCase):
         self.assertTrue(result["anomalies"])
         first = result["anomalies"][0]
         self.assertEqual("month", first["period_granularity"])
-        self.assertIn("explic", first["diagnostic_explanation"].lower())
+        self.assertIn("no demuestran la causa", first["diagnostic_explanation"])
         self.assertIn("expected_total", first)
         self.assertIn("anomaly_score", first)
         self.assertIn("recommendation", first)
