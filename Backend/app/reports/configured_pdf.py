@@ -148,7 +148,24 @@ def _add_visualizations(story, styles, items: list[dict]):
                     "Los datos pueden examinarse en la vista de Kenneth.",
                     "NoteText",
                 )
-        _paragraph(story, styles, f"Eje X: {x_label}  |  Eje Y: {y_label}", "NoteText")
+        if chart_type == "bar":
+            _paragraph(story, styles, f"Eje X: {y_label}  |  Eje Y: {x_label}", "NoteText")
+            if len(rows) > 5:
+                _paragraph(story, styles,
+                           f"La gráfica muestra las primeras 5 de {len(rows)} categorías consultadas.",
+                           "NoteText")
+        elif chart_type == "line":
+            _paragraph(story, styles, f"Eje X: {x_label}  |  Eje Y: {y_label}", "NoteText")
+            if len(rows) > 12:
+                _paragraph(story, styles,
+                           f"La gráfica muestra los primeros 12 de {len(rows)} puntos consultados.",
+                           "NoteText")
+        elif chart_type == "donut":
+            _paragraph(story, styles, f"Categoría: {x_label}  |  Valor: {y_label}", "NoteText")
+            if len(rows) > 6:
+                _paragraph(story, styles,
+                           f"La distribución muestra las primeras 6 de {len(rows)} categorías consultadas.",
+                           "NoteText")
         filters = definition.get("filters") or []
         if filters:
             _paragraph(story, styles,
