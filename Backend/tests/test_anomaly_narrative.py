@@ -56,6 +56,22 @@ class AnomalyNarrativeTests(unittest.TestCase):
         self.assertIn("No se identificaron desgloses", narrative["diagnostic_explanation"])
         self.assertIn("sin más datos", narrative["diagnostic_explanation"])
 
+    def test_chatbot_uses_human_explanation_instead_of_only_statistics(self):
+        from app.services.assistant_service import _format_anomaly_answer
+        anomaly = {
+            **sample(),
+            **narrate_monthly_anomaly(sample(), "count"),
+            "severity": "alta",
+        }
+        response = _format_anomaly_answer({
+            "role": "appointments", "metric": "count",
+            "anomalies": [anomaly], "diagnostics": {"investigations": []},
+        })
+        self.assertIn("noviembre de 2025", response)
+        self.assertIn("Según el historial", response)
+        self.assertIn("No se identificaron desgloses", response)
+        self.assertIn("no causas demostradas", response)
+
     def test_zero_expected_value_does_not_divide_by_zero(self):
         point = dict(sample(), expected_total=0, deviation=150, pct_vs_expected=None)
         narrative = narrate_monthly_anomaly(point, "quantity")
