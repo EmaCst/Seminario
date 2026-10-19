@@ -149,10 +149,14 @@ def detect_monthly_anomalies(question: str = "") -> dict:
         series.data,
         nonnegative=not (series.domain == "finance_accounting" and series.metric == "amount"),
     )
+    related_entities = {}
+    if result["anomalies"]:
+        related_entities = (inspect_semantic_model().get("semantic_model") or {}).get("entities") or {}
     diagnostics = explain_deviations(
         result["anomalies"], series.data,
         domain=series.domain, role=series.role,
         entity=series.entity or {}, metric=series.metric,
+        related_entities=related_entities,
     )
     return {
         **result,
