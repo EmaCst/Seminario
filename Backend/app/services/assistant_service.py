@@ -188,6 +188,17 @@ def _format_anomaly_answer(result: dict) -> str:
     }
     descriptions = []
     for point in anomalies[:5]:
+        if point.get("explanation"):
+            label = point.get("period_label") or f"{point['month']:02d}/{point['year']}"
+            explanation = (
+                f"Anomalía de {label} (período mensual, severidad "
+                f"{point.get('severity') or 'no determinada'}). "
+                f"{point['explanation']} "
+                f"{point.get('diagnostic_explanation') or ''} "
+                f"{point.get('recommendation') or ''}"
+            )
+            descriptions.append(explanation.strip())
+            continue
         month = f"{point['month']:02d}/{point['year']}"
         description = (
             f"{month}: observado {point['total']}, esperado {point.get('expected_total')}, "
