@@ -2,7 +2,8 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { BarChart3, LineChart, Sigma, Table2, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart as ReLineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
-import { ChartAxisHint, visualizationAxisLabels } from './ChartAxisHint';
+import { ChartAxisHint } from './ChartAxisHint';
+import { visualizationAxisLabels } from './visualizationAxisLabels';
 import { getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
