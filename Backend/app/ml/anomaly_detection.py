@@ -115,6 +115,26 @@ def detect_anomalies(points: list[dict], *, nonnegative: bool = True) -> dict:
         if anomaly:
             anomalies.append(item)
 
+    # Reviewable, non-alert observations keep the empty state informative.
+    # They are ranked by distance from the seasonal/trend-adjusted expectation.
+    # These are NOT reclassified as anomalies just to populate the UI.
+    ranked = sorted(items, key=lambda item: abs(float(item["deviation"])), reverse=True)
+    review_points = [
+        {**point, "classification": "expected_variation"}
+        for point in ranked[:min(3, len(ranked))]
+    ]
+    # A concrete explanation of the threshold used for the main anomaly
+    # decision. Both the deviation threshold and 20% relative difference
+    # must be surpassed (except when the reference is zero).
+    screening = {
+        "absolute_threshold": round(threshold, 2),
+        "relative_threshold_pct": 20.0,
+        "rule": "absolute_and_relative",
+        "seasonality_adjusted": annual,
+        "flagged": len(anomalies),
+        "reviewed": len(review_points),
+    }
+
     warnings = []
     if not annual:
         warnings.append(
@@ -142,6 +162,7 @@ def detect_anomalies(points: list[dict], *, nonnegative: bool = True) -> dict:
         "model": "robust_seasonal_residual" if annual else "robust_trend_residual",
         "months_evaluated": len(values), "baseline": baseline,
         "anomalies": anomalies, "series": items,
+        "review_points": review_points, "screening": screening,
         "seasonal_patterns": patterns,
         "data_quality": {"observed_months": len(values),
                          "missing_months": sum(gaps), "continuous": contiguous},
