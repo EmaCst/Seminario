@@ -2,7 +2,7 @@
 
 ## Cobertura
 
-El mismo núcleo estadístico se aplica a series mensuales reconocidas en los diez dominios del modelo semántico: comercio, educación, salud, transporte, hospedaje, restaurantes, servicios profesionales, finanzas, manufactura y recursos humanos. El selector conserva el rol, la tabla, la fecha y la métrica solicitados. Solo calcula importes si existen medidas verificadas; por defecto cuenta registros.
+El mismo núcleo estadístico se aplica a series mensuales reconocidas en los diez dominios del modelo semántico: comercio, educación, salud, transporte, hospedaje, restaurantes, servicios profesionales, finanzas, manufactura y recursos humanos. El selector conserva el rol, la tabla, la fecha y la métrica solicitados. Solo calcula importes si existen medidas verificadas; por defecto cuenta registros. También admite cantidades producidas (SUM de la columna quantity en órdenes de producción) y promedio de notas (AVG de value en calificaciones), únicamente cuando la pregunta lo solicita y el mapper confirma las columnas.
 
 ## Pronóstico y validación
 
@@ -25,7 +25,7 @@ La detección es **retrospectiva** y puede utilizar observaciones posteriores al
 
 El módulo diagnóstico compara hasta cinco períodos anómalos con el mismo mes del año anterior, o con el mes previo si no existe. Solo agrupa por columnas categóricas reconocidas de la **misma tabla**: estado, tipo, método, origen y destino, si están disponibles.
 
-Se restringe a tres dimensiones por anomalía y cuarenta categorías completas por consulta; desgloses truncados se omiten. No se consulta información personal, texto libre ni identificadores de usuarios. Se presentan cambios observados y límites, pero **ninguna correlación demuestra por sí sola la causa**. Para atribuciones causales reales se requerirán otros datos verificables y análisis posteriores.
+Se restringe a tres dimensiones por anomalía y cuarenta categorías completas por consulta; desgloses truncados se omiten. No se consulta información personal, texto libre ni identificadores de usuarios. Se presentan cambios observados y límites. De forma adicional se comparan los conteos temporales de hasta seis entidades relacionadas por el mismo dominio, cuando tienen fecha y periodos equivalentes; esas coincidencias están identificadas explícitamente como asociaciones, no como relaciones causales. **Ninguna correlación demuestra por sí sola la causa**. Para atribuciones causales reales se requerirán otros datos verificables y análisis posteriores.
 
 ## API e interfaz
 
@@ -40,4 +40,4 @@ Ejecutar desde Backend:
 - python -m unittest discover -s tests -p 'test_assistant_prediction_domains.py' -v
 - python -m app.quality.run --report-dir quality_reports
 
-La suite automatizada utiliza SQLite y datos ficticios; no demuestra exactitud con conexiones reales SQL Server/PostgreSQL, efectos externos, cambios de régimen ni calibración probabilística de intervalos.
+Los importes de transacciones financieras pueden ser negativos y no se fuerzan a cero. La suite automatizada utiliza SQLite y datos ficticios; no demuestra exactitud con conexiones reales SQL Server/PostgreSQL, efectos externos, cambios de régimen ni calibración probabilística de intervalos.
