@@ -6,6 +6,7 @@ The uncertainty envelope is empirical error, NOT a confidence interval.
 """
 from __future__ import annotations
 
+from datetime import date
 from math import isfinite, sqrt
 from statistics import mean, median
 from sklearn.linear_model import LinearRegression
@@ -83,7 +84,7 @@ def _predictor(model: str, values: list[float], dates: list[int], nonnegative: b
         last = values[-1]
         return lambda date: max(0.0, last) if nonnegative else last, {}
     if model == "seasonal_naive":
-        # Use the corresponding month from the most recent available year.
+        # Benchmark ONLY. This repeats last year's observed month verbatim.
         lookup = {date: value for date, value in zip(dates, values)}
         def predict(date: int) -> float:
             reference = date - 12
@@ -92,6 +93,28 @@ def _predictor(model: str, values: list[float], dates: list[int], nonnegative: b
             value = lookup[reference]
             return max(0.0, value) if nonnegative else value
         return predict, {}
+    if model == "seasonal_drift":
+        # Forecast each future calendar month using multiple previous years,
+        # corrected with the robust typical year-over-year *level change*.
+        # Unlike seasonal_naive this estimates evolution and is resistant to
+        # one unusually high/low observation in the preceding year.
+        lookup = dict(zip(dates, values))
+        changes = [value - lookup[day - 12] for day, value in zip(dates, values)
+                   if day - 12 in lookup]
+        if len(changes) < 12:
+            raise ValueError("El modelo estacional ajustado requiere 12 comparaciones interanuales.")
+        annual_drift = median(changes[-24:])
+        def predict(date: int) -> float:
+            historical = [
+                value + annual_drift * ((date - day) / 12.0)
+                for day, value in zip(dates, values)
+                if day % 12 == date % 12 and day < date
+            ]
+            if len(historical) < 2:
+                raise ValueError("Sin observaciones históricas para el mes proyectado.")
+            value = median(historical)
+            return max(0.0, value) if nonnegative else value
+        return predict, {"annual_drift": annual_drift}
     return _fit(values, dates, model == "seasonal_trend", nonnegative=nonnegative)
 
 
@@ -114,7 +137,9 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
     seasonal_eligible = contiguous and n >= 26  # 24 train + >=2 evaluation origins
     eligible = ["naive_last", "linear_regression"]
     if seasonal_eligible:
-        eligible += ["seasonal_naive", "seasonal_trend"]
+        # seasonal_naive is scored to keep the honest benchmark, but it is
+        # never eligible for selection as a newly calculated forecast.
+        eligible += ["seasonal_naive", "seasonal_trend", "seasonal_drift"]
 
     # Same calendar targets and forecast leads across all candidate models.
     # When seasonal models participate, all origins have 24+ months of training.
@@ -137,11 +162,12 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
     scores = {name: _metrics(actual, predictions) for name, predictions in candidates.items()
               if actual}
     if scores:
-        best = min(scores, key=lambda name: (scores[name]["mae"], scores[name]["rmse"]))
+        selectable = [name for name in scores if name != "seasonal_naive"]
+        best = min(selectable, key=lambda name: (scores[name]["mae"], scores[name]["rmse"]))
         # Do not select a complex seasonal model for a negligible advantage.
-        simple_best = min((name for name in scores if name in ("naive_last", "linear_regression")),
+        simple_best = min((name for name in selectable if name in ("naive_last", "linear_regression")),
                           key=lambda name: scores[name]["mae"])
-        if best in ("seasonal_trend", "seasonal_naive") and (
+        if best in ("seasonal_trend", "seasonal_drift") and (
             scores[best]["mae"] >= scores[simple_best]["mae"] * 0.97
         ):
             best = simple_best
@@ -152,19 +178,33 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
     # Descriptive absolute-error band, derived solely from historical backtests.
     error_band = _percentile(residuals.get(best, []), 0.8) if len(actual) >= 6 else None
     last = dates[-1]
+    observed_by_date = dict(zip(dates, values))
+    today = date.today()
+    current_period = today.year * 12 + today.month - 1
     forecast = []
     for step in range(1, horizon + 1):
         target = last + step
         value = predictor(target)
+        prior_year_value = observed_by_date.get(target - 12)
+        if target < current_period:
+            period_status = "historical_gap"
+        elif target == current_period:
+            period_status = "current_month"
+        else:
+            period_status = "future"
         forecast.append({
             "year": target // 12, "month": target % 12 + 1,
             "predicted_total": round(value, 2),
+            "prior_year_total": round(prior_year_value, 2) if prior_year_value is not None else None,
+            "change_vs_prior_year": round(value - prior_year_value, 2) if prior_year_value is not None else None,
+            "value_kind": "model_estimate" if best not in ("naive_last", "seasonal_naive") else "baseline_estimate",
+            "period_status": period_status,
             "lower_estimate": round(max(0.0, value - error_band) if nonnegative else value - error_band, 2) if error_band is not None else None,
             "upper_estimate": round(value + error_band, 2) if error_band is not None else None,
         })
 
     monthly_patterns = []
-    if best in ("seasonal_trend", "seasonal_naive") and contiguous:
+    if best in ("seasonal_trend", "seasonal_drift") and contiguous:
         _, effects = _fit(values, dates, True, nonnegative=nonnegative)
         threshold = max(mean(abs(v) for v in values) * 0.05, 0.01)
         for month in range(1, 13):
@@ -179,9 +219,38 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
             })
 
     baseline = scores.get("naive_last")
+    annual_baseline = scores.get("seasonal_naive")
     skill = (round(100 * (1 - selected_scores["mae"] / baseline["mae"]), 2)
              if selected_scores and baseline and baseline["mae"] > 0 else None)
     warnings = []
+    if any(item["period_status"] == "historical_gap" for item in forecast):
+        warnings.append(
+            "ATENCIÓN: el historial termina antes de los períodos proyectados y "
+            "parte de estos períodos ya transcurrió. Son estimaciones posteriores "
+            "al último registro, NO pronósticos del futuro desde hoy."
+        )
+    if any(item["period_status"] == "current_month" for item in forecast):
+        warnings.append(
+            "La proyección incluye el mes calendario actual, no necesariamente "
+            "un mes futuro completo."
+        )
+    if last > current_period:
+        warnings.append(
+            "El último registro tiene una fecha posterior al mes actual; "
+            "revisa el origen temporal de los datos."
+        )
+    if best == "naive_last":
+        warnings.append(
+            "Se utiliza una referencia sencilla: repetir el último valor registrado. "
+            "No es evidencia de que una tendencia o ciclo predictivo haya mejorado esa referencia."
+        )
+    if annual_baseline and selected_scores and (
+        selected_scores["mae"] > annual_baseline["mae"] * 1.03
+    ):
+        warnings.append(
+            "La proyección calculada NO supera en validación histórica la referencia "
+            "de repetir el mismo mes del año anterior; interpreta el resultado con cautela."
+        )
     if gaps and any(gaps):
         warnings.append(f"Hay {sum(gaps)} mes(es) sin registros entre observaciones; "
                         "no se asumieron ceros ni se evaluó estacionalidad.")
@@ -198,8 +267,11 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
     warnings.append("Las bandas son errores absolutos históricos aproximados (percentil 80), "
                     "no intervalos de confianza ni garantías.")
     confidence = ("insufficient" if len(actual) < 6 else
-                  "limited" if not seasonal_eligible or len(origins) < 6 or skill is None else
-                  "moderate" if skill > 10 else "limited")
+                  "limited" if not seasonal_eligible or len(origins) < 6 or skill is None
+                  or best == "naive_last"
+                  or (annual_baseline and selected_scores and
+                      selected_scores["mae"] > annual_baseline["mae"] * 1.03)
+                  else "moderate" if skill > 10 else "limited")
     return {
         "model": best, "forecast": forecast,
         "validation": {
@@ -207,7 +279,8 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
             "samples": len(actual), "horizon": horizon,
             "selected": selected_scores, "linear": scores.get("linear_regression"),
             "seasonal": scores.get("seasonal_trend"),
-            "baseline": baseline, "candidates": scores,
+            "baseline": baseline, "seasonal_baseline": annual_baseline,
+            "candidates": scores,
             "skill_vs_naive_pct": skill,
             "band": {"kind": "empirical_absolute_error_p80", "value": round(error_band, 2)
                      if error_band is not None else None},
@@ -215,6 +288,16 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
         "r2_score": selected_scores["r2"] if selected_scores else None,
         "seasonal_patterns": monthly_patterns,
         "seasonality_evaluated": seasonal_eligible,
+        "forecast_basis": {
+            "last_observed": {"year": last // 12, "month": last % 12 + 1},
+            "first_projected": {"year": forecast[0]["year"], "month": forecast[0]["month"]},
+            "last_projected": {"year": forecast[-1]["year"], "month": forecast[-1]["month"]},
+            "as_of": today.isoformat(),
+            "source": "last_observed_month",
+            "all_periods_future": all(item["period_status"] == "future" for item in forecast),
+            "model_origin": "fitted_to_history" if best not in ("naive_last", "seasonal_naive")
+                            else "baseline_reference",
+        },
         "data_quality": {"observed_months": n, "missing_months": sum(gaps),
                          "continuous": contiguous},
         "confidence": confidence, "warnings": warnings, "warning": " ".join(warnings),
