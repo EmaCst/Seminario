@@ -220,7 +220,7 @@ class ReportPdfTests(unittest.TestCase):
         data, name = render_report_snapshot(snapshot)
         self.assertTrue(data.startswith(b"%PDF-"))
         self.assertGreater(len(data), 3000)
-        self.assertIn("predictive", name)
+        self.assertIn("custom", name)
 
     def test_pdf_uses_sanitized_filename(self):
         snapshot = self._snapshot()
