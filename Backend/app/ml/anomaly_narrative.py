@@ -19,12 +19,17 @@ DIMENSION_LABELS = {
     "origin": "origen",
     "destination": "destino",
 }
-METRIC_LABELS = {
-    "count": "registros",
-    "amount": "de importe registrado",
-    "quantity": "unidades",
-    "average": "de promedio del indicador",
-}
+def _metric_phrase(metric: str, value: float) -> str:
+    formatted = _num(value)
+    if metric == "amount":
+        return f"un importe total de {formatted}"
+    if metric == "average":
+        return f"un promedio de {formatted}"
+    if metric == "quantity":
+        return f"{formatted} unidades"
+    if metric == "count":
+        return f"{formatted} registros"
+    return f"un valor de {formatted}"
 
 
 def _period(year: int, month: int) -> str:
@@ -53,11 +58,9 @@ def narrate_monthly_anomaly(
     if deviation is None and expected is not None:
         deviation = value - float(expected)
     direction = "por encima" if deviation is not None and deviation > 0 else "por debajo"
-    measure = METRIC_LABELS.get(metric, "del indicador")
-
     if expected is None or deviation is None:
         description = (
-            f"En {label} se observaron {_num(value)} {measure}. "
+            f"En {label} se observó {_metric_phrase(metric, value)}. "
             "El análisis identificó un comportamiento inusual, pero no dispone "
             "de una referencia esperada verificable para cuantificarlo."
         )
@@ -68,8 +71,9 @@ def narrate_monthly_anomaly(
             if pct is not None else ""
         )
         description = (
-            f"En {label} se registraron {_num(value)} {measure}, frente a "
-            f"aproximadamente {_num(expected)} esperados según el historial. "
+            f"En {label} el indicador alcanzó {_metric_phrase(metric, value)}. "
+            f"Según el historial, su referencia estimada era "
+            f"{_metric_phrase(metric, expected)}. "
             f"El valor quedó {_num(abs(deviation))} {direction} de ese nivel"
             f"{comparison}. "
         )
@@ -100,11 +104,11 @@ def narrate_monthly_anomaly(
             key = DIMENSION_LABELS.get(primary.get("dimension"), "categoría")
             category = str(primary.get("category", "(sin dato)"))
             change = float(primary.get("change") or 0)
-            movement = "aumentó" if change > 0 else "disminuyó" if change < 0 else "no cambió"
+            movement = "aumentó" if change > 0 else "disminuyó" if change < 0 else "se mantuvo"
             facts.append(
-                f"la categoría «{category}» del campo {key} {movement} "
-                f"de {_num(primary.get('reference') or 0)} a "
-                f"{_num(primary.get('current') or 0)} {measure}."
+                f"la categoría «{category}» del campo {key} {movement}: "
+                f"pasó de {_metric_phrase(metric, primary.get('reference') or 0)} "
+                f"a {_metric_phrase(metric, primary.get('current') or 0)}."
             )
         else:
             facts.append("no se obtuvo un desglose verificable de la variable principal.")
