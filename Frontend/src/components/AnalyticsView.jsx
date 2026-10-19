@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Sparkles,
   Trophy,
-  TrendingDown,
   TrendingUp,
 } from 'lucide-react';
 import {
@@ -83,7 +82,12 @@ export const AnalyticsView = () => {
   };
 
   useEffect(() => {
-    load();
+    let active = true;
+    getAdaptiveAnalytics()
+      .then((result) => { if (active) setData(result); })
+      .catch((err) => { if (active) setError(err.message || 'No fue posible cargar la analítica.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
