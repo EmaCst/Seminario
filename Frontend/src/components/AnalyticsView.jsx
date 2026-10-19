@@ -23,6 +23,7 @@ import {
   YAxis,
 } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
+import { ChartAxisHint } from './ChartAxisHint';
 import { getAdaptiveAnalytics, getSavedVisualizations } from '../services/api';
 import { CustomVisualizationWidget } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
@@ -230,6 +231,7 @@ export const AnalyticsView = () => {
             node: <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               <div><div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={TrendingUp} title={language === 'es' ? 'Evolución y promedio móvil' : 'Evolution and moving average'} subtitle={`${roleLabel(trend?.role)} · ${range === 0 ? 'histórico completo' : `últimos ${range} meses`}`} theme={theme} colors={colors} />
+              <ChartAxisHint className="mb-2" x={language === 'es' ? 'Mes y año' : 'Month and year'} y={language === 'es' ? 'Cantidad de registros' : 'Record count'} language={language} colors={colors} />
               <div className="h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={trendData}>
