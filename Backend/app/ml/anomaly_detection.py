@@ -80,10 +80,15 @@ def detect_anomalies(points: list[dict], *, nonnegative: bool = True) -> dict:
         ratio = abs(residual) / threshold if threshold else 0
         severity = ("alta" if ratio >= 2 else "media" if ratio >= 1.3 else "baja") if anomaly else None
         sign = "superó" if residual > 0 else "quedó por debajo de"
+        percentage_phrase = (
+            f"{abs(pct_expected):.1f}% respecto al esperado"
+            if pct_expected is not None
+            else "sin porcentaje calculable porque la referencia es cero"
+        )
         reason = (
             f"El registro {value:g} {sign} su valor esperado de {fitted:.2f} "
             f"para este período; desviación de {abs(residual):.2f} "
-            f"({abs(pct_expected):.1f}% respecto al esperado). "
+            f"({percentage_phrase}). "
             + ("Se ajustó por patrones que reaparecen en el mismo mes de distintos años."
                if annual else
                "No hay historial anual suficiente para ajustar patrones estacionales.")
