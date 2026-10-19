@@ -26,11 +26,61 @@ def synthetic(years=4, seasonal=True):
 class RobustForecastTests(unittest.TestCase):
     def test_seasonality_repeats_in_out_of_sample_forecast(self):
         result = forecast_monthly(synthetic(), 12)
-        self.assertIn(result["model"], {"seasonal_trend", "seasonal_naive"})
+        self.assertIn(result["model"], {"seasonal_trend", "seasonal_drift"})
         self.assertGreater(result["forecast"][10]["predicted_total"],
                            result["forecast"][9]["predicted_total"])
         self.assertTrue(result["seasonality_evaluated"])
         self.assertTrue(any(item["month"] == 11 for item in result["seasonal_patterns"]))
+
+
+    def test_historical_year_is_benchmark_not_replayed_as_new_forecast(self):
+        points = synthetic(years=4, seasonal=True)
+        result = forecast_monthly(points, 12)
+        self.assertNotEqual("seasonal_naive", result["model"])
+        self.assertIn("seasonal_naive", result["validation"]["candidates"])
+        self.assertIn("seasonal_drift", result["validation"]["candidates"])
+        self.assertEqual("fitted_to_history", result["forecast_basis"]["model_origin"])
+        self.assertEqual({"year": 2025, "month": 12}, result["forecast_basis"]["last_observed"])
+        self.assertEqual({"year": 2026, "month": 1}, result["forecast_basis"]["first_projected"])
+        self.assertEqual({"year": 2026, "month": 12}, result["forecast_basis"]["last_projected"])
+        # This series rises 48 per calendar year; recycling 2025 unchanged is incorrect.
+        self.assertGreater(result["forecast"][0]["predicted_total"],
+                           result["forecast"][0]["prior_year_total"])
+        self.assertGreater(result["forecast"][10]["predicted_total"],
+                           result["forecast"][10]["prior_year_total"])
+        for item in result["forecast"]:
+            self.assertEqual(
+                round(item["predicted_total"] - item["prior_year_total"], 2),
+                item["change_vs_prior_year"]
+            )
+            self.assertEqual("model_estimate", item["value_kind"])
+
+    def test_dated_estimates_are_not_claimed_as_future_from_today(self):
+        from datetime import date
+        result = forecast_monthly(synthetic(years=4), 12)
+        as_of = date.fromisoformat(result["forecast_basis"]["as_of"])
+        reference = as_of.year * 12 + as_of.month - 1
+        self.assertEqual(
+            result["forecast_basis"]["all_periods_future"],
+            all(item["year"] * 12 + item["month"] - 1 > reference
+                for item in result["forecast"])
+        )
+        for item in result["forecast"]:
+            ordinal = item["year"] * 12 + item["month"] - 1
+            expected_status = ("historical_gap" if ordinal < reference else
+                               "current_month" if ordinal == reference else "future")
+            self.assertEqual(expected_status, item["period_status"])
+        if not result["forecast_basis"]["all_periods_future"]:
+            self.assertIn("después del último registro", result["warning"])
+
+    def test_consistent_flat_annual_pattern_can_legitimately_repeat(self):
+        points = synthetic(years=4, seasonal=True)
+        for point in points:
+            point["total"] -= (point["year"] - 2022) * 48
+        result = forecast_monthly(points, 3)
+        self.assertIn("seasonal_naive", result["validation"]["candidates"])
+        self.assertNotEqual("seasonal_naive", result["model"])
+        self.assertTrue(all(item["prior_year_total"] is not None for item in result["forecast"]))
 
     def test_trend_only_prefers_simple_model(self):
         result = forecast_monthly(synthetic(seasonal=False), 3)
