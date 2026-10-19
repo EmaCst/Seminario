@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from statistics import mean, median, pstdev
 
 from sklearn.ensemble import IsolationForest
-from sklearn.linear_model import LinearRegression
+from app.ml.seasonal_forecasting import forecast_monthly
 
 from app.analysis.adaptive_dashboard_service import _monthly_count, DOMAIN_TREND_PRIORITY
 from app.services.assistant_domain_analytics import (
@@ -185,41 +185,15 @@ def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
             "Se requieren al menos 3 meses para generar una predicción básica."
         )
 
-    x = [[index] for index in range(len(points))]
-    y = [float(item["total"]) for item in points]
-
-    model = LinearRegression()
-    model.fit(x, y)
-
-    future_x = [[len(points) + step] for step in range(horizon)]
-    future_values = model.predict(future_x)
-
-    last = points[-1]
-    forecast = []
-    for step, value in enumerate(future_values, start=1):
-        year, month = _next_year_month(int(last["year"]), int(last["month"]), step)
-        forecast.append(
-            {
-                "year": year,
-                "month": month,
-                "predicted_total": round(max(0.0, float(value)), 2),
-            }
-        )
-
+    prediction = forecast_monthly(points, horizon)
     return {
-        "model": "linear_regression",
+        **prediction,
         "role": series.role,
         "metric": series.metric,
         "table": series.table,
         "date_column": series.date_column,
         "training_points": points,
         "training_months": len(points),
-        "r2_score": round(float(model.score(x, y)), 4) if len(points) > 1 else None,
-        "forecast": forecast,
-        "warning": (
-            "Predicción exploratoria basada únicamente en la tendencia histórica mensual. "
-            "No debe interpretarse como una garantía de resultados futuros."
-        ),
     }
 
 
