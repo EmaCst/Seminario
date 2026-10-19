@@ -103,6 +103,13 @@ export const PredictionsView = () => {
   const quality = qualityFromEvidence(forecast?.confidence, language);
   const anomalyCount = anomalies?.anomalies?.length || 0;
   const validation = forecast?.validation;
+  const metricAxisLabel = ({
+    count: language === 'es' ? 'Cantidad de registros' : 'Record count',
+    amount: language === 'es' ? 'Importe total' : 'Total amount',
+    quantity: language === 'es' ? 'Unidades' : 'Units',
+    average: language === 'es' ? 'Valor promedio' : 'Average value',
+  })[forecast?.metric] || (language === 'es' ? 'Valor del indicador' : 'Indicator value');
+
   const forecastBasis = forecast?.forecast_basis;
   const containsPastPeriods = forecast?.forecast?.some((point) => point.period_status !== 'future');
   const modelName = ({
@@ -249,6 +256,11 @@ export const PredictionsView = () => {
             <div className="xl:col-span-2 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <div className="mb-4">
                 <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>{language === 'es' ? 'Historial y estimaciones posteriores al último registro' : 'History and estimates after the last observation'}</h2>
+                <p className="mt-1 text-xs leading-5" style={{ color: colors.muted }}>
+                  {language === 'es' ? 'Eje X: mes y año' : 'X axis: month and year'}
+                  <span aria-hidden="true"> · </span>
+                  {language === 'es' ? 'Eje Y: ' : 'Y axis: '}{metricAxisLabel}
+                </p>
                 <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? `Estimación de ${horizon} meses desde el último registro disponible.` : `Estimates for ${horizon} months after the latest recorded period.`}</p>
               </div>
               <div className="h-[320px]">
