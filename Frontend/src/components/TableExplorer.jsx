@@ -33,20 +33,25 @@ export const AutomaticTableExplorer = ({ table }) => {
   const [remoteRows, setRemoteRows] = useState(null);
   const [remoteError, setRemoteError] = useState('');
   const [remoteLoading, setRemoteLoading] = useState(Boolean(table.loadAll));
+  const loadAll = table.loadAll;
   useEffect(() => {
-    if (!table.loadAll) return;
+    if (!loadAll) return;
     let active = true;
-    setRemoteLoading(true);
-    setRemoteError('');
-    setRemoteRows(null);
-    table.loadAll().then(result => {
+    // Schedule the loading state outside the synchronous effect body.
+    Promise.resolve().then(() => {
+      if (!active) return null;
+      setRemoteLoading(true);
+      setRemoteError('');
+      setRemoteRows(null);
+      return loadAll();
+    }).then(result => {
       if (!active) return;
       if (!Array.isArray(result)) throw new Error('El servidor no devolvió una lista válida.');
       setRemoteRows(result);
     }).catch(error => { if (active) setRemoteError(error.message); })
       .finally(() => { if (active) setRemoteLoading(false); });
     return () => { active = false; };
-  }, [table.loadAll]);
+  }, [loadAll]);
   const [sortBy, setSortBy] = useState(table.columns[0]?.key || '');
   const [descending, setDescending] = useState(false);
   const [page, setPage] = useState(1);
