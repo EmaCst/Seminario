@@ -79,15 +79,18 @@ export const PredictionsView = () => {
 
   const chartData = useMemo(() => {
     if (!forecast) return [];
-    const historical = (forecast.training_points || []).map((point) => ({
+    const history = forecast.training_points || [];
+    const historical = history.map((point, index) => ({
       label: monthLabel(point.year, point.month),
       historical: point.total,
-      prediction: null,
+      // Connect the projected curve to the observed last value.
+      prediction: index === history.length - 1 ? point.total : null,
     }));
     const projected = (forecast.forecast || []).map((point) => ({
       label: monthLabel(point.year, point.month),
       historical: null,
       prediction: point.predicted_total,
+      priorYear: point.prior_year_total,
     }));
     return [...historical, ...projected];
   }, [forecast]);
@@ -95,11 +98,14 @@ export const PredictionsView = () => {
   const quality = qualityFromEvidence(forecast?.confidence, language);
   const anomalyCount = anomalies?.anomalies?.length || 0;
   const validation = forecast?.validation;
+  const forecastBasis = forecast?.forecast_basis;
+  const containsPastPeriods = forecast?.forecast?.some((point) => point.period_status === 'historical_gap');
   const modelName = ({
     seasonal_trend: 'Tendencia + estacionalidad',
-    seasonal_naive: 'Patrón del año anterior',
+    seasonal_drift: 'Patrón anual + evolución histórica',
+    seasonal_naive: 'Referencia sin ajuste: mismo mes del año anterior',
     linear_regression: 'Regresión lineal',
-    naive_last: 'Último valor observado',
+    naive_last: 'Referencia sin ajuste: último mes',
   })[forecast?.model] || forecast?.model || '—';
 
   if (loading) {
@@ -183,6 +189,40 @@ export const PredictionsView = () => {
             </div>
           </div>
 
+          {forecastBasis && (
+            <div className="rounded-2xl border p-4 text-sm space-y-1"
+              style={{
+                borderColor: containsPastPeriods ? '#F59E0B88' : colors.border,
+                backgroundColor: containsPastPeriods ? '#F59E0B10' : colors.card,
+                color: colors.text,
+              }}
+            >
+              <p className="font-bold">
+                {language === 'es' ? 'Último período con datos reales' : 'Last period with actual data'}:{' '}
+                {monthLabel(forecastBasis.last_observed.year, forecastBasis.last_observed.month)}
+              </p>
+              <p>
+                {language === 'es' ? 'Período estimado' : 'Estimated range'}:{' '}
+                {monthLabel(forecastBasis.first_projected.year, forecastBasis.first_projected.month)}
+                {' → '}
+                {monthLabel(forecastBasis.last_projected.year, forecastBasis.last_projected.month)}
+              </p>
+              {containsPastPeriods && (
+                <p className="font-semibold">
+                  {language === 'es'
+                    ? 'Atención: algunos períodos estimados ya transcurrieron. La proyección empieza después del último dato registrado, no después de hoy.'
+                    : 'Warning: some estimated periods are already in the past. Estimates begin after the last recorded month, not after today.'}
+                </p>
+              )}
+              {forecastBasis.model_origin === 'baseline_reference' && (
+                <p>
+                  {language === 'es'
+                    ? 'Se seleccionó una referencia sencilla: los valores no representan un modelo temporal complejo.'
+                    : 'A simple baseline was selected; these values are not a complex temporal model.'}
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {[
               { icon: CalendarRange, label: language === 'es' ? 'Meses de entrenamiento' : 'Training months', value: forecast.training_months },
@@ -203,8 +243,8 @@ export const PredictionsView = () => {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <div className="xl:col-span-2 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <div className="mb-4">
-                <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>{language === 'es' ? 'Histórico + proyección' : 'History + forecast'}</h2>
-                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? `Pronóstico para los próximos ${horizon} meses.` : `Forecast for the next ${horizon} months.`}</p>
+                <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>{language === 'es' ? 'Historial y estimaciones posteriores al último registro' : 'History and estimates after the last observation'}</h2>
+                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? `Estimación de ${horizon} meses desde el último registro disponible.` : `Estimates for ${horizon} months after the latest recorded period.`}</p>
               </div>
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -215,19 +255,40 @@ export const PredictionsView = () => {
                     <Tooltip contentStyle={{ backgroundColor: colors.card, borderColor: colors.border, color: colors.text }} />
                     <Legend />
                     <Line type="monotone" dataKey="historical" name={language === 'es' ? 'Histórico' : 'Historical'} stroke={theme.primary} strokeWidth={3} connectNulls={false} />
-                    <Line type="monotone" dataKey="prediction" name={language === 'es' ? 'Predicción' : 'Prediction'} stroke={theme.primaryStrong} strokeWidth={3} strokeDasharray="7 5" connectNulls={false} />
+                    <Line type="monotone" dataKey="prediction" name={language === 'es' ? 'Valor estimado' : 'Estimated value'} stroke={theme.primaryStrong} strokeWidth={3} strokeDasharray="7 5" connectNulls={false} />
+                    <Line type="monotone" dataKey="priorYear" name={language === 'es' ? 'Mismo mes del año anterior' : 'Same month last year'} stroke="#D97706" strokeWidth={2} strokeDasharray="3 6" connectNulls={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <h2 className="font-extrabold text-lg mb-4" style={{ color: colors.text }}>{language === 'es' ? 'Próximos valores' : 'Next values'}</h2>
+              <h2 className="font-extrabold text-lg mb-4" style={{ color: colors.text }}>{language === 'es' ? 'Valores estimados y referencia anual' : 'Estimates and annual benchmark'}</h2>
               <div className="space-y-3">
                 {(forecast.forecast || []).map((item) => (
                   <div key={`${item.year}-${item.month}`} className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
                     <span className="font-semibold" style={{ color: colors.muted }}>{monthLabel(item.year, item.month)}</span>
-                    <div className="text-right"><span className="font-extrabold text-lg block" style={{ color: theme.primary }}>{item.predicted_total}</span>{item.lower_estimate != null && <span className="text-xs" style={{ color: colors.muted }}>P80 histórico: {item.lower_estimate}–{item.upper_estimate}</span>}</div>
+                    <div className="text-right">
+                      <span className="font-extrabold text-lg block" style={{ color: theme.primary }}>{item.predicted_total}</span>
+                      <span className="text-xs block" style={{ color: colors.muted }}>
+                        {item.period_status === 'historical_gap'
+                          ? (language === 'es' ? 'Período ya transcurrido' : 'Already elapsed')
+                          : item.period_status === 'current_month'
+                            ? (language === 'es' ? 'Mes actual' : 'Current month')
+                            : (language === 'es' ? 'Período futuro' : 'Future period')}
+                      </span>
+                      {item.prior_year_total != null && (
+                        <span className="text-xs block" style={{ color: colors.muted }}>
+                          {language === 'es' ? 'Mismo mes del año anterior' : 'Same month last year'}: {item.prior_year_total}
+                          {' · Δ '}{item.change_vs_prior_year > 0 ? '+' : ''}{item.change_vs_prior_year}
+                        </span>
+                      )}
+                      {item.lower_estimate != null && (
+                        <span className="text-xs block" style={{ color: colors.muted }}>
+                          P80 histórico: {item.lower_estimate}–{item.upper_estimate}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -253,7 +314,7 @@ export const PredictionsView = () => {
 
                 <p className="mt-3 max-w-md text-sm leading-6" style={{ color: colors.muted }}>
                   {validation?.months
-                    ? `Backtesting con ${validation.months} orígenes y ${validation.samples} predicciones históricas (hasta ${validation.horizon} meses de horizonte). MAE: ${validation.selected?.mae ?? '—'} · RMSE: ${validation.selected?.rmse ?? '—'} · WAPE: ${validation.selected?.wape ?? '—'}%.`
+                    ? `Backtesting con ${validation.months} orígenes y ${validation.samples} predicciones históricas (hasta ${validation.horizon} meses de horizonte). MAE: ${validation.selected?.mae ?? '—'} · RMSE: ${validation.selected?.rmse ?? '—'} · WAPE: ${validation.selected?.wape ?? '—'}%. Referencia anual MAE: ${validation.seasonal_baseline?.mae ?? 'no evaluada'}.`
                     : 'Historial insuficiente para medir la precisión fuera del entrenamiento.'}
                 </p>
                 {forecast.seasonal_patterns?.length > 0 && (
