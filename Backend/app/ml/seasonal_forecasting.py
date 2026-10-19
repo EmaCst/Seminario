@@ -234,6 +234,11 @@ def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = Tr
             "La proyección incluye el mes calendario actual, no necesariamente "
             "un mes futuro completo."
         )
+    if last == current_period:
+        warnings.append(
+            "El último mes registrado coincide con el mes actual: podría incluir "
+            "únicamente datos parciales y distorsionar tendencias o patrones estacionales."
+        )
     if last > current_period:
         warnings.append(
             "El último registro tiene una fecha posterior al mes actual; "
