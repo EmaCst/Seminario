@@ -3,7 +3,8 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { Expand, GripVertical, LayoutDashboard, Minimize2, RefreshCw } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 import { getSavedVisualizations, previewVisualization, getVisualizationSemanticCatalog } from '../services/api';
-import { ChartAxisHint, visualizationAxisLabels } from './ChartAxisHint';
+import { ChartAxisHint } from './ChartAxisHint';
+import { visualizationAxisLabels } from './visualizationAxisLabels';
 
 const formatValue = (value) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
