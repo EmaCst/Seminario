@@ -186,6 +186,13 @@ export const DashboardProvider = ({ children }) => {
   const [themeId, setThemeId] = useState(detectTheme);
   const [isDarkMode, setIsDarkMode] = useState(detectDarkMode);
   const [language, setLanguage] = useState(detectLanguage);
+  const [customizationOpen, setCustomizationOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [institutionName, setInstitutionName] = useState(() => readStorage('kenneth-institution-name') || 'Universidad Mariano Gálvez de Guatemala');
+  const [userName, setUserName] = useState(() => readStorage('kenneth-user-name') || 'David Emanuel Castellanos Velásquez');
+  const [institutionLogo, setInstitutionLogo] = useState(() => readStorage('kenneth-institution-logo') || '');
+  const [logoZoom, setLogoZoom] = useState(() => Math.min(300, Math.max(100, Number(readStorage('kenneth-logo-zoom')) || 100)));
+  const [logoSize, setLogoSize] = useState(() => Math.min(120, Math.max(40, Number(readStorage('kenneth-logo-size')) || 80)));
   const [visibleCharts, setVisibleCharts] = useState({
     monthSales: true,
     salesPerMonth: true,
@@ -223,6 +230,15 @@ export const DashboardProvider = ({ children }) => {
     writeStorage('umg-color-theme', themeId);
   }, [themeId]);
 
+  useEffect(() => { writeStorage('kenneth-institution-name', institutionName); }, [institutionName]);
+  useEffect(() => { writeStorage('kenneth-user-name', userName); }, [userName]);
+  useEffect(() => { writeStorage('kenneth-logo-size', String(logoSize)); }, [logoSize]);
+  useEffect(() => { writeStorage('kenneth-logo-zoom', String(logoZoom)); }, [logoZoom]);
+  useEffect(() => {
+    if (institutionLogo) writeStorage('kenneth-institution-logo', institutionLogo);
+    else { try { localStorage.removeItem('kenneth-institution-logo'); } catch { /* ignored */ } }
+  }, [institutionLogo]);
+
   const toggleChart = (chartName) => {
     setVisibleCharts((prev) => ({ ...prev, [chartName]: !prev[chartName] }));
   };
@@ -241,6 +257,20 @@ export const DashboardProvider = ({ children }) => {
         setIsDarkMode,
         language,
         setLanguage,
+        customizationOpen,
+        setCustomizationOpen,
+        editMode,
+        setEditMode,
+        institutionName,
+        setInstitutionName,
+        userName,
+        setUserName,
+        institutionLogo,
+        setInstitutionLogo,
+        logoSize,
+        setLogoSize,
+        logoZoom,
+        setLogoZoom,
         t,
         visibleCharts,
         toggleChart,

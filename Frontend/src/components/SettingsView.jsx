@@ -4,6 +4,7 @@ import { Check, Moon, Sun, Languages, Palette, ChartNoAxesCombined, Database, Se
 import { DatabaseConfig } from './DatabaseConfig';
 import { DatabaseUpload } from './DatabaseUpload';
 import { PostgreSQLConfig } from './PostgreSQLConfig';
+import { PostgreSQLUpload } from './PostgreSQLUpload';
 import { ExcelImport } from './ExcelImport';
 
 const DataSourceSwitcher = ({ source, setSource, theme, colors, language }) => {
@@ -32,7 +33,7 @@ export const SettingsView = () => {
     </div>
     <DataSourceSwitcher source={dataSource} setSource={setDataSource} theme={theme} colors={colors} language={language}/>
     {dataSource==='sqlserver'&&<><DatabaseUpload/><DatabaseConfig/></>}
-    {dataSource==='postgresql'&&<PostgreSQLConfig/>}
+    {dataSource==='postgresql'&&<><PostgreSQLConfig/><PostgreSQLUpload/></>}
     {dataSource==='excel'&&<ExcelImport theme={theme} colors={colors} language={language}/>} 
     <section className="p-5 sm:p-6 rounded-2xl border shadow-sm" style={cardStyle}><div className="flex items-start gap-3 mb-5"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor:colors.accentSoft,color:theme.primary}}><ChartNoAxesCombined size={20}/></div><h3 className="text-lg font-bold" style={{color:colors.text}}>{t.chartVisibility}</h3></div><div className="space-y-3">{settings.map(item=><label key={item.key} className="flex items-center justify-between gap-4 rounded-xl border px-4 py-3 cursor-pointer" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}><span className="font-medium" style={{color:colors.text}}>{item.label}</span><input type="checkbox" checked={visibleCharts[item.key]} onChange={()=>toggleChart(item.key)} className="w-5 h-5" style={{accentColor:theme.primary}}/></label>)}</div></section>
   </div>;

@@ -8,6 +8,7 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { ReportsView } from './components/ReportsView';
 import { Header } from './components/Header';
 import { Chatbot } from './components/Chatbot';
+import { CustomizationPanel } from './components/CustomizationPanel';
 
 const MainLayout = () => {
   const { activeTab, colors } = useContext(DashboardContext);
@@ -31,6 +32,7 @@ const MainLayout = () => {
         </div>
       </div>
       <Chatbot />
+      <CustomizationPanel />
     </div>
   );
 };

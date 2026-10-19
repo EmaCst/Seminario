@@ -231,7 +231,7 @@ def get_top_products(limit: int = 5) -> dict:
     product_pk = product_relationship["to_column"]
 
     sql = f"""
-    SELECT TOP {int(limit)}
+    SELECT {f'TOP {int(limit)}' if limit is not None else ''}
         p.[{product_name_column}] AS product_name,
         SUM(d.[{quantity_column}]) AS quantity_sold
     FROM [{detail_table}] d

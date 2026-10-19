@@ -6,7 +6,11 @@ from statistics import mean, median, pstdev
 from sklearn.ensemble import IsolationForest
 from sklearn.linear_model import LinearRegression
 
-from app.analysis.adaptive_dashboard_service import _monthly_count
+from app.analysis.adaptive_dashboard_service import _monthly_count, DOMAIN_TREND_PRIORITY
+from app.services.assistant_domain_analytics import (
+    ROLE_WORDS, ROLE_LABELS, _matched_role, _measure, _query_series,
+)
+from app.services.assistant_router import normalize
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 
 
@@ -16,43 +20,97 @@ class TimeSeriesCandidate:
     table: str
     date_column: str
     data: list[dict]
+    metric: str = "count"
 
 
-def _find_best_time_series() -> TimeSeriesCandidate:
+def _find_best_time_series(
+    question: str = "", *, minimum_points: int = 3,
+) -> TimeSeriesCandidate:
+    """Select the requested entity, never an unrelated longer time series."""
     analysis = inspect_semantic_model()
     semantic = analysis.get("semantic_model") or {}
+    domain = semantic.get("domain")
+    if semantic.get("ambiguous_domain") or domain is None:
+        raise ValueError("El dominio de la base es ambiguo; no puedo seleccionar una serie temporal confiable.")
     entities = semantic.get("entities") or {}
+    normalized = normalize(question)
+    requested_role = _matched_role(normalized, domain) if question else None
+    if question and not requested_role:
+        # Mention of an entity from another domain must never pick an
+        # unrelated default time series (e.g. "citas" in an HR database).
+        foreign = [role for other_domain in ROLE_WORDS if other_domain != domain
+                   for role in [_matched_role(normalized, other_domain)] if role]
+        if foreign:
+            raise ValueError(
+                "La entidad solicitada no está identificada de forma única en "
+                "el dominio activo. Especifica qué indicador deseas analizar."
+            )
+    if requested_role and requested_role not in entities:
+        raise ValueError(f"No encontré una tabla de {ROLE_LABELS.get(requested_role, requested_role)} identificada con suficiente certeza.")
 
-    candidates: list[TimeSeriesCandidate] = []
+    preferred = DOMAIN_TREND_PRIORITY.get(domain, [])
+    ordered = ([requested_role] if requested_role else
+               [name for name in preferred if name in entities] +
+               [name for name in entities if name not in preferred])
 
-    for role, entity in entities.items():
-        table = entity.get("table")
-        date_column = (entity.get("columns") or {}).get("date")
-        if not table or not date_column:
+    requested_amount = any(term in normalized for term in (
+        "importe", "monto", "dinero", "ingreso", "facturacion", "recaudacion",
+        "valor total", "gasto", "nomina", "salario",
+    ))
+    # For explicit sales forecasts, prefer recorded revenue, but only when
+    # the user has not explicitly requested a count of transactions.
+    explicit_count = any(term in normalized for term in (
+        "cuantos", "cuantas", "numero de", "cantidad de", "transacciones"))
+    if explicit_count:
+        requested_amount = False
+    elif requested_role == "sales" and "venta" in normalized:
+        requested_amount = True
+
+    candidates = []
+    for role in ordered:
+        entity = entities.get(role) or {}
+        if entity.get("ambiguous"):
             continue
-
+        table = entity.get("table")
+        date = (entity.get("columns") or {}).get("date")
+        if not table or not date:
+            continue
         try:
-            data = _monthly_count(table, date_column)
+            if requested_amount:
+                expression = _measure(domain, role, entity, "amount")
+                if expression is None:
+                    continue
+                data = _query_series(entity, expression)
+                metric = "amount"
+            else:
+                data = _monthly_count(table, date)
+                metric = "count"
         except Exception:
             continue
-
         if data:
-            candidates.append(
-                TimeSeriesCandidate(
-                    role=role,
-                    table=table,
-                    date_column=date_column,
-                    data=data,
-                )
-            )
+            candidates.append(TimeSeriesCandidate(role, table, date, data, metric))
+            if requested_role and len(data) >= minimum_points:
+                break
 
-    if not candidates:
+    adequate = [candidate for candidate in candidates if len(candidate.data) >= minimum_points]
+    if adequate:
+        # Honor the domain's preferred temporal entity, not whichever table
+        # happens to have the most historic rows.
+        return adequate[0]
+    if requested_role:
         raise ValueError(
-            "No se encontró ninguna entidad con columna de fecha y datos suficientes para análisis temporal."
+            f"No hay al menos {minimum_points} meses de datos verificables para "
+            f"{ROLE_LABELS.get(requested_role, requested_role)} con la métrica solicitada."
         )
-
-    candidates.sort(key=lambda item: len(item.data), reverse=True)
-    return candidates[0]
+    if requested_amount:
+        raise ValueError(
+            "No se encontró una serie mensual de importes monetarios verificables "
+            "para la predicción o el análisis de anomalías."
+        )
+    raise ValueError(
+        f"No encontré una serie temporal confiable con al menos {minimum_points} meses "
+        "en el dominio actual."
+    )
 
 
 def _next_year_month(year: int, month: int, offset: int) -> tuple[int, int]:
@@ -114,11 +172,11 @@ def _build_anomaly_explanation(
     return "Se considera atípico porque " + "; además, ".join(parts) + "."
 
 
-def forecast_next_months(horizon: int = 3) -> dict:
+def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
     if horizon < 1 or horizon > 12:
         raise ValueError("El horizonte debe estar entre 1 y 12 meses.")
 
-    series = _find_best_time_series()
+    series = _find_best_time_series(question, minimum_points=3)
     points = series.data
 
     if len(points) < 3:
@@ -151,6 +209,7 @@ def forecast_next_months(horizon: int = 3) -> dict:
     return {
         "model": "linear_regression",
         "role": series.role,
+        "metric": series.metric,
         "table": series.table,
         "date_column": series.date_column,
         "training_points": points,
@@ -164,8 +223,8 @@ def forecast_next_months(horizon: int = 3) -> dict:
     }
 
 
-def detect_monthly_anomalies() -> dict:
-    series = _find_best_time_series()
+def detect_monthly_anomalies(question: str = "") -> dict:
+    series = _find_best_time_series(question, minimum_points=4)
     points = series.data
 
     if len(points) < 4:
@@ -242,6 +301,7 @@ def detect_monthly_anomalies() -> dict:
     return {
         "model": "isolation_forest",
         "role": series.role,
+        "metric": series.metric,
         "table": series.table,
         "date_column": series.date_column,
         "months_evaluated": len(points),

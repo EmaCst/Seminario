@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -6,17 +6,39 @@ from app.analysis.adaptive_analytics_service import get_adaptive_analytics
 from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
 from app.analysis.business_domain_detector import inspect_business_domains
 from app.analysis.capability_detector import inspect_capabilities
-from app.analysis.dashboard_service import get_dashboard_summary
+from app.analysis.dashboard_service import get_dashboard_summary, get_top_products
 from app.analysis.semantic_mapper import inspect_semantic_map
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
 from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
+from app.database.postgresql_backup_loader import (
+    backup_upload_enabled, restore_postgresql_backup, runtime_upload_enabled,
+    set_backup_upload_enabled,
+)
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
 from app.services.assistant_service import ask_database
+from app.visualizations.semantic_catalog import get_semantic_visualization_catalog
+from app.visualizations.visualization_store import (
+    SavedVisualizationRequest,
+    VisualizationPlacement,
+    delete_saved_visualization,
+    list_saved_visualizations,
+    save_visualization,
+    update_visualization_placement,
+    update_saved_visualization,
+)
+from app.visualizations.visualization_service import (
+    VisualizationDefinition,
+    VisualizationPageRequest,
+    explore_visualization,
+    get_visualization_catalog,
+    get_filter_values,
+    preview_visualization,
+)
 
 app = FastAPI(title="AI Business Assistant", description="Asistente empresarial para análisis de datos", version="0.13.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -93,6 +115,13 @@ def ai_anomalies():
 def dashboard():
     return get_dashboard_summary()
 
+@app.get("/api/dashboard/top-products/all")
+def dashboard_all_top_products():
+    try:
+        return get_top_products(limit=None)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible consultar todos los productos: {exc}") from exc
+
 @app.get("/api/dashboard/adaptive")
 def adaptive_dashboard():
     try:
@@ -106,6 +135,81 @@ def adaptive_analytics():
         return get_adaptive_analytics()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible construir la analítica adaptativa: {exc}") from exc
+
+@app.get("/api/visualizations/semantic-catalog")
+def visualization_semantic_catalog():
+    try:
+        return get_semantic_visualization_catalog()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible construir el catálogo semántico: {exc}") from exc
+
+@app.get("/api/visualizations/saved")
+def saved_visualizations(destination: str | None = None):
+    return {"items": list_saved_visualizations(destination)}
+
+@app.post("/api/visualizations/saved")
+def create_saved_visualization(request: SavedVisualizationRequest):
+    try:
+        return save_visualization(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.put("/api/visualizations/saved/{visualization_id}")
+def edit_saved_visualization(visualization_id: str, request: SavedVisualizationRequest):
+    try:
+        return update_saved_visualization(visualization_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.put("/api/visualizations/saved/{visualization_id}/placement")
+def change_visualization_placement(visualization_id: str, placement: VisualizationPlacement):
+    try:
+        return update_visualization_placement(visualization_id, placement)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.delete("/api/visualizations/saved/{visualization_id}")
+def remove_saved_visualization(visualization_id: str):
+    try:
+        delete_saved_visualization(visualization_id)
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.get("/api/visualizations/filter-values")
+def visualization_filter_values(table: str, column: str, search: str = ""):
+    try:
+        return get_filter_values(table, column, search)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/visualizations/catalog")
+def visualization_catalog():
+    try:
+        return get_visualization_catalog()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible construir el catálogo de visualizaciones: {exc}") from exc
+
+@app.post("/api/visualizations/explore")
+def visualization_explore(request: VisualizationPageRequest):
+    try:
+        return explore_visualization(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible explorar la tabla: {exc}") from exc
+
+
+@app.post("/api/visualizations/preview")
+def visualization_preview(definition: VisualizationDefinition):
+    try:
+        return preview_visualization(definition)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible generar la visualización: {exc}") from exc
 
 @app.get("/api/reports/pdf")
 def report_pdf(type: str = "executive"):
@@ -189,6 +293,93 @@ async def upload_excel_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible activar el archivo Excel: {exc}") from exc
+
+class BackupUploadSetting(BaseModel):
+    enabled: bool
+
+
+def _local_backup_control(request: Request) -> bool:
+    """Only developer-local calls may toggle administrative upload capability.
+
+    Disallow remote clients and foreign origins; no remotely accessible
+    unauthenticated toggle is permitted. Deployments need real authentication.
+    """
+    host = request.client.host if request.client else ""
+    if host not in ("127.0.0.1", "::1"):
+        return False
+    origin = request.headers.get("origin")
+    return origin in ("http://localhost:5173", "http://127.0.0.1:5173")
+
+
+@app.get("/api/database/postgresql-backup/settings")
+def get_postgresql_backup_settings(request: Request):
+    return {
+        "enabled": backup_upload_enabled(),
+        "manageable": _local_backup_control(request),
+        "persistent": False,
+        "source": "runtime_or_env_default",
+    }
+
+
+@app.put("/api/database/postgresql-backup/settings")
+def update_postgresql_backup_settings(settings: BackupUploadSetting, request: Request):
+    if not _local_backup_control(request):
+        raise HTTPException(
+            status_code=403,
+            detail=("Por seguridad, la activación desde la interfaz solo está "
+                    "disponible en el equipo local, desde el frontend de Kenneth."),
+        )
+    try:
+        enabled = set_backup_upload_enabled(settings.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"enabled": enabled, "manageable": True, "persistent": False,
+            "source": "runtime"}
+
+
+@app.post("/api/database/upload/postgresql-backup")
+async def upload_postgresql_archive(request: Request, file: UploadFile = File(...)):
+    """Restore a trusted pg_dump archive to a new PostgreSQL database and analyze it."""
+    # A localhost checkbox cannot grant remote clients backup-import rights.
+    if runtime_upload_enabled() and not _local_backup_control(request):
+        await file.close()
+        raise HTTPException(
+            status_code=403,
+            detail="Una carga habilitada desde la casilla local solo puede usarse desde localhost.",
+        )
+    try:
+        restored = await restore_postgresql_backup(file)
+        # Restoration and activation have succeeded. An optional visualization
+        # or semantic inspection failure must not be reported as RESTORE failure.
+        try:
+            analysis = _current_database_analysis()
+        except Exception as exc:
+            analysis = {
+                "database": restored["database"],
+                "analysis_warning": (
+                    "El respaldo se restauró y activó, pero el análisis "
+                    f"automático no terminó: {exc}"
+                ),
+            }
+        try:
+            adaptive = get_adaptive_dashboard_summary() if "analysis_warning" not in analysis else {
+                "available": False, "reason": "Análisis automático pendiente."
+            }
+        except Exception as exc:
+            adaptive = {"available": False, "reason": str(exc)}
+        return {"uploaded": True, "engine": "postgresql", "restore": restored,
+                **analysis, "dashboard": adaptive}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=("No se pudo restaurar el respaldo PostgreSQL. "
+                    "Comprueba que pg_restore esté instalado, que la conexión "
+                    "tenga permiso CREATEDB y que el archivo sea de confianza. "
+                    f"Detalle: {exc}")
+        ) from exc
+
 
 @app.post("/api/database/upload/sqlserver-bak")
 async def upload_sqlserver_backup(file: UploadFile = File(...)):

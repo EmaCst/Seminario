@@ -24,7 +24,10 @@ class DatabaseManager:
             "password": os.getenv("DB_PASSWORD"),
             "driver": os.getenv("DB_DRIVER") or "ODBC Driver 18 for SQL Server",
         }
-        if env_config["server"] and env_config["database"]:
+        # A quality run must never auto-connect to DB_SERVER from a .env file.
+        # The flag is set by the opt-in synthetic integration runner only.
+        if (env_config["server"] and env_config["database"]
+                and os.getenv("KENNETH_QUALITY_MODE") != "1"):
             self.configure(**env_config)
 
     @staticmethod
@@ -73,14 +76,22 @@ class DatabaseManager:
 
     def configure(self, server: str, database: str, username: str | None = None, password: str | None = None, driver: str = "ODBC Driver 18 for SQL Server") -> dict:
         new_engine = self._build_sqlserver_engine(server, database, username, password, driver)
-        with new_engine.connect() as connection:
-            row = connection.exec_driver_sql("SELECT DB_NAME() AS database_name, @@SERVERNAME AS server_name").mappings().first()
+        try:
+            with new_engine.connect() as connection:
+                row = connection.exec_driver_sql("SELECT DB_NAME() AS database_name, @@SERVERNAME AS server_name").mappings().first()
+        except Exception:
+            new_engine.dispose()
+            raise
         return self._activate(new_engine, {"provider": "sqlserver", "server": server, "database": row["database_name"] if row else database, "username": username, "password": password, "driver": driver, "auth": "sql" if username else "windows"})
 
     def configure_postgresql(self, host: str, database: str, username: str, password: str | None = None, port: int = 5432, sslmode: str = "prefer") -> dict:
         new_engine = self._build_postgresql_engine(host, database, username, password, port, sslmode)
-        with new_engine.connect() as connection:
-            row = connection.exec_driver_sql("SELECT current_database() AS database_name, current_user AS current_user").mappings().first()
+        try:
+            with new_engine.connect() as connection:
+                row = connection.exec_driver_sql("SELECT current_database() AS database_name, current_user AS current_user").mappings().first()
+        except Exception:
+            new_engine.dispose()
+            raise
         return self._activate(new_engine, {"provider": "postgresql", "host": host, "port": port, "database": row["database_name"] if row else database, "username": username, "password": password, "sslmode": sslmode, "auth": "password"})
 
     def configure_excel(self, engine: Engine, filename: str, tables: list[str], rows: int, database_path: str) -> dict:

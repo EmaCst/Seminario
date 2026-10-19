@@ -6,6 +6,7 @@ import {
 } from 'react';
 
 import { DashboardContext } from '../context/DashboardContext';
+import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 import {
   LineChart,
@@ -19,8 +20,11 @@ import {
   Bar,
 } from 'recharts';
 
-import { getDashboard } from '../services/api';
+import { getAllTopProducts, getDashboard, getSavedVisualizations } from '../services/api';
+import { CustomVisualizationWidget } from './SavedVisualizations';
 
+
+const loadAllTopProducts = async () => (await getAllTopProducts()).data || [];
 
 const CustomTooltip = ({
   active,
@@ -61,6 +65,7 @@ export const DashboardView = () => {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [customVisualizations, setCustomVisualizations] = useState([]);
 
 
   useEffect(() => {
@@ -90,6 +95,14 @@ export const DashboardView = () => {
 
     loadDashboard();
   }, [language]);
+
+  useEffect(() => {
+    let active = true;
+    const loadCustom = () => getSavedVisualizations('dashboard').then((result)=>{ if(active) setCustomVisualizations(result.items || []); }).catch(()=>{});
+    loadCustom();
+    window.addEventListener('kenneth-custom-visualizations-changed', loadCustom);
+    return ()=>{ active=false; window.removeEventListener('kenneth-custom-visualizations-changed', loadCustom); };
+  }, []);
 
 
   const monthNames = useMemo(() => {
@@ -217,122 +230,36 @@ export const DashboardView = () => {
           KPIs PRINCIPALES
       ====================================== */}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-
-        {dashboard?.total_sales?.available && (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Ventas totales'
-                : 'Total sales'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {formatMoney(
-                dashboard.total_sales.value
-              )}
-            </div>
-          </section>
-        )}
 
 
-        {dashboard?.current_month_sales?.available && (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Ventas del mes'
-                : 'Current month sales'}
-            </div>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+        {dashboard?.total_sales?.available && <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[{
+          id: 'retail-kpis-block', expandable: false,
+          resizable: false,
+          span: 'xl:col-span-12',
+          node: <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Ventas totales' : 'Total sales'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{formatMoney(dashboard.total_sales.value)}</div>
+            </section>
+            {dashboard?.current_month_sales?.available && <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Ventas del mes' : 'Current month sales'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{formatMoney(dashboard.current_month_sales.value)}</div>
+            </section>}
+            {dashboard?.sales_count?.available && <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Cantidad de ventas' : 'Sales count'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{dashboard.sales_count.value}</div>
+            </section>}
+            {dashboard?.average_ticket?.available && <section className="p-5 rounded-2xl border shadow-sm" style={cardStyle}>
+              <div className="text-sm font-semibold" style={{ color: colors.muted }}>{language === 'es' ? 'Venta promedio' : 'Average sale'}</div>
+              <div className="text-2xl font-extrabold mt-1" style={{ color: theme.primary }}>{formatMoney(dashboard.average_ticket.value)}</div>
+            </section>}
+          </div>,
+        }]} />}
 
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {formatMoney(
-                dashboard.current_month_sales.value
-              )}
-            </div>
-          </section>
-        )}
-
-
-        {dashboard?.sales_count?.available && (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Cantidad de ventas'
-                : 'Sales count'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {dashboard.sales_count.value}
-            </div>
-          </section>
-        )}
-
-
-        {dashboard?.average_ticket?.available && (
-          <section
-            className="p-5 rounded-2xl border shadow-sm"
-            style={cardStyle}
-          >
-            <div
-              className="text-sm font-semibold"
-              style={{ color: colors.muted }}
-            >
-              {language === 'es'
-                ? 'Venta promedio'
-                : 'Average sale'}
-            </div>
-
-            <div
-              className="text-2xl font-extrabold mt-1"
-              style={{ color: theme.primary }}
-            >
-              {formatMoney(
-                dashboard.average_ticket.value
-              )}
-            </div>
-          </section>
-        )}
-
-      </div>
-
-
-      {/* ======================================
-          VENTAS POR MES / TOP PRODUCTOS
-      ====================================== */}
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 lg:gap-6">
-
-        {visibleCharts.monthSales &&
-          dashboard?.sales_by_month?.available && (
-
-          <section
+      {/* GRÁFICAS PRINCIPALES: todas participan del mismo drag & drop */}
+      <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={[
+        { id: 'month-sales', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -403,12 +330,8 @@ export const DashboardView = () => {
 
               </LineChart>
             </ResponsiveContainer>
-          </section>
-        )}
-
-
-        {dashboard?.top_products?.available && (
-          <section
+          </section>) },
+        { id: 'top-products-chart', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -475,20 +398,8 @@ export const DashboardView = () => {
               </BarChart>
             </ResponsiveContainer>
 
-          </section>
-        )}
-
-      </div>
-
-
-      {/* ======================================
-          TOP CLIENTES / VENTAS POR CATEGORÍA
-      ====================================== */}
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 lg:gap-6">
-
-        {dashboard?.top_customers?.available && (
-          <section
+          </section>) },
+        { id: 'top-customers', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -548,12 +459,8 @@ export const DashboardView = () => {
 
               </BarChart>
             </ResponsiveContainer>
-          </section>
-        )}
-
-
-        {dashboard?.sales_by_category?.available && (
-          <section
+          </section>) },
+        { id: 'sales-category', node: (<section
             className="p-5 rounded-2xl border shadow-sm h-72"
             style={cardStyle}
           >
@@ -613,17 +520,12 @@ export const DashboardView = () => {
 
               </BarChart>
             </ResponsiveContainer>
-          </section>
-        )}
+          </section>) }
+      ]} />
 
-      </div>
-
-
-      {/* ======================================
-          INVENTARIO CRÍTICO
-      ====================================== */}
-
-      {dashboard?.critical_inventory?.available && (
+      {/* TABLAS: solo reordenables; conservan su tamaño y contenido */}
+      <EditableDashboardGrid storageId="retail-canvas" columns="grid-cols-1" sharedCanvas="retail-canvas" items={[
+        dashboard?.critical_inventory?.available ? { id: 'critical-inventory-table', table: { title: language === 'es' ? 'Inventario crítico' : 'Critical inventory', rows: criticalInventory, columns: [{key:'product',label:language==='es'?'Producto':'Product'},{key:'stock',label:'Stock'},{key:'minimum_stock',label:language==='es'?'Mínimo':'Minimum'}] }, resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
@@ -713,16 +615,8 @@ export const DashboardView = () => {
             </table>
           </div>
         </section>
-      )}
-
-
-      {/* ======================================
-          TOP PRODUCTOS - TABLA
-      ====================================== */}
-
-      {visibleCharts.topProducts &&
-        dashboard?.top_products?.available && (
-
+        ) } : null,
+        visibleCharts.topProducts && dashboard?.top_products?.available ? { id: 'top-products-table', table: { title: t.topProducts, rows: topProducts, loadAll: loadAllTopProducts, columns: [{key:'product',label:t.product},{key:'quantity',label:language==='es'?'Unidades vendidas':'Units sold'}] }, resizable: false, span: 'xl:col-span-12', node: (
         <section
           className="rounded-2xl border shadow-sm overflow-hidden"
           style={cardStyle}
@@ -789,7 +683,16 @@ export const DashboardView = () => {
             </table>
           </div>
         </section>
-      )}
+        ) } : null,
+      ].filter(Boolean)} />
+      <EditableDashboardGrid storageId="retail-canvas" sharedCanvas="retail-canvas" items={customVisualizations.map((item)=>({
+        id: `custom-${item.id}`,
+        resizable: !['kpi','table'].includes(item.definition?.visualization),
+        span: ['kpi','table'].includes(item.definition?.visualization) ? 'xl:col-span-12' : 'xl:col-span-6',
+        definition: item.definition,
+            node: <div className="pt-1"><CustomVisualizationWidget item={item} /></div>,
+      }))} />
+      </div>
 
     </div>
   );

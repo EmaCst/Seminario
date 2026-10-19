@@ -2,6 +2,9 @@ import re
 from time import perf_counter
 
 from app.ai.gemma import explain_results, generate_sql, repair_sql
+from app.services.assistant_router import route_request
+from app.services.assistant_analytics import run_verified_analytics
+from app.services.assistant_domain_analytics import run_domain_analytics
 from app.analysis.adaptive_dashboard_service import _monthly_count
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.query_executor import execute_query
@@ -93,7 +96,9 @@ def _quality_from_r2(r2: float | None) -> str:
 
 
 def _format_forecast_answer(result: dict) -> str:
-    role = result.get("role", "serie")
+    from app.services.assistant_domain_analytics import ROLE_LABELS
+    role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
+    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad de registros por mes"
     forecast = result.get("forecast") or []
     r2 = result.get("r2_score")
     quality = _quality_from_r2(r2)
@@ -114,15 +119,17 @@ def _format_forecast_answer(result: dict) -> str:
     else:
         explanation = "Tómalo como una estimación orientativa basada en el historial disponible."
 
-    return f"La proyección para {role} es: {values}. {explanation}"
+    return f"La proyección de {metric} de {role} es: {values}. {explanation}"
 
 
 def _format_anomaly_answer(result: dict) -> str:
-    role = result.get("role", "serie")
+    from app.services.assistant_domain_analytics import ROLE_LABELS
+    role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
+    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad mensual de registros"
     anomalies = result.get("anomalies") or []
 
     if not anomalies:
-        return f"No encontré meses que se alejen de forma relevante del comportamiento habitual de {role}."
+        return f"No encontré meses atípicos en {metric} de {role} según el modelo utilizado."
 
     descriptions = []
     for item in anomalies:
@@ -150,7 +157,7 @@ def _format_anomaly_answer(result: dict) -> str:
         )
 
     return (
-        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {role}. "
+        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {metric} de {role}. "
         + " ".join(descriptions)
         + " Vale la pena revisar qué ocurrió en esos periodos para entender el cambio."
     )
@@ -240,6 +247,8 @@ def _monthly_peak_comparison(question: str) -> dict:
 
 
 def _format_value(value) -> str:
+    if value is None:
+        return "sin dato"
     if isinstance(value, float):
         if value.is_integer():
             return str(int(value))
@@ -264,6 +273,8 @@ def _fast_answer(question: str, results: list[dict]) -> str | None:
         raw_key = str(key or "").strip()
         key_text = raw_key.lower().replace("_", " ")
         q = question.lower()
+        if value is None:
+            return "La consulta no devolvió un valor para ese indicador. Puede deberse a que no hay registros coincidentes o a valores faltantes."
         value_text = _format_value(value)
 
         if any(term in q for term in ("cuántas ventas", "cuantas ventas", "cantidad de ventas", "número de ventas", "numero de ventas")):
@@ -287,16 +298,200 @@ def _fast_answer(question: str, results: list[dict]) -> str | None:
     return ". ".join(parts) + "."
 
 
+
+MONTH_NAMES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5,
+    "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9,
+    "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+
+
+def _monthly_sales_answer(question: str) -> dict | None:
+    """Answer an explicit monthly sales question using the same source as the dashboard."""
+    normalized = question.lower()
+    if not any(term in normalized for term in ("venta", "vendido", "facturac", "ingreso")):
+        return None
+    month = next((number for name, number in MONTH_NAMES.items()
+                  if re.search(r"\b" + name + r"\b", normalized)), None)
+    if month is None:
+        return None
+    from app.analysis.dashboard_service import get_sales_by_month
+    report = get_sales_by_month()
+    if not report.get("available"):
+        return None
+    rows = report.get("data") or []
+    year_match = re.search(r"\b(20\d{2})\b", normalized)
+    year = int(year_match.group(1)) if year_match else (
+        max((int(row["year"]) for row in rows if int(row["month"]) == month), default=None)
+    )
+    if year is None:
+        return {
+            "mode": "analytics", "sql": None, "data": [],
+            "answer": "No hay registros de ventas disponibles para ese mes.",
+        }
+    matching = [row for row in rows if int(row["month"]) == month and int(row["year"]) == year]
+    month_name = next(name for name, number in MONTH_NAMES.items() if number == month)
+    if not matching:
+        answer = f"No hay registros de ventas para {month_name} de {year} en los datos consultados."
+    else:
+        total = sum(float(row["total"]) for row in matching)
+        answer = f"El monto total de ventas de {month_name} de {year} fue {_format_value(total)}."
+    return {"mode": "analytics", "sql": None, "data": matching, "answer": answer}
+
+
+
+def _compare_months(question: str, history: list[dict]) -> dict | None:
+    if not any(t in question.lower() for t in ("diferencia", "compar", "entre los dos", "variación", "variacion")):
+        return None
+    def months(text):
+        return [number for _, number in sorted((match.start(), number)
+            for name, number in MONTH_NAMES.items()
+            for match in re.finditer(r"\b" + name + r"\b", text.lower()))]
+    found = months(question)
+    for item in reversed(history[-10:]):
+        if len(set(found)) >= 2:
+            break
+        if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+            continue
+        for month in reversed(months(str(item.get("content") or item.get("text") or ""))):
+            if month not in found:
+                found.insert(0, month)
+    found = list(dict.fromkeys(found))
+    if len(found) != 2:
+        return None
+    from app.analysis.dashboard_service import get_sales_by_month
+    report = get_sales_by_month()
+    if not report.get("available"):
+        return None
+    rows = report.get("data") or []
+    year_match = re.search(r"\b(20\d{2})\b", question)
+    year = int(year_match.group(1)) if year_match else max(
+        (int(row["year"]) for row in rows if int(row["month"]) in found), default=None)
+    if year is None:
+        return None
+    totals = {}
+    for month in found:
+        matching = [row for row in rows if int(row["year"]) == year and int(row["month"]) == month]
+        if not matching:
+            return None
+        totals[month] = sum(float(row["total"]) for row in matching)
+    first, second = found
+    name1 = next(name for name, value in MONTH_NAMES.items() if value == first)
+    name2 = next(name for name, value in MONTH_NAMES.items() if value == second)
+    diff = totals[first] - totals[second]
+    return {
+        "mode": "analytics", "sql": None,
+        "data": [{"year": year, "month": month, "total": totals[month]} for month in found],
+        "answer": (f"En {name1} de {year} las ventas fueron {_format_value(totals[first])} "
+                   f"y en {name2} fueron {_format_value(totals[second])}. "
+                   f"La diferencia fue {_format_value(abs(diff))}; "
+                   f"{name1 if diff >= 0 else name2} tuvo mayores ventas."),
+    }
+
+
+
+def _conversation_reply(question: str) -> str | None:
+    cleaned = re.sub(r"[^a-záéíóúñü ]", " ", question.lower())
+    cleaned = " ".join(cleaned.split())
+    if re.fullmatch(r"(hola|holi|buenas|buenos días|buenos dias|buenas tardes|buenas noches|hey|hello)( kenneth| kenteh)?", cleaned):
+        return "¡Hola! Soy Kenneth. ¿Qué te gustaría analizar de tu negocio?"
+    if cleaned in {"gracias", "muchas gracias", "perfecto gracias"}:
+        return "¡Con gusto! ¿En qué más puedo ayudarte?"
+    return None
+
+
+def _attribution_followup(question: str, history: list[dict]) -> str | None:
+    text = question.lower()
+    if not any(term in text for term in ("producto", "artículo", "articulo", "item", "ítem")):
+        return None
+    if not any(term in text for term in ("diferencia", "cambio", "incremento", "aumento", "marcó", "marco", "contribuy", "explica")):
+        return None
+    previous = []
+    for item in reversed(history[-10:]):
+        if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+            continue
+        message = str(item.get("content") or item.get("text") or "").strip()
+        if message:
+            previous.insert(0, message)
+        if len(previous) >= 4:
+            break
+    return " ".join(previous + [question])
+
+
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
-    intent_text = _intent_text(question, history)
+    intent = route_request(question, history)
+    intent_text = question.lower()
 
-    if _is_prediction_request(intent_text):
+    if intent.kind == "conversation":
+        conversational = _conversation_reply(question)
+        if not conversational:
+            conversational = "¡Hola! Soy Kenneth. ¿Qué te gustaría analizar de tu negocio?"
+        return {"question": question, "mode": "conversation", "sql": None,
+                "data": [], "answer": conversational,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
+
+    # Resolve the actual business domain before selecting a retail-only
+    # shortcut. Otherwise "producto" or "ventas" in another sector could
+    # silently be interpreted as retail revenue.
+    try:
+        domain_answer, active_domain = run_domain_analytics(question, history)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Domain routing/analytics failed")
+        domain_answer, active_domain = None, None
+
+    retail_intents = {"monthly_total", "monthly_compare", "product_top",
+                      "product_attribution", "customer_top"}
+    if intent.kind in retail_intents and active_domain == "retail":
+        try:
+            verified = run_verified_analytics(intent)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Failed verified business analytics")
+            verified = {
+                "mode": "error", "sql": None, "data": [],
+                "answer": ("No pude consultar los datos necesarios para ese análisis. "
+                           "Comprueba la conexión y las relaciones del modelo de datos."),
+            }
+        return {"question": question, **verified,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
+
+    if domain_answer is not None:
+        return {"question": question, **domain_answer,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
+
+    contextual_question = intent.resolved_question or question
+
+    # Short follow-ups ("¿y para 6 meses?") inherit the previous request's
+    # entity, not a random temporal table with more data.
+    analysis_question = question
+    if question.strip().lower().startswith(("y ", "¿y ", "en ese ", "para ")):
+        for item in reversed(history[-10:]):
+            if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+                continue
+            previous = str(item.get("content") or item.get("text") or "").strip()
+            if _is_prediction_request(previous.lower()) or _is_anomaly_request(previous.lower()):
+                analysis_question = previous + " " + question
+                break
+
+    if intent.kind == "forecast" or _is_prediction_request(intent_text):
         ml_started = perf_counter()
-        horizon = _extract_horizon(question)
-        result = forecast_next_months(horizon=horizon)
+        try:
+            horizon = _extract_horizon(question)
+            result = forecast_next_months(horizon=horizon, question=analysis_question)
+        except ValueError as exc:
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": str(exc), "performance": {
+                        "total_ms": round((perf_counter() - started) * 1000, 1)}}
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Forecast analysis failed")
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": "No pude calcular la predicción con la serie solicitada.",
+                    "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
         return {
             "question": question,
             "mode": "forecast",
@@ -309,9 +504,20 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             },
         }
 
-    if _is_anomaly_request(intent_text):
+    if intent.kind == "anomaly" or _is_anomaly_request(intent_text):
         ml_started = perf_counter()
-        result = detect_monthly_anomalies()
+        try:
+            result = detect_monthly_anomalies(question=analysis_question)
+        except ValueError as exc:
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": str(exc), "performance": {
+                        "total_ms": round((perf_counter() - started) * 1000, 1)}}
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Anomaly analysis failed")
+            return {"question": question, "mode": "error", "sql": None, "data": [],
+                    "answer": "No pude comprobar anomalías en la serie solicitada.",
+                    "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)}}
         return {
             "question": question,
             "mode": "anomalies",
@@ -324,7 +530,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             },
         }
 
-    if _is_peak_month_comparison_request(intent_text):
+    if active_domain == "retail" and _is_peak_month_comparison_request(intent_text):
         analytics_started = perf_counter()
         try:
             result = _monthly_peak_comparison(question)
@@ -344,7 +550,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
             }
 
     sql_started = perf_counter()
-    sql = generate_sql(question, history=history)
+    sql = generate_sql(contextual_question, history=history)
     sql_generation_seconds = perf_counter() - sql_started
 
     query_started = perf_counter()
@@ -360,7 +566,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
         repair_started = perf_counter()
         try:
             sql = repair_sql(
-                question=question,
+                question=contextual_question,
                 failed_sql=sql,
                 error=original_error,
                 history=history,
