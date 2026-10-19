@@ -359,15 +359,18 @@ def _predictive_narrative(forecast: dict | None, anomalies: dict | None) -> list
     if anomalies:
         rows = anomalies.get("anomalies") or []
         if rows:
-            strongest = max(rows, key=lambda item: abs(float(item.get("pct_vs_average") or 0)))
+            strongest = max(rows, key=lambda item: abs(float(item.get("deviation") or 0)))
             paragraphs.append(
-                f"Se detectaron {len(rows)} período(s) atípico(s). El caso más relevante fue {int(strongest['month']):02d}/{strongest['year']}, "
-                f"con {_fmt(strongest.get('total'))} registros, {abs(float(strongest.get('pct_vs_average') or 0)):.1f}% "
-                f"{'por encima' if float(strongest.get('pct_vs_average') or 0) >= 0 else 'por debajo'} del promedio habitual. "
-                f"Su severidad fue {strongest.get('severity') or 'no determinada'}."
+                f"Se detectaron {len(rows)} período(s) atípico(s) respecto a la "
+                f"referencia temporal y estacional. El caso más relevante fue "
+                f"{int(strongest['month']):02d}/{strongest['year']}: observado "
+                f"{_fmt(strongest.get('total'))}, esperado {_fmt(strongest.get('expected_total'))} "
+                f"y severidad {strongest.get('severity') or 'no determinada'}."
             )
-            if strongest.get("reason"):
-                paragraphs.append(str(strongest.get("reason")))
+            if strongest.get("explanation") or strongest.get("reason"):
+                paragraphs.append(str(strongest.get("explanation") or strongest.get("reason")))
+            if strongest.get("diagnostic_explanation"):
+                paragraphs.append(str(strongest["diagnostic_explanation"]))
         else:
             paragraphs.append("El detector de anomalías no identificó meses que se alejen de forma relevante del patrón histórico disponible.")
     return paragraphs
@@ -482,20 +485,41 @@ def _add_predictive(story, styles, forecast: dict | None, anomalies: dict | None
         ]
         story.append(_table(rows, widths=[30 * mm, 35 * mm, 64 * mm, 36 * mm]))
         story.append(Spacer(1, 3 * mm))
+        validation = forecast.get("validation") or {}
+        scored = validation.get("selected") or {}
         story.append(Paragraph(
-            f"Calidad predictiva: <b>{_quality_label(forecast.get('r2_score')).title()}</b> · R² validado = {_fmt(forecast.get('r2_score'))}. "
-            f"{forecast.get('warning') or ''}", styles["NoteText"]
+            "Confiabilidad orientativa: <b>"
+            + str(forecast.get("confidence") or "sin evaluar")
+            + "</b> · MAE temporal = " + _fmt(scored.get("mae"))
+            + " · RMSE = " + _fmt(scored.get("rmse"))
+            + " · R² fuera del entrenamiento = " + _fmt(scored.get("r2"))
+            + ". Las bandas de error no representan garantías de cobertura.",
+            styles["NoteText"],
         ))
+        if forecast.get("warning"):
+            story.append(Paragraph(str(forecast["warning"]), styles["NoteText"]))
     else:
         story.append(Paragraph("No hay suficientes datos para generar un pronóstico confiable.", styles["BodyTextReport"]))
     story.append(Spacer(1, 5 * mm))
     if anomalies:
         story.append(Paragraph("Períodos atípicos detectados", styles["SubsectionTitle"]))
-        rows = [["Período", "Valor", "Severidad", "% vs promedio", "% vs anterior"]]
-        rows += [[f"{int(item['month']):02d}/{int(item['year'])}", _fmt(item.get("total")), item.get("severity") or "-", _fmt(item.get("pct_vs_average")), _fmt(item.get("pct_vs_previous"))] for item in anomalies.get("anomalies") or []]
+        rows = [["Período", "Observado", "Esperado", "Severidad", "% vs esperado"]]
+        rows += [
+            [f"{int(item['month']):02d}/{int(item['year'])}",
+             _fmt(item.get("total")), _fmt(item.get("expected_total")),
+             item.get("severity") or "-",
+             _fmt(item.get("pct_vs_expected"))]
+            for item in anomalies.get("anomalies") or []
+        ]
         if len(rows) == 1:
-            rows.append(["-", "-", "Sin anomalías relevantes", "-", "-"])
-        story.append(_table(rows, widths=[32 * mm, 32 * mm, 35 * mm, 33 * mm, 33 * mm]))
+            rows.append(["-", "-", "-", "Sin anomalías", "-"])
+        story.append(_table(rows, widths=[30 * mm, 32 * mm, 35 * mm, 35 * mm, 33 * mm]))
+        for item in (anomalies.get("anomalies") or [])[:3]:
+            if item.get("explanation"):
+                story.append(Paragraph(str(item["explanation"]), styles["BodyTextReport"]))
+                if item.get("diagnostic_explanation"):
+                    story.append(Paragraph(str(item["diagnostic_explanation"]), styles["NoteText"]))
+            story.append(Spacer(1, 2 * mm))
     else:
         story.append(Paragraph("No hay suficientes datos para ejecutar la detección de anomalías.", styles["BodyTextReport"]))
 
