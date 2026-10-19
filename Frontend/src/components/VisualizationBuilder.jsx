@@ -60,25 +60,45 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     if (!def) return;
     const source = catalog.entities?.find(e => e.table === def.table);
     if (!source) return;
-    setEntityKey(source.key);
-    setMetricEntityKey(catalog.entities.find(e => e.table === (def.metric_table || def.table))?.key || source.key);
-    setDimensionEntityKey(catalog.entities.find(e => e.table === (def.group_by_table || def.table))?.key || source.key);
-    setMetric(def.metric || '');
-    setDimension(def.group_by || '');
-    setAggregation(def.aggregation || 'count');
-    setVisualization(def.visualization || 'bar');
-    setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
-    setFilters((def.filters || []).map(item => ({ ...item, table: item.table || def.table, value: Array.isArray(item.value) ? item.value.join(',') : String(item.value ?? '') })));
-    setShowFilters(Boolean(def.filters?.length));
-    setSaveToAnalytics(initialItem.placement?.analytics ?? true);
-    setSaveToDashboard(initialItem.placement?.dashboard ?? false);
-    setPreview(null);
+    let active = true;
+    // Defer initialization so the effect does not synchronously cascade renders.
+    queueMicrotask(() => {
+      if (!active) return;
+      setEntityKey(source.key);
+      setMetricEntityKey(catalog.entities.find(e => e.table === (def.metric_table || def.table))?.key || source.key);
+      setDimensionEntityKey(catalog.entities.find(e => e.table === (def.group_by_table || def.table))?.key || source.key);
+      setMetric(def.metric || '');
+      setDimension(def.group_by || '');
+      setAggregation(def.aggregation || 'count');
+      setVisualization(def.visualization || 'bar');
+      setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
+      setFilters((def.filters || []).map(item => ({ ...item, table: item.table || def.table, value: Array.isArray(item.value) ? item.value.join(',') : String(item.value ?? '') })));
+      setShowFilters(Boolean(def.filters?.length));
+      setSaveToAnalytics(initialItem.placement?.analytics ?? true);
+      setSaveToDashboard(initialItem.placement?.dashboard ?? false);
+      setPreview(null);
+    });
+    return () => { active = false; };
   }, [open, catalog, initialItem, mode]);
   useEffect(() => {
     if (!open || initialItem) return;
-    setMetric(''); setDimension(''); setMetricEntityKey(entityKey); setDimensionEntityKey(entityKey); setFilters([]); setPreview(null);
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setMetric(''); setDimension(''); setMetricEntityKey(entityKey);
+      setDimensionEntityKey(entityKey); setFilters([]); setPreview(null);
+    });
+    return () => { active = false; };
   }, [entityKey, open, initialItem]);
-  useEffect(() => { if (visualization === 'kpi') setDimension(''); setPreview(null); }, [visualization]);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (visualization === 'kpi') setDimension('');
+      setPreview(null);
+    });
+    return () => { active = false; };
+  }, [visualization]);
 
   if (!open) return null;
 
@@ -138,7 +158,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
                   <select aria-label="Filter entity" value={source?.table||''} onChange={e=>{const next=relatedEntities.find(x=>x.table===e.target.value);update({table:e.target.value,column:next?.filters?.[0]?.key||'',operator:'eq',value:''})}} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{relatedEntities.map(e=><option key={e.table} value={e.table}>{e.label}</option>)}</select>
                   <select aria-label="Filter field" value={filter.column} onChange={e=>update({column:e.target.value,operator:'eq',value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{(source?.filters||[]).map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select>
                   <select aria-label="Filter operator" value={filter.operator} onChange={e=>update({operator:e.target.value,value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{ops.map(op=><option key={op} value={op}>{names[op]}</option>)}</select>
-                  <FilterValueInput table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language}/>
+                  <FilterValueInput key={`${source?.table}:${field?.key}:${filter.operator}`} table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language}/>
                 </div>;
               })}
               <button type="button" onClick={()=>{setFilters(old=>[...old,{table:entity?.table||'',column:entity?.filters?.[0]?.key||'',operator:'eq',value:''}]);setPreview(null)}} className="w-full rounded-lg border px-3 py-2 text-sm font-semibold" style={{borderColor:theme.primary,color:theme.primary}}>{language==='es'?'+ Agregar filtro':'+ Add filter'}</button>
@@ -175,10 +195,11 @@ const FilterValueInput = ({table, field, operator, value, onChange, colors, lang
   const [loadError, setLoadError] = useState(false);
   const supportsOptions = ['eq','neq','in'].includes(operator) && ['text','boolean'].includes(field?.kind);
   useEffect(() => {
-    if (!supportsOptions || !table || !field?.key) { setOptions([]); return; }
+    if (!supportsOptions || !table || !field?.key) return;
     let active = true;
-    setBusy(true); setLoadError(false);
     const delay = setTimeout(() => {
+      if (!active) return;
+      setBusy(true); setLoadError(false);
       getVisualizationFilterValues(table, field.key, search)
         .then(data => { if (active) setOptions(data.values || []); })
         .catch(() => { if (active) { setOptions([]); setLoadError(true); } })
@@ -186,7 +207,6 @@ const FilterValueInput = ({table, field, operator, value, onChange, colors, lang
     }, 250);
     return () => { active = false; clearTimeout(delay); };
   }, [table, field?.key, search, supportsOptions]);
-  useEffect(() => { setSearch(''); }, [table, field?.key, operator]);
   const selected = value.split(',').map(v => v.trim()).filter(Boolean);
   if (!supportsOptions) return <input aria-label="Filter value" type={field?.kind==='number'&&operator!=='in'?'number':field?.kind==='date'&&operator!=='in'?'date':'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={language==='es'?'Escribe un valor':'Enter a value'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>;
   return <div className="space-y-2">
