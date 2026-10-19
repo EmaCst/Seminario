@@ -25,6 +25,8 @@ Se estima una tendencia robusta usando medianas de variaciones comparables y efe
 
 La detección es **retrospectiva** y puede utilizar observaciones posteriores al período evaluado; no constituye backtesting de pronósticos ni un juicio causal.
 
+Cuando **no se supera el umbral de anomalía**, la respuesta igualmente devuelve `review_points` con los tres períodos de mayor desviación absoluta, sin reclasificarlos como alertas, junto a `screening` (umbral absoluto derivado de MAD, mínimo relativo del 20 %, meses evaluados y ajuste anual). La interfaz explica esta ausencia de alertas con lenguaje sencillo y muestra fechas, valores observados y esperados de esos períodos para evitar un panel vacío; la tarjeta deja de estirarse verticalmente por la altura de la columna contigua. No modifica silenciosamente los umbrales para producir falsas alarmas.
+
 Cada anomalía incluye el período explícito como mes/año (`period_iso`, `period_label`, `period_granularity=month`) sin fingir una fecha exacta del evento. `explanation` explica en lenguaje natural el valor observado, el nivel esperado y su desviación. `diagnostic_explanation` resume categorías e indicadores observados en períodos de comparación y señala cuándo falta evidencia. `recommendation` orienta una revisión posterior sin afirmar que se haya demostrado causalidad. Si el valor esperado es cero, no se inventa un porcentaje.
 
 En Predicciones, la tarjeta muestra fecha del mes, interpretación, evidencia y próximos pasos por encima de las estadísticas. La lista de «Valores estimados y referencia anual» tiene altura limitada y desplazamiento vertical independiente, conservando el gráfico y la disposición adaptable de la página. Los mensajes del chatbot también utilizan las explicaciones verificables.
