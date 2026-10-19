@@ -120,5 +120,63 @@ class ContextualAnomalyTests(unittest.TestCase):
         self.assertIn("baseline", result)
 
 
+    def test_all_ten_business_domains_select_verified_temporal_roles(self):
+        from app.quality.fixtures import DOMAINS
+        for fixture in DOMAINS:
+            semantic = {"semantic_model": {
+                "domain": fixture.domain, "ambiguous_domain": False,
+                "entities": {fixture.primary_role: {
+                    "table": fixture.primary_table, "columns": {"date": "fecha"},
+                    "ambiguous": False,
+                }},
+            }}
+            with self.subTest(domain=fixture.domain):
+                with patch.object(service, "inspect_semantic_model", return_value=semantic):
+                    with patch.object(service, "_monthly_count", return_value=synthetic()):
+                        result = service.forecast_next_months(horizon=3)
+                self.assertEqual(fixture.primary_role, result["role"])
+                self.assertEqual("count", result["metric"])
+                self.assertEqual(3, len(result["forecast"]))
+
+    def test_period_contributions_are_verified_sqlite_aggregates(self):
+        from sqlalchemy import create_engine, text
+        from app.ml import diagnostic_service as diag
+        from app.services import assistant_analytics as analytics
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        try:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "CREATE TABLE citas (fecha TEXT, estado TEXT)"
+                ))
+                for date, state, count in [
+                    ("2024-11-01", "confirmado", 4),
+                    ("2024-11-01", "cancelado", 1),
+                    ("2025-11-01", "confirmado", 1),
+                    ("2025-11-01", "cancelado", 4),
+                ]:
+                    for _ in range(count):
+                        connection.execute(text(
+                            "INSERT INTO citas (fecha, estado) VALUES (:date, :state)"
+                        ), {"date": date, "state": state})
+            entity = {"table": "citas", "columns": {"date": "fecha", "status": "estado"},
+                      "ambiguous": False}
+            with patch.object(diag, "get_connection", side_effect=engine.connect):
+                with patch.object(diag, "_provider", return_value="excel"):
+                    with patch.object(analytics, "_provider", return_value="excel"):
+                        found = diag.explain_deviations(
+                            [{"year": 2025, "month": 11, "deviation": -3}],
+                            [{"year": 2024, "month": 11}, {"year": 2025, "month": 11}],
+                            domain="healthcare", role="appointments", entity=entity, metric="count",
+                        )
+            changes = {row["category"]: row["change"]
+                       for row in found["investigations"][0]["contributors"]}
+            self.assertEqual(-3, changes["confirmado"])
+            self.assertEqual(3, changes["cancelado"])
+            self.assertEqual("not_established", found["investigations"][0]["causality"])
+        finally:
+            engine.dispose()
+
+
+
 if __name__ == "__main__":
     unittest.main()
