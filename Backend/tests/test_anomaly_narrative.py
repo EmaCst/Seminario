@@ -97,6 +97,35 @@ class AnomalyNarrativeTests(unittest.TestCase):
         self.assertIsNone(peak[0]["pct_vs_expected"])
         self.assertIn("referencia es cero", peak[0]["reason"])
 
+    def test_no_anomalies_exposes_real_deviations_and_detection_criteria(self):
+        data = [
+            {"year": 2023 + i // 12, "month": i % 12 + 1,
+             "total": 7500 + ((i % 7) - 3) * 18 + (i // 12) * 12}
+            for i in range(36)
+        ]
+        result = detect_anomalies(data)
+        self.assertEqual([], result["anomalies"])
+        self.assertEqual(36, result["months_evaluated"])
+        self.assertEqual(3, len(result["review_points"]))
+        self.assertEqual(20, result["screening"]["relative_threshold_pct"])
+        self.assertTrue(all(not item["anomaly"] for item in result["review_points"]))
+        self.assertEqual(
+            sorted([abs(item["deviation"]) for item in result["review_points"]], reverse=True),
+            [abs(item["deviation"]) for item in result["review_points"]],
+        )
+        candidate = service.TimeSeriesCandidate(
+            role="appointments", table="citas", date_column="fecha",
+            data=data, domain="healthcare",
+            entity={"table": "citas", "columns": {"date": "fecha"}, "ambiguous": False},
+        )
+        with patch.object(service, "_find_best_time_series", return_value=candidate):
+            api = service.detect_monthly_anomalies()
+        self.assertFalse(api["anomalies"])
+        self.assertEqual(3, len(api["review_points"]))
+        self.assertIn("explanation", api["review_points"][0])
+        self.assertIn("period_label", api["review_points"][0])
+        self.assertIn("expected_total", api["review_points"][0])
+
     def test_api_preserves_statistics_and_attaches_narrative(self):
         points = [
             {"year": 2022 + index // 12, "month": index % 12 + 1,
