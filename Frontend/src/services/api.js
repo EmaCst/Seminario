@@ -40,6 +40,28 @@ export async function saveVisualization(definition, placement) {
   return postJson('/api/visualizations/saved', { definition, placement });
 }
 
+export async function getReportOptions() {
+  return parseResponse(await fetch(`${API_URL}/api/reports/options`));
+}
+export async function previewConfiguredReport(configuration) {
+  return postJson('/api/reports/preview', configuration);
+}
+export async function downloadConfiguredReport(configuration) {
+  const response = await fetch(`${API_URL}/api/reports/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(configuration),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const detail = data?.detail;
+    throw new Error(typeof detail === 'string' ? detail : 'No fue posible generar el documento PDF.');
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  return { blob: await response.blob(), filename: match?.[1] || 'informe_kenneth.pdf' };
+}
+
 export async function downloadReportPdf(type) {
   const response = await fetch(`${API_URL}/api/reports/pdf?type=${encodeURIComponent(type)}`);
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data?.detail || `Error HTTP: ${response.status}`); }
