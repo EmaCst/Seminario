@@ -212,5 +212,42 @@ class ContextualAnomalyTests(unittest.TestCase):
 
 
 
+    def test_manufacturing_volume_uses_verified_sum_not_order_count(self):
+        semantic = {"semantic_model": {
+            "domain": "manufacturing", "ambiguous_domain": False,
+            "entities": {"production_orders": {
+                "table": "orden_produccion",
+                "columns": {"date": "fecha", "quantity": "cantidad"},
+                "ambiguous": False,
+            }},
+        }}
+        with patch.object(service, "inspect_semantic_model", return_value=semantic):
+            with patch.object(service, "_monthly_count",
+                              side_effect=AssertionError("Count is not production volume")):
+                with patch.object(service, "_query_series", return_value=synthetic()) as query:
+                    selected = service._find_best_time_series(
+                        "pronostica unidades producidas de produccion")
+        self.assertEqual("quantity", selected.metric)
+        self.assertIn("SUM(", query.call_args.args[1])
+
+    def test_education_grade_average_never_sums_grades(self):
+        semantic = {"semantic_model": {
+            "domain": "education", "ambiguous_domain": False,
+            "entities": {"grades": {
+                "table": "notas", "columns": {"date": "fecha", "value": "nota"},
+                "ambiguous": False,
+            }},
+        }}
+        with patch.object(service, "inspect_semantic_model", return_value=semantic):
+            with patch.object(service, "_monthly_count",
+                              side_effect=AssertionError("Count is not average grade")):
+                with patch.object(service, "_query_series", return_value=synthetic()) as query:
+                    selected = service._find_best_time_series(
+                        "pronostica el promedio de notas")
+        self.assertEqual("average", selected.metric)
+        self.assertIn("AVG(", query.call_args.args[1])
+
+
+
 if __name__ == "__main__":
     unittest.main()
