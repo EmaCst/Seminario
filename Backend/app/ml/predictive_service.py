@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from app.ml.seasonal_forecasting import forecast_monthly
 from app.ml.anomaly_detection import detect_anomalies
+from app.ml.anomaly_narrative import narrate_monthly_anomaly
 from app.ml.diagnostic_service import explain_deviations
 
 from app.analysis.adaptive_dashboard_service import _monthly_count, _quote, DOMAIN_TREND_PRIORITY
@@ -190,8 +191,25 @@ def detect_monthly_anomalies(question: str = "") -> dict:
         entity=series.entity or {}, metric=series.metric,
         related_entities=related_entities,
     )
+    investigations_by_period = {
+        (int(item["year"]), int(item["month"])): item
+        for item in diagnostics.get("investigations") or []
+    }
+    # Keep all existing numerical/diagnostic fields, adding plain-language
+    # explanations for every flagged period (including those outside the
+    # bounded top-five cross-entity investigation).
+    narrated = []
+    for point in result["anomalies"]:
+        key = (int(point["year"]), int(point["month"]))
+        narrated.append({
+            **point,
+            **narrate_monthly_anomaly(
+                point, series.metric, investigations_by_period.get(key),
+            ),
+        })
     return {
         **result,
+        "anomalies": narrated,
         "role": series.role, "metric": series.metric,
         "table": series.table, "date_column": series.date_column,
         "diagnostics": diagnostics,
