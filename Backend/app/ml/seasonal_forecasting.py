@@ -54,7 +54,7 @@ def _metrics(actual: list[float], predicted: list[float]) -> dict:
             "samples": len(actual)}
 
 
-def _fit(values: list[float], dates: list[int], seasonal: bool):
+def _fit(values: list[float], dates: list[int], seasonal: bool, nonnegative: bool = True):
     """Fit a calendar-aware trend and shrunk month-specific residual effects."""
     origin = dates[0]
     x = [[date - origin] for date in dates]
@@ -72,15 +72,16 @@ def _fit(values: list[float], dates: list[int], seasonal: bool):
         effects = {month: effect - center for month, effect in effects.items()}
 
     def predict(date: int) -> float:
-        return max(0.0, float(trend.predict([[date - origin]])[0]) + effects[date % 12 + 1])
+        value = float(trend.predict([[date - origin]])[0]) + effects[date % 12 + 1]
+        return max(0.0, value) if nonnegative else value
 
     return predict, effects
 
 
-def _predictor(model: str, values: list[float], dates: list[int]):
+def _predictor(model: str, values: list[float], dates: list[int], nonnegative: bool = True):
     if model == "naive_last":
         last = values[-1]
-        return lambda date: max(0.0, last), {}
+        return lambda date: max(0.0, last) if nonnegative else last, {}
     if model == "seasonal_naive":
         # Use the corresponding month from the most recent available year.
         lookup = {date: value for date, value in zip(dates, values)}
@@ -88,9 +89,10 @@ def _predictor(model: str, values: list[float], dates: list[int]):
             reference = date - 12
             while reference > dates[-1]:
                 reference -= 12
-            return max(0.0, lookup[reference])
+            value = lookup[reference]
+            return max(0.0, value) if nonnegative else value
         return predict, {}
-    return _fit(values, dates, model == "seasonal_trend")
+    return _fit(values, dates, model == "seasonal_trend", nonnegative=nonnegative)
 
 
 def _percentile(values: list[float], fraction: float) -> float | None:
@@ -103,7 +105,7 @@ def _percentile(values: list[float], fraction: float) -> float | None:
     return ordered[left] + (ordered[right] - ordered[left]) * (position - left)
 
 
-def forecast_monthly(points: list[dict], horizon: int) -> dict:
+def forecast_monthly(points: list[dict], horizon: int, *, nonnegative: bool = True) -> dict:
     if not 1 <= horizon <= 12:
         raise ValueError("El horizonte debe estar entre 1 y 12 meses.")
     values, dates, months, gaps = _validated(points)
@@ -127,7 +129,7 @@ def forecast_monthly(points: list[dict], horizon: int) -> dict:
             real = [values[index] for index in future]
             actual.extend(real)
             for name in eligible:
-                predict, _ = _predictor(name, values[:origin], dates[:origin])
+                predict, _ = _predictor(name, values[:origin], dates[:origin], nonnegative)
                 estimated = [predict(dates[index]) for index in future]
                 candidates[name].extend(estimated)
                 residuals[name].extend([abs(a - b) for a, b in zip(real, estimated)])
@@ -145,7 +147,7 @@ def forecast_monthly(points: list[dict], horizon: int) -> dict:
             best = simple_best
     else:
         best = "naive_last"
-    predictor, effects = _predictor(best, values, dates)
+    predictor, effects = _predictor(best, values, dates, nonnegative)
     selected_scores = scores.get(best)
     # Descriptive absolute-error band, derived solely from historical backtests.
     error_band = _percentile(residuals.get(best, []), 0.8) if len(actual) >= 6 else None
@@ -157,13 +159,13 @@ def forecast_monthly(points: list[dict], horizon: int) -> dict:
         forecast.append({
             "year": target // 12, "month": target % 12 + 1,
             "predicted_total": round(value, 2),
-            "lower_estimate": round(max(0.0, value - error_band), 2) if error_band is not None else None,
+            "lower_estimate": round(max(0.0, value - error_band) if nonnegative else value - error_band, 2) if error_band is not None else None,
             "upper_estimate": round(value + error_band, 2) if error_band is not None else None,
         })
 
     monthly_patterns = []
     if best in ("seasonal_trend", "seasonal_naive") and contiguous:
-        _, effects = _fit(values, dates, True)
+        _, effects = _fit(values, dates, True, nonnegative=nonnegative)
         threshold = max(mean(abs(v) for v in values) * 0.05, 0.01)
         for month in range(1, 13):
             observation_count = months.count(month)
