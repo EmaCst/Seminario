@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from statistics import mean, median, pstdev
-
-from sklearn.ensemble import IsolationForest
 from app.ml.seasonal_forecasting import forecast_monthly
+from app.ml.anomaly_detection import detect_anomalies
+from app.ml.anomaly_narrative import narrate_monthly_anomaly
+from app.ml.diagnostic_service import explain_deviations
 
-from app.analysis.adaptive_dashboard_service import _monthly_count, DOMAIN_TREND_PRIORITY
+from app.analysis.adaptive_dashboard_service import _monthly_count, _quote, DOMAIN_TREND_PRIORITY
 from app.services.assistant_domain_analytics import (
     ROLE_WORDS, ROLE_LABELS, _matched_role, _measure, _query_series,
 )
@@ -21,6 +21,8 @@ class TimeSeriesCandidate:
     date_column: str
     data: list[dict]
     metric: str = "count"
+    domain: str = ""
+    entity: dict | None = None
 
 
 def _find_best_time_series(
@@ -66,6 +68,21 @@ def _find_best_time_series(
     elif requested_role == "sales" and "venta" in normalized:
         requested_amount = True
 
+    # Non-monetary KPIs with well-defined aggregate semantics. Never SUM a
+    # stock level or average a financial total just because it is numeric.
+    request_units = (
+        domain == "manufacturing" and requested_role == "production_orders" and
+        any(term in normalized for term in (
+            "unidades producid", "unidades de produccion",
+            "cantidad producida", "volumen producido", "piezas producid",
+        ))
+    )
+    request_grade_average = (
+        domain == "education" and requested_role == "grades" and
+        any(term in normalized for term in (
+            "promedio", "nota media", "calificacion media", "media de notas",
+        ))
+    )
     candidates = []
     for role in ordered:
         entity = entities.get(role) or {}
@@ -76,7 +93,19 @@ def _find_best_time_series(
         if not table or not date:
             continue
         try:
-            if requested_amount:
+            if request_units and role == "production_orders":
+                quantity = (entity.get("columns") or {}).get("quantity")
+                if not quantity:
+                    continue
+                data = _query_series(entity, f"SUM(t.{_quote(quantity)})")
+                metric = "quantity"
+            elif request_grade_average and role == "grades":
+                grade = (entity.get("columns") or {}).get("value")
+                if not grade:
+                    continue
+                data = _query_series(entity, f"AVG(t.{_quote(grade)})")
+                metric = "average"
+            elif requested_amount:
                 expression = _measure(domain, role, entity, "amount")
                 if expression is None:
                     continue
@@ -88,7 +117,7 @@ def _find_best_time_series(
         except Exception:
             continue
         if data:
-            candidates.append(TimeSeriesCandidate(role, table, date, data, metric))
+            candidates.append(TimeSeriesCandidate(role, table, date, data, metric, domain, entity))
             if requested_role and len(data) >= minimum_points:
                 break
 
@@ -102,6 +131,11 @@ def _find_best_time_series(
             f"No hay al menos {minimum_points} meses de datos verificables para "
             f"{ROLE_LABELS.get(requested_role, requested_role)} con la métrica solicitada."
         )
+    if request_units or request_grade_average:
+        raise ValueError(
+            "No encontré un indicador numérico verificable con fecha y columna de "
+            "cantidad o calificación para la entidad solicitada."
+        )
     if requested_amount:
         raise ValueError(
             "No se encontró una serie mensual de importes monetarios verificables "
@@ -111,65 +145,6 @@ def _find_best_time_series(
         f"No encontré una serie temporal confiable con al menos {minimum_points} meses "
         "en el dominio actual."
     )
-
-
-def _next_year_month(year: int, month: int, offset: int) -> tuple[int, int]:
-    absolute = year * 12 + (month - 1) + offset
-    return absolute // 12, (absolute % 12) + 1
-
-
-def _percentage_change(value: float, baseline: float | None) -> float | None:
-    if baseline is None or baseline == 0:
-        return None
-    return round(((value - baseline) / baseline) * 100.0, 2)
-
-
-def _severity_from_context(z_score: float | None, pct_vs_average: float | None) -> str:
-    abs_z = abs(z_score or 0.0)
-    abs_pct = abs(pct_vs_average or 0.0)
-
-    if abs_z >= 2.0 or abs_pct >= 60:
-        return "alta"
-    if abs_z >= 1.25 or abs_pct >= 35:
-        return "media"
-    return "baja"
-
-
-def _build_anomaly_explanation(
-    value: float,
-    average: float,
-    pct_vs_average: float | None,
-    previous_value: float | None,
-    pct_vs_previous: float | None,
-    neighbor_average: float | None,
-    pct_vs_neighbors: float | None,
-) -> str:
-    direction = "por encima" if value >= average else "por debajo"
-    parts = []
-
-    if pct_vs_average is not None:
-        parts.append(
-            f"el valor {value:g} quedó {abs(pct_vs_average):.1f}% {direction} "
-            f"del promedio mensual ({average:.2f})"
-        )
-
-    if previous_value is not None and pct_vs_previous is not None:
-        prev_direction = "aumentó" if pct_vs_previous >= 0 else "disminuyó"
-        parts.append(
-            f"{prev_direction} {abs(pct_vs_previous):.1f}% frente al mes anterior ({previous_value:g})"
-        )
-
-    if neighbor_average is not None and pct_vs_neighbors is not None:
-        neighbor_direction = "por encima" if pct_vs_neighbors >= 0 else "por debajo"
-        parts.append(
-            f"quedó {abs(pct_vs_neighbors):.1f}% {neighbor_direction} del promedio de los meses vecinos "
-            f"({neighbor_average:.2f})"
-        )
-
-    if not parts:
-        return "El modelo Isolation Forest identificó este punto como diferente al patrón mensual habitual."
-
-    return "Se considera atípico porque " + "; además, ".join(parts) + "."
 
 
 def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
@@ -185,7 +160,10 @@ def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
             "Se requieren al menos 3 meses para generar una predicción básica."
         )
 
-    prediction = forecast_monthly(points, horizon)
+    prediction = forecast_monthly(
+        points, horizon,
+        nonnegative=not (series.domain == "finance_accounting" and series.metric == "amount"),
+    )
     return {
         **prediction,
         "role": series.role,
@@ -198,92 +176,46 @@ def forecast_next_months(horizon: int = 3, question: str = "") -> dict:
 
 
 def detect_monthly_anomalies(question: str = "") -> dict:
+    """Detect contextual anomalies and inspect verified business dimensions."""
     series = _find_best_time_series(question, minimum_points=4)
-    points = series.data
-
-    if len(points) < 4:
-        raise ValueError(
-            f"La serie temporal más completa ({series.role}) solo tiene {len(points)} mes(es). "
-            "Se requieren al menos 4 meses para detectar anomalías."
-        )
-
-    raw_values = [float(item["total"]) for item in points]
-    values = [[value] for value in raw_values]
-    contamination = min(0.25, max(1.0 / len(values), 0.05))
-
-    model = IsolationForest(
-        contamination=contamination,
-        random_state=42,
-        n_estimators=100,
+    result = detect_anomalies(
+        series.data,
+        nonnegative=not (series.domain == "finance_accounting" and series.metric == "amount"),
     )
-    labels = model.fit_predict(values)
-    scores = model.decision_function(values)
-
-    average = mean(raw_values)
-    med = median(raw_values)
-    std_dev = pstdev(raw_values) if len(raw_values) > 1 else 0.0
-
-    anomalies = []
-    evaluated = []
-
-    for index, (point, label, score) in enumerate(zip(points, labels, scores)):
-        value = float(point["total"])
-        previous_value = raw_values[index - 1] if index > 0 else None
-        next_value = raw_values[index + 1] if index < len(raw_values) - 1 else None
-
-        neighbors = [item for item in (previous_value, next_value) if item is not None]
-        neighbor_average = mean(neighbors) if neighbors else None
-
-        pct_vs_average = _percentage_change(value, average)
-        pct_vs_previous = _percentage_change(value, previous_value)
-        pct_vs_neighbors = _percentage_change(value, neighbor_average)
-        z_score = round((value - average) / std_dev, 3) if std_dev > 0 else None
-        severity = _severity_from_context(z_score, pct_vs_average)
-
-        reason = _build_anomaly_explanation(
-            value=value,
-            average=average,
-            pct_vs_average=pct_vs_average,
-            previous_value=previous_value,
-            pct_vs_previous=pct_vs_previous,
-            neighbor_average=neighbor_average,
-            pct_vs_neighbors=pct_vs_neighbors,
-        )
-
-        item = {
+    related_entities = {}
+    if result["anomalies"]:
+        related_entities = (inspect_semantic_model().get("semantic_model") or {}).get("entities") or {}
+    diagnostics = explain_deviations(
+        result["anomalies"], series.data,
+        domain=series.domain, role=series.role,
+        entity=series.entity or {}, metric=series.metric,
+        related_entities=related_entities,
+    )
+    investigations_by_period = {
+        (int(item["year"]), int(item["month"])): item
+        for item in diagnostics.get("investigations") or []
+    }
+    # Keep all existing numerical/diagnostic fields, adding plain-language
+    # explanations for every flagged period (including those outside the
+    # bounded top-five cross-entity investigation).
+    narrated = []
+    for point in result["anomalies"]:
+        key = (int(point["year"]), int(point["month"]))
+        narrated.append({
             **point,
-            "anomaly": bool(label == -1),
-            "anomaly_score": round(float(score), 4),
-            "severity": severity if label == -1 else None,
-            "direction": "spike" if value >= average else "drop",
-            "series_average": round(average, 2),
-            "series_median": round(med, 2),
-            "series_std_dev": round(std_dev, 2),
-            "z_score": z_score,
-            "previous_total": previous_value,
-            "next_total": next_value,
-            "neighbor_average": round(neighbor_average, 2) if neighbor_average is not None else None,
-            "pct_vs_average": pct_vs_average,
-            "pct_vs_previous": pct_vs_previous,
-            "pct_vs_neighbors": pct_vs_neighbors,
-            "reason": reason if label == -1 else None,
-        }
-        evaluated.append(item)
-        if label == -1:
-            anomalies.append(item)
-
+            **narrate_monthly_anomaly(
+                point, series.metric, investigations_by_period.get(key),
+            ),
+        })
+    review_points = [
+        {**point, **narrate_monthly_anomaly(point, series.metric)}
+        for point in result.get("review_points") or []
+    ]
     return {
-        "model": "isolation_forest",
-        "role": series.role,
-        "metric": series.metric,
-        "table": series.table,
-        "date_column": series.date_column,
-        "months_evaluated": len(points),
-        "baseline": {
-            "average": round(average, 2),
-            "median": round(med, 2),
-            "std_dev": round(std_dev, 2),
-        },
-        "anomalies": anomalies,
-        "series": evaluated,
+        **result,
+        "anomalies": narrated,
+        "review_points": review_points,
+        "role": series.role, "metric": series.metric,
+        "table": series.table, "date_column": series.date_column,
+        "diagnostics": diagnostics,
     }

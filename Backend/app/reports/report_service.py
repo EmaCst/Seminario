@@ -331,11 +331,30 @@ def _predictive_narrative(forecast: dict | None, anomalies: dict | None) -> list
         projected = forecast["forecast"]
         first, last = projected[0], projected[-1]
         r2 = forecast.get("r2_score")
+        model_names = {
+            "seasonal_trend": "tendencia estacional",
+            "seasonal_drift": "patrón anual ajustado por evolución interanual",
+            "linear_regression": "regresión lineal",
+            "naive_last": "referencia del último valor observado",
+            "seasonal_naive": "referencia del mismo mes del año anterior",
+        }
+        basis = forecast.get("forecast_basis") or {}
+        observed = basis.get("last_observed") or {}
+        cutoff = (f"Último registro real: {int(observed['month']):02d}/{observed['year']}. "
+                  if observed.get("month") and observed.get("year") else "")
+        stale_note = (
+            "ATENCIÓN: parte de los períodos proyectados ya transcurrió "
+            "o corresponde al mes calendario actual. "
+            if basis.get("all_periods_future") is False else ""
+        )
         paragraphs.append(
-            f"El modelo {'estacional' if forecast.get('model') == 'seasonal_trend' else 'de tendencia lineal'} proyecta {_fmt(first.get('predicted_total'))} para {int(first['month']):02d}/{first['year']} y "
-            f"{_fmt(last.get('predicted_total'))} para {int(last['month']):02d}/{last['year']}. La calidad predictiva evaluada con meses posteriores al entrenamiento es {_quality_label(r2)}"
-            + (f" (R²={float(r2):.2f})" if isinstance(r2, (int, float)) else "")
-            + ", por lo que la proyección debe interpretarse como una tendencia orientativa y no como una certeza."
+            cutoff + stale_note
+            + f"El modelo {model_names.get(forecast.get('model'), 'seleccionado por validación')} "
+              f"estima {_fmt(first.get('predicted_total'))} para {int(first['month']):02d}/{first['year']} y "
+              f"{_fmt(last.get('predicted_total'))} para {int(last['month']):02d}/{last['year']}. "
+              f"Confiabilidad de la evidencia: {forecast.get('confidence', 'sin evaluar')}. "
+            + (f"R² fuera de entrenamiento={float(r2):.2f}. " if isinstance(r2, (int, float)) else "")
+            + "Las estimaciones no garantizan resultados futuros."
         )
     if anomalies:
         rows = anomalies.get("anomalies") or []
@@ -449,10 +468,19 @@ def _add_predictive(story, styles, forecast: dict | None, anomalies: dict | None
         if chart:
             story.append(chart)
             story.append(Spacer(1, 3 * mm))
-        story.append(Paragraph("Proyección de próximos períodos", styles["SubsectionTitle"]))
-        rows = [["Período", "Valor proyectado"]]
-        rows += [[f"{int(item['month']):02d}/{int(item['year'])}", _fmt(item.get("predicted_total"))] for item in forecast.get("forecast") or []]
-        story.append(_table(rows, widths=[70 * mm, 95 * mm]))
+        story.append(Paragraph("Estimaciones desde el último período con datos", styles["SubsectionTitle"]))
+        rows = [["Período", "Estimado", "Mismo mes año anterior", "Estado"]]
+        labels = {"historical_gap": "Ya transcurrido", "current_month": "Mes actual", "future": "Futuro"}
+        rows += [
+            [
+                f"{int(item['month']):02d}/{int(item['year'])}",
+                _fmt(item.get("predicted_total")),
+                _fmt(item.get("prior_year_total")),
+                labels.get(item.get("period_status"), "-"),
+            ]
+            for item in forecast.get("forecast") or []
+        ]
+        story.append(_table(rows, widths=[30 * mm, 35 * mm, 64 * mm, 36 * mm]))
         story.append(Spacer(1, 3 * mm))
         story.append(Paragraph(
             f"Calidad predictiva: <b>{_quality_label(forecast.get('r2_score')).title()}</b> · R² validado = {_fmt(forecast.get('r2_score'))}. "

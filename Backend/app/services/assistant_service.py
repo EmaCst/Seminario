@@ -98,77 +98,137 @@ def _quality_from_r2(r2: float | None) -> str:
 def _format_forecast_answer(result: dict) -> str:
     from app.services.assistant_domain_analytics import ROLE_LABELS
     role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
-    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad de registros por mes"
+    metric = {
+        "amount": "importe mensual",
+        "quantity": "unidades producidas por mes",
+        "average": "promedio mensual de calificaciones",
+    }.get(result.get("metric"), "cantidad mensual de registros")
     forecast = result.get("forecast") or []
-    r2 = result.get("r2_score")
-    quality = _quality_from_r2(r2)
-
     if not forecast:
         return "No pude generar una predicción con los datos disponibles."
-
     values = ", ".join(
         f"{item['month']:02d}/{item['year']}: {item['predicted_total']}"
         for item in forecast
     )
-
-    if isinstance(r2, (int, float)):
-        explanation = (
-            f"La calidad predictiva evaluada con meses posteriores al entrenamiento es {quality} "
-            f"(R² de validación={r2:.4f}). Es una estimación, no una certeza."
+    names = {
+        "seasonal_trend": "tendencia y estacionalidad",
+        "seasonal_naive": "referencia que repite exactamente el mismo mes del año anterior",
+        "seasonal_drift": "patrón anual ajustado según el cambio interanual histórico",
+        "linear_regression": "tendencia lineal",
+        "naive_last": "último valor observado",
+    }
+    validation = result.get("validation") or {}
+    score = validation.get("selected") or {}
+    if score:
+        evidence = (
+            f"Validación cronológica con {validation.get('months')} orígenes y "
+            f"{validation.get('samples')} predicciones: MAE={score.get('mae')}, "
+            f"RMSE={score.get('rmse')}; R² fuera del entrenamiento="
+            f"{score.get('r2') if score.get('r2') is not None else 'no disponible'}. "
         )
+        skill = validation.get("skill_vs_naive_pct")
+        if skill is not None:
+            evidence += f"Mejora de MAE frente al modelo ingenuo: {skill}%. "
     else:
-        explanation = "Tómalo como una estimación orientativa basada en el historial disponible."
-
-    model = "tendencia y estacionalidad" if result.get("model") == "seasonal_trend" else "tendencia lineal"
+        evidence = "No hay suficientes observaciones para validar el desempeño fuera del entrenamiento. "
     patterns = result.get("seasonal_patterns") or []
-    pattern_text = (
-        " Patrones repetidos detectados: " +
-        ", ".join(f"{item['month']:02d} ({'subida' if item['direction'] == 'increase' else 'bajada'})"
+    summary = (
+        " Patrones anuales recurrentes: " +
+        ", ".join(f"mes {item['month']:02d} ({'aumento' if item['direction'] == 'increase' else 'descenso'})"
                   for item in patterns) + "."
         if patterns else ""
     )
-    return f"La proyección de {metric} de {role} con {model} es: {values}. {explanation}{pattern_text}"
+    note = result.get("warning") or ""
+    basis = result.get("forecast_basis") or {}
+    last_actual = basis.get("last_observed") or {}
+    provenance = (
+        f"Último mes registrado: {int(last_actual['month']):02d}/{last_actual['year']}. "
+        if last_actual.get("month") and last_actual.get("year") else ""
+    )
+    if basis.get("all_periods_future") is False:
+        provenance += (
+            "IMPORTANTE: alguna de estas fechas ya transcurrió o corresponde al "
+            "mes actual; estas estimaciones empiezan después del último "
+            "registro, no después de la fecha actual. "
+        )
+    annual = [item for item in forecast if item.get("prior_year_total") is not None]
+    annual_comparison = (
+        " Comparación visible con el mismo mes del año anterior: " +
+        ", ".join(
+            f"{item['month']:02d}/{item['year']} estimado {item['predicted_total']} "
+            f"frente a registro previo {item['prior_year_total']}"
+            for item in annual[:4]
+        ) + "."
+        if annual else ""
+    )
+    return (
+        f"{provenance}Estimaciones de {metric} de {role}, "
+        f"modelo {names.get(result.get('model'), result.get('model'))}: {values}. "
+        f"{evidence}Confiabilidad: {result.get('confidence', 'sin evaluar')}."
+        f"{summary}{annual_comparison} {note}"
+    )
 
 
 def _format_anomaly_answer(result: dict) -> str:
     from app.services.assistant_domain_analytics import ROLE_LABELS
     role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
-    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad mensual de registros"
+    metric = {
+        "amount": "importe mensual",
+        "quantity": "unidades producidas por mes",
+        "average": "promedio mensual de calificaciones",
+    }.get(result.get("metric"), "cantidad mensual de registros")
     anomalies = result.get("anomalies") or []
-
     if not anomalies:
-        return f"No encontré meses atípicos en {metric} de {role} según el modelo utilizado."
-
+        warning = result.get("warning") or ""
+        return (f"No detecté desviaciones significativas frente al patrón esperado "
+                f"en {metric} de {role}. {warning}")
+    investigations = {
+        (item["year"], item["month"]): item
+        for item in (result.get("diagnostics") or {}).get("investigations", [])
+    }
     descriptions = []
-    for item in anomalies:
-        month = f"{item['month']:02d}/{item['year']}"
-        total = item.get("total")
-        severity = item.get("severity") or "no determinada"
-        pct_average = item.get("pct_vs_average")
-        pct_previous = item.get("pct_vs_previous")
-        pct_neighbors = item.get("pct_vs_neighbors")
-
-        reasons = []
-        if isinstance(pct_average, (int, float)):
-            direction = "por encima" if pct_average >= 0 else "por debajo"
-            reasons.append(f"estuvo {abs(pct_average):.1f}% {direction} del promedio mensual")
-        if isinstance(pct_previous, (int, float)):
-            direction = "subió" if pct_previous >= 0 else "bajó"
-            reasons.append(f"{direction} {abs(pct_previous):.1f}% frente al mes anterior")
-        if isinstance(pct_neighbors, (int, float)):
-            direction = "por encima" if pct_neighbors >= 0 else "por debajo"
-            reasons.append(f"quedó {abs(pct_neighbors):.1f}% {direction} de sus meses vecinos")
-
-        reason_text = "; además, ".join(reasons) if reasons else "se alejó del patrón mensual habitual"
-        descriptions.append(
-            f"{month} registró {total} y tuvo severidad {severity}: {reason_text}."
+    for point in anomalies[:5]:
+        if point.get("explanation"):
+            label = point.get("period_label") or f"{point['month']:02d}/{point['year']}"
+            explanation = (
+                f"Anomalía de {label} (período mensual, severidad "
+                f"{point.get('severity') or 'no determinada'}). "
+                f"{point['explanation']} "
+                f"{point.get('diagnostic_explanation') or ''} "
+                f"{point.get('recommendation') or ''}"
+            )
+            descriptions.append(explanation.strip())
+            continue
+        month = f"{point['month']:02d}/{point['year']}"
+        description = (
+            f"{month}: observado {point['total']}, esperado {point.get('expected_total')}, "
+            f"desviación {point.get('pct_vs_expected')}%, severidad "
+            f"{point.get('severity', 'no determinada')}. "
         )
-
-    return (
-        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {metric} de {role}. "
-        + " ".join(descriptions)
-        + " Vale la pena revisar qué ocurrió en esos periodos para entender el cambio."
-    )
+        investigation = investigations.get((point["year"], point["month"]))
+        if investigation:
+            ref = investigation.get("reference_period")
+            if ref:
+                description += f"Comparación descriptiva contra {ref['month']:02d}/{ref['year']}: "
+                contributions = investigation.get("contributors") or []
+                if contributions:
+                    description += "; ".join(
+                        f"{item['dimension']}={item['category']} cambió {item['change']:+g}"
+                        for item in contributions[:3]
+                    ) + ". "
+                else:
+                    description += "sin un desglose categórico verificable. "
+            related = investigation.get("related_indicators") or []
+            if related:
+                description += "Otros indicadores con cambios simultáneos: " + "; ".join(
+                    f"{item['role']} varió {item['change']:+g} registros"
+                    for item in related[:3]
+                ) + ". "
+        descriptions.append(description)
+    return (f"Se detectaron {len(anomalies)} comportamientos atípicos en {metric} de {role}. "
+            + " ".join(descriptions)
+            + " Las variaciones por segmento son asociaciones observadas, "
+              "no causas demostradas. No se infieren factores externos sin evidencia.")
 
 
 def _select_monthly_series(question: str) -> tuple[str, str, str, list[dict]]:
