@@ -6,7 +6,7 @@ to those months; NEVER rebrand global rankings or all-time totals as filtered.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from calendar import monthrange
+from hashlib import sha256
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -96,8 +96,14 @@ def get_report_options() -> dict:
     if not status.get("connected"):
         raise ValueError("Conecta primero una fuente de datos para generar informes.")
     saved = list_saved_visualizations()
+    # A session may switch between servers using the same database name.
+    # The browser must not re-use a preview from a different active instance.
+    identity = "|".join(str(status.get(key) or "") for key in (
+        "provider", "database", "server", "host", "port", "filename",
+    ))
+    source_token = f"{_source_key()}:{sha256(identity.encode('utf-8')).hexdigest()[:12]}"
     return {
-        "source": {"key": _source_key(), "database": status.get("database"),
+        "source": {"key": source_token, "database": status.get("database"),
                    "provider": status.get("provider")},
         "templates": list(TEMPLATE_SECTIONS),
         "sections": SECTION_NAMES,
@@ -144,8 +150,16 @@ def _monthly_kpis(dashboard: dict, start: str, end_exclusive: str) -> tuple[list
             f"SELECT COUNT(*) AS total FROM {_quote(table_name)} "
             f"WHERE {_quote(date_column)} >= :start AND {_quote(date_column)} < :end"
         )
-        with get_connection() as conn:
-            count = conn.execute(statement, {"start": start, "end": end_exclusive}).scalar()
+        try:
+            with get_connection() as conn:
+                count = conn.execute(statement, {
+                    "start": date.fromisoformat(start),
+                    "end": date.fromisoformat(end_exclusive),
+                }).scalar()
+        except Exception:
+            # No verified value is better than a false all-time figure.
+            skipped.append(str(role))
+            continue
         kpis.append({"role": role, "table": table_name, "value": int(count or 0),
                      "unit": "records", "period_filtered": True})
     return kpis, skipped
@@ -204,13 +218,23 @@ def _period_visualization(definition: VisualizationDefinition,
     if table is None:
         raise ValueError("La tabla de la visualización no existe en la fuente activa.")
     date_columns = [col.name for col in table.columns if _column_kind(col.type) == "date"]
-    if len(date_columns) != 1:
+    # Excel imports can store ISO date strings as TEXT, so use an unambiguous
+    # date verified by the same semantic mapper as the rest of Kenneth.
+    semantic = (inspect_semantic_model().get("semantic_model") or {}).get("entities") or {}
+    semantic_dates = {
+        mapped.get("columns", {}).get("date") for mapped in semantic.values()
+        if mapped.get("table") == base and not mapped.get("ambiguous")
+        and (mapped.get("columns") or {}).get("date")
+    }
+    known_columns = {col.name for col in table.columns}
+    candidates = sorted(set(date_columns) | (semantic_dates & known_columns))
+    if len(candidates) != 1:
         raise ValueError("Se necesita exactamente una columna de fecha verificable en la tabla.")
     start, end = config.period_bounds
     return definition.model_copy(update={"filters": [
         *definition.filters,
-        VisualizationFilter(table=base, column=date_columns[0], operator="gte", value=start),
-        VisualizationFilter(table=base, column=date_columns[0], operator="lt", value=end),
+        VisualizationFilter(table=base, column=candidates[0], operator="gte", value=start),
+        VisualizationFilter(table=base, column=candidates[0], operator="lt", value=end),
     ]})
 
 
@@ -283,6 +307,10 @@ def prepare_report(config: ReportConfiguration) -> dict:
                 "el último dato real, independientemente del rango descriptivo del informe."
             )
     visualizations = _selected_visualizations(config, warnings)
+    # Reject mixed-source documents if the process switched connections while
+    # assembling multiple sections of the report.
+    if _active_source(config)["key"] != source["key"]:
+        raise ValueError("La fuente activa cambió durante la generación. Vuelve a intentarlo.")
     return {
         "configuration": config.model_dump(),
         "source": source,
