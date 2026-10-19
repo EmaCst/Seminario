@@ -5,7 +5,7 @@ from app.ml.seasonal_forecasting import forecast_monthly
 from app.ml.anomaly_detection import detect_anomalies
 from app.ml.diagnostic_service import explain_deviations
 
-from app.analysis.adaptive_dashboard_service import _monthly_count, DOMAIN_TREND_PRIORITY
+from app.analysis.adaptive_dashboard_service import _monthly_count, _quote, DOMAIN_TREND_PRIORITY
 from app.services.assistant_domain_analytics import (
     ROLE_WORDS, ROLE_LABELS, _matched_role, _measure, _query_series,
 )
@@ -67,6 +67,21 @@ def _find_best_time_series(
     elif requested_role == "sales" and "venta" in normalized:
         requested_amount = True
 
+    # Non-monetary KPIs with well-defined aggregate semantics. Never SUM a
+    # stock level or average a financial total just because it is numeric.
+    request_units = (
+        domain == "manufacturing" and requested_role == "production_orders" and
+        any(term in normalized for term in (
+            "unidades producid", "unidades de produccion",
+            "cantidad producida", "volumen producido", "piezas producid",
+        ))
+    )
+    request_grade_average = (
+        domain == "education" and requested_role == "grades" and
+        any(term in normalized for term in (
+            "promedio", "nota media", "calificacion media", "media de notas",
+        ))
+    )
     candidates = []
     for role in ordered:
         entity = entities.get(role) or {}
@@ -77,7 +92,19 @@ def _find_best_time_series(
         if not table or not date:
             continue
         try:
-            if requested_amount:
+            if request_units and role == "production_orders":
+                quantity = (entity.get("columns") or {}).get("quantity")
+                if not quantity:
+                    continue
+                data = _query_series(entity, f"SUM(t.{_quote(quantity)})")
+                metric = "quantity"
+            elif request_grade_average and role == "grades":
+                grade = (entity.get("columns") or {}).get("value")
+                if not grade:
+                    continue
+                data = _query_series(entity, f"AVG(t.{_quote(grade)})")
+                metric = "average"
+            elif requested_amount:
                 expression = _measure(domain, role, entity, "amount")
                 if expression is None:
                     continue
@@ -102,6 +129,11 @@ def _find_best_time_series(
         raise ValueError(
             f"No hay al menos {minimum_points} meses de datos verificables para "
             f"{ROLE_LABELS.get(requested_role, requested_role)} con la métrica solicitada."
+        )
+    if request_units or request_grade_average:
+        raise ValueError(
+            "No encontré un indicador numérico verificable con fecha y columna de "
+            "cantidad o calificación para la entidad solicitada."
         )
     if requested_amount:
         raise ValueError(
