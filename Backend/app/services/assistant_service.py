@@ -113,13 +113,21 @@ def _format_forecast_answer(result: dict) -> str:
 
     if isinstance(r2, (int, float)):
         explanation = (
-            f"La calidad de ajuste es {quality} (R²={r2:.4f}), "
-            "así que conviene tomarlo como una tendencia estimada, no como una certeza."
+            f"La calidad predictiva evaluada con meses posteriores al entrenamiento es {quality} "
+            f"(R² de validación={r2:.4f}). Es una estimación, no una certeza."
         )
     else:
         explanation = "Tómalo como una estimación orientativa basada en el historial disponible."
 
-    return f"La proyección de {metric} de {role} es: {values}. {explanation}"
+    model = "tendencia y estacionalidad" if result.get("model") == "seasonal_trend" else "tendencia lineal"
+    patterns = result.get("seasonal_patterns") or []
+    pattern_text = (
+        " Patrones repetidos detectados: " +
+        ", ".join(f"{item['month']:02d} ({'subida' if item['direction'] == 'increase' else 'bajada'})"
+                  for item in patterns) + "."
+        if patterns else ""
+    )
+    return f"La proyección de {metric} de {role} con {model} es: {values}. {explanation}{pattern_text}"
 
 
 def _format_anomaly_answer(result: dict) -> str:
