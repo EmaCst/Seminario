@@ -22,12 +22,13 @@ import { getAnomalies, getForecast } from '../services/api';
 
 const monthLabel = (year, month) => `${String(month).padStart(2, '0')}/${year}`;
 
-const qualityFromR2 = (score) => {
-  if (score == null) return { label: 'Sin evaluar', level: 'unknown' };
-  if (score >= 0.75) return { label: 'Alta', level: 'high' };
-  if (score >= 0.5) return { label: 'Media', level: 'medium' };
-  if (score >= 0.25) return { label: 'Baja', level: 'low' };
-  return { label: 'Muy baja', level: 'very-low' };
+const qualityFromEvidence = (confidence, language) => {
+  const names = {
+    moderate: language === 'es' ? 'Moderada' : 'Moderate',
+    limited: language === 'es' ? 'Limitada' : 'Limited',
+    insufficient: language === 'es' ? 'Insuficiente' : 'Insufficient',
+  };
+  return { label: names[confidence] || (language === 'es' ? 'Sin evaluar' : 'Not evaluated') };
 };
 
 const severityLabel = (severity, language) => {
@@ -91,10 +92,15 @@ export const PredictionsView = () => {
     return [...historical, ...projected];
   }, [forecast]);
 
-  const quality = qualityFromR2(forecast?.r2_score);
+  const quality = qualityFromEvidence(forecast?.confidence, language);
   const anomalyCount = anomalies?.anomalies?.length || 0;
   const validation = forecast?.validation;
-  const modelName = forecast?.model === 'seasonal_trend' ? 'Tendencia + estacionalidad' : 'Regresión lineal';
+  const modelName = ({
+    seasonal_trend: 'Tendencia + estacionalidad',
+    seasonal_naive: 'Patrón del año anterior',
+    linear_regression: 'Regresión lineal',
+    naive_last: 'Último valor observado',
+  })[forecast?.model] || forecast?.model || '—';
 
   if (loading) {
     return (
@@ -173,14 +179,14 @@ export const PredictionsView = () => {
               </div>
             </div>
             <div className="text-sm" style={{ color: colors.muted }}>
-              {language === 'es' ? 'Motor' : 'Engine'}: <strong style={{ color: colors.text }}>{modelName} + Isolation Forest</strong>
+              {language === 'es' ? 'Motor' : 'Engine'}: <strong style={{ color: colors.text }}>{modelName} · Anomalías por desviación contextual</strong>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {[
               { icon: CalendarRange, label: language === 'es' ? 'Meses de entrenamiento' : 'Training months', value: forecast.training_months },
-              { icon: TrendingUp, label: 'R² (validación)', value: forecast.r2_score ?? '—' },
+              { icon: TrendingUp, label: language === 'es' ? 'Mejora vs. ingenuo' : 'Skill vs. naive', value: forecast.validation?.skill_vs_naive_pct == null ? '—' : `${forecast.validation.skill_vs_naive_pct}%` },
               { icon: BrainCircuit, label: language === 'es' ? 'Calidad predictiva' : 'Forecast quality', value: quality.label },
               { icon: AlertTriangle, label: language === 'es' ? 'Anomalías detectadas' : 'Detected anomalies', value: anomalyCount },
             ].map(({ icon: Icon, label, value }) => (
@@ -221,7 +227,7 @@ export const PredictionsView = () => {
                 {(forecast.forecast || []).map((item) => (
                   <div key={`${item.year}-${item.month}`} className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft }}>
                     <span className="font-semibold" style={{ color: colors.muted }}>{monthLabel(item.year, item.month)}</span>
-                    <div className="text-right"><span className="font-extrabold text-lg block" style={{ color: theme.primary }}>{item.predicted_total}</span>{item.lower_estimate != null && <span className="text-xs" style={{ color: colors.muted }}>±MAE: {item.lower_estimate}–{item.upper_estimate}</span>}</div>
+                    <div className="text-right"><span className="font-extrabold text-lg block" style={{ color: theme.primary }}>{item.predicted_total}</span>{item.lower_estimate != null && <span className="text-xs" style={{ color: colors.muted }}>P80 histórico: {item.lower_estimate}–{item.upper_estimate}</span>}</div>
                   </div>
                 ))}
               </div>
@@ -236,7 +242,7 @@ export const PredictionsView = () => {
 
               <div className="flex-1 flex flex-col items-center justify-center text-center py-5">
                 <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: colors.muted }}>
-                  {language === 'es' ? 'Calidad de ajuste' : 'Fit quality'}
+                  {language === 'es' ? 'Confiabilidad evaluada' : 'Validated reliability'}
                 </p>
                 <p className="mt-1 text-2xl font-extrabold" style={{ color: theme.primary }}>
                   {quality.label}
@@ -247,7 +253,7 @@ export const PredictionsView = () => {
 
                 <p className="mt-3 max-w-md text-sm leading-6" style={{ color: colors.muted }}>
                   {validation?.months
-                    ? `Evaluación temporal con ${validation.months} meses no utilizados para entrenar cada predicción. MAE: ${validation.selected?.mae ?? '—'} · RMSE: ${validation.selected?.rmse ?? '—'} · WAPE: ${validation.selected?.wape ?? '—'}%.`
+                    ? `Backtesting con ${validation.months} orígenes y ${validation.samples} predicciones históricas (hasta ${validation.horizon} meses de horizonte). MAE: ${validation.selected?.mae ?? '—'} · RMSE: ${validation.selected?.rmse ?? '—'} · WAPE: ${validation.selected?.wape ?? '—'}%.`
                     : 'Historial insuficiente para medir la precisión fuera del entrenamiento.'}
                 </p>
                 {forecast.seasonal_patterns?.length > 0 && (
@@ -313,7 +319,7 @@ export const PredictionsView = () => {
               )}
 
               {anomalyCount === 0 ? (
-                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'No se detectaron meses atípicos con el modelo actual.' : 'No anomalous months were detected.'}</p>
+                <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'No se detectaron desviaciones significativas respecto al patrón esperado.' : 'No anomalous months were detected.'}</p>
               ) : (
                 <div className="space-y-4">
                   {anomalies.anomalies.map((item) => (
@@ -329,7 +335,35 @@ export const PredictionsView = () => {
                       </div>
 
                       <p className="text-sm mt-3 leading-5" style={{ color: colors.text }}>
-                        {item.reason || (language === 'es' ? 'El modelo detectó un patrón diferente al comportamiento habitual.' : 'The model detected a pattern different from normal behavior.')}
+                        {item.reason || (language === 'es' ? 'El valor se desvió de su referencia temporal.' : 'The value departed from its time-aware baseline.')}
+                      </p>
+                      <p className="text-xs mt-2" style={{ color: colors.muted }}>
+                        {language === 'es' ? 'Esperado según historial' : 'Historically expected'}: {item.expected_total ?? '—'}
+                      </p>
+                      {(anomalies.diagnostics?.investigations || [])
+                        .filter((finding) => finding.year === item.year && finding.month === item.month)
+                        .map((finding) => (
+                          <div key={`${finding.year}-${finding.month}-diagnostic`} className="mt-3 rounded-xl border p-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+                            <strong className="text-sm" style={{ color: colors.text }}>{language === 'es' ? 'Investigación de segmentos' : 'Segment investigation'}</strong>
+                            <p className="text-xs mt-1" style={{ color: colors.muted }}>
+                              {finding.reference_period
+                                ? `${language === 'es' ? 'Comparado con' : 'Compared with'} ${monthLabel(finding.reference_period.year, finding.reference_period.month)}`
+                                : (language === 'es' ? 'Sin período comparable' : 'No comparable period')}
+                            </p>
+                            {finding.contributors.map((segment) => (
+                              <p key={`${segment.dimension}-${segment.category}`} className="text-xs mt-1" style={{ color: colors.text }}>
+                                {segment.dimension}: {segment.category} · {language === 'es' ? 'Variación' : 'Change'} {segment.change > 0 ? '+' : ''}{segment.change}
+                              </p>
+                            ))}
+                            {finding.limitations.map((notice) => (
+                              <p key={notice} className="text-xs mt-1" style={{ color: colors.muted }}>{notice}</p>
+                            ))}
+                            <p className="text-xs mt-2" style={{ color: colors.muted }}>
+                              {language === 'es' ? 'Asociaciones descriptivas; no se ha demostrado causalidad.' : 'Descriptive associations; causality is not established.'}
+                            </p>
+                          </div>
+                        ))}
+                      <p className="text-sm mt-3 leading-5" style={{ color: colors.text }}>
                       </p>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
@@ -346,7 +380,7 @@ export const PredictionsView = () => {
                           <strong className="block mt-1" style={{ color: colors.text }}>{item.z_score ?? '—'}</strong>
                         </div>
                         <div className="rounded-lg p-2" style={{ backgroundColor: colors.card }}>
-                          <span style={{ color: colors.muted }}>Isolation score</span>
+                          <span style={{ color: colors.muted }}>Desv. / umbral</span>
                           <strong className="block mt-1" style={{ color: colors.text }}>{item.anomaly_score}</strong>
                         </div>
                       </div>
