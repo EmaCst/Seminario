@@ -224,6 +224,10 @@ class ReportPdfTests(unittest.TestCase):
 
     def test_pdf_uses_sanitized_filename(self):
         snapshot = self._snapshot()
+        snapshot["dashboard"]["database"] = "R&D <Operaciones>"
+        snapshot["analytics"]["insights"] = [{
+            "title": "Resultados <revisar>", "text": "Grupo A&B requiere revisión.",
+        }]
         snapshot["source"]["database"] = "clinica/con datos \\ externos"
         data, name = render_report_snapshot(snapshot)
         self.assertTrue(data.startswith(b"%PDF-"))
