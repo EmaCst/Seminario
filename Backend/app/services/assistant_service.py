@@ -173,6 +173,12 @@ def _format_anomaly_answer(result: dict) -> str:
                     ) + ". "
                 else:
                     description += "sin un desglose categórico verificable. "
+            related = investigation.get("related_indicators") or []
+            if related:
+                description += "Otros indicadores con cambios simultáneos: " + "; ".join(
+                    f"{item['role']} varió {item['change']:+g} registros"
+                    for item in related[:3]
+                ) + ". "
         descriptions.append(description)
     return (f"Se detectaron {len(anomalies)} comportamientos atípicos en {metric} de {role}. "
             + " ".join(descriptions)
