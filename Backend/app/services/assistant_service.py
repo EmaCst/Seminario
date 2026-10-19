@@ -112,7 +112,8 @@ def _format_forecast_answer(result: dict) -> str:
     )
     names = {
         "seasonal_trend": "tendencia y estacionalidad",
-        "seasonal_naive": "patrón del año anterior",
+        "seasonal_naive": "referencia que repite exactamente el mismo mes del año anterior",
+        "seasonal_drift": "patrón anual ajustado según el cambio interanual histórico",
         "linear_regression": "tendencia lineal",
         "naive_last": "último valor observado",
     }
@@ -138,9 +139,34 @@ def _format_forecast_answer(result: dict) -> str:
         if patterns else ""
     )
     note = result.get("warning") or ""
-    return (f"Proyección de {metric} de {role}, modelo {names.get(result.get('model'), result.get('model'))}: "
-            f"{values}. {evidence}Confiabilidad: {result.get('confidence', 'sin evaluar')}."
-            f"{summary} {note}")
+    basis = result.get("forecast_basis") or {}
+    last_actual = basis.get("last_observed") or {}
+    provenance = (
+        f"Último mes registrado: {int(last_actual['month']):02d}/{last_actual['year']}. "
+        if last_actual.get("month") and last_actual.get("year") else ""
+    )
+    if basis.get("all_periods_future") is False:
+        provenance += (
+            "IMPORTANTE: alguna de estas fechas ya transcurrió o corresponde al "
+            "mes actual; estas estimaciones empiezan después del último "
+            "registro, no después de la fecha actual. "
+        )
+    annual = [item for item in forecast if item.get("prior_year_total") is not None]
+    annual_comparison = (
+        " Comparación visible con el mismo mes del año anterior: " +
+        ", ".join(
+            f"{item['month']:02d}/{item['year']} estimado {item['predicted_total']} "
+            f"frente a registro previo {item['prior_year_total']}"
+            for item in annual[:4]
+        ) + "."
+        if annual else ""
+    )
+    return (
+        f"{provenance}Estimaciones de {metric} de {role}, "
+        f"modelo {names.get(result.get('model'), result.get('model'))}: {values}. "
+        f"{evidence}Confiabilidad: {result.get('confidence', 'sin evaluar')}."
+        f"{summary}{annual_comparison} {note}"
+    )
 
 
 def _format_anomaly_answer(result: dict) -> str:
