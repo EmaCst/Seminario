@@ -88,7 +88,7 @@ class ReportConfiguration(BaseModel):
         first = f"{self.start_month}-01"
         year, month = _parse_month(self.end_month)
         next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
-        return first, f"{next_year:04d}-{next_month:02d}"
+        return first, f"{next_year:04d}-{next_month:02d}-01"
 
 
 def get_report_options() -> dict:
