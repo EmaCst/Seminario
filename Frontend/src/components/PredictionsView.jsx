@@ -18,6 +18,7 @@ import {
   YAxis,
 } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
+import { ChartAxisHint } from './ChartAxisHint';
 import { getAnomalies, getForecast } from '../services/api';
 
 const monthLabel = (year, month) => `${String(month).padStart(2, '0')}/${year}`;
@@ -256,11 +257,7 @@ export const PredictionsView = () => {
             <div className="xl:col-span-2 rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <div className="mb-4">
                 <h2 className="font-extrabold text-lg" style={{ color: colors.text }}>{language === 'es' ? 'Historial y estimaciones posteriores al último registro' : 'History and estimates after the last observation'}</h2>
-                <p className="mt-1 text-xs leading-5" style={{ color: colors.muted }}>
-                  {language === 'es' ? 'Eje X: mes y año' : 'X axis: month and year'}
-                  <span aria-hidden="true"> · </span>
-                  {language === 'es' ? 'Eje Y: ' : 'Y axis: '}{metricAxisLabel}
-                </p>
+                <ChartAxisHint className="mt-1" x={language === 'es' ? 'Mes y año' : 'Month and year'} y={metricAxisLabel} language={language} colors={colors} />
                 <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? `Estimación de ${horizon} meses desde el último registro disponible.` : `Estimates for ${horizon} months after the latest recorded period.`}</p>
               </div>
               <div className="h-[320px]">
