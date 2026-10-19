@@ -269,16 +269,18 @@ export const PredictionsView = () => {
 
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <h2 className="font-extrabold text-lg mb-4" style={{ color: colors.text }}>{language === 'es' ? 'Valores estimados y referencia anual' : 'Estimates and annual benchmark'}</h2>
-              <p className="text-xs mb-3" style={{ color: colors.muted }}>
-                {language === 'es'
-                  ? 'Desplázate dentro de este panel para consultar todos los períodos sin alargar la página.'
-                  : 'Scroll within this panel to see every period without extending the page.'}
-              </p>
+              {(forecast.forecast || []).length > 3 && (
+                <p className="text-xs mb-3" style={{ color: colors.muted }}>
+                  {language === 'es'
+                    ? 'Desplázate dentro de este panel para consultar todos los períodos sin alargar la página.'
+                    : 'Scroll within this panel to see every period without extending the page.'}
+                </p>
+              )}
               <div
                 role="region"
                 aria-label={language === 'es' ? 'Lista desplazable de valores estimados y referencias anuales' : 'Scrollable list of estimated values and annual references'}
                 tabIndex={0}
-                className="max-h-[420px] min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-2 focus-visible:outline-2 focus-visible:outline-offset-2"
+                className="max-h-[340px] min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-2 focus-visible:outline-2 focus-visible:outline-offset-2"
                 style={{ scrollbarWidth: 'thin', scrollbarColor: `${colors.border} transparent` }}
               >
                 {(forecast.forecast || []).map((item) => (
