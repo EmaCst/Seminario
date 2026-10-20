@@ -37,6 +37,8 @@ ROLE_ALIASES = {
     "suppliers": ("proveedor", "proveedores", "suppliers"),
     "services": ("servicio", "servicios", "services"),
     "clients": ("cliente", "clientes", "clients"),
+    "menu_items": ("plato", "platos", "producto", "productos", "menu", "menu item"),
+    "order_details": ("detalle", "detalle de pedidos", "lineas"),
     "sales_details": ("detalle de ventas",),
     "appointments": ("cita", "citas", "consultas", "appointment", "appointments"),
     "enrollments": ("inscripcion", "inscripciones", "matricula", "matriculas", "enrollment"),
@@ -93,6 +95,8 @@ def is_visualization_creation_request(question: str) -> bool:
 def _visual_type(text: str) -> str:
     if any(_contains(text, part) for part in ("tabla", "table")):
         return "table"
+    if any(_contains(text, part) for part in ("area", "área", "area chart", "grafica de area")):
+        return "area"
     if any(_contains(text, part) for part in ("lineas", "linea", "line", "tendencia", "trend")):
         return "line"
     if any(_contains(text, part) for part in ("dona", "donut", "pastel", "circular", "pie chart")):
@@ -152,6 +156,8 @@ def _choose_dimension(text: str, entity: dict, visual_type: str) -> tuple[dict |
         return None, "raw"
     if any(_contains(text, phrase) for phrase in ("por mes", "mensual", "monthly", "by month")):
         return _choose_date(entity), "month"
+    if any(_contains(text, phrase) for phrase in ("por trimestre", "trimestral", "quarterly", "by quarter")):
+        return _choose_date(entity), "quarter"
     if any(_contains(text, phrase) for phrase in ("por ano", "anual", "yearly", "by year")):
         return _choose_date(entity), "year"
     if any(_contains(text, phrase) for phrase in ("por fecha", "por dia", "diario", "daily")):
@@ -716,8 +722,11 @@ def interpret_visualization_request(question: str) -> dict:
             raise ValueError("La métrica solicitada no admite esa operación.")
         if chart_type == "donut" and grain != "raw":
             raise ValueError("Para series temporales usa barras o líneas; la gráfica de dona no representa bien meses.")
-        period = " por mes" if grain == "month" else " por año" if grain == "year" else (
-            " por " + dimension["label"].lower() if dimension else ""
+        period = (
+            " por mes" if grain == "month" else
+            " por trimestre" if grain == "quarter" else
+            " por año" if grain == "year" else
+            (" por " + dimension["label"].lower() if dimension else "")
         )
         measure_name = metric["label"] if metric else "Cantidad de registros"
         years = sorted(set(re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", normalized)))
@@ -745,6 +754,8 @@ def interpret_visualization_request(question: str) -> dict:
         x_label = dimension["label"] if dimension else "Indicador"
         if grain == "month":
             x_label = "Mes y año"
+        elif grain == "quarter":
+            x_label = "Trimestre y año"
         elif grain == "year":
             x_label = "Año"
         y_label = ("Cantidad de registros" if not metric else
