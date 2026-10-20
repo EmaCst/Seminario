@@ -1,30 +1,115 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
+import { DashboardContext } from '../context/DashboardContext';
 import { exploreVisualization } from '../services/api';
 
 export const TableExplorer = ({ definition }) => {
+  const { colors, language } = useContext(DashboardContext);
+  const es = language === 'es';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('value');
-  const [descending, setDescending] = useState(true);
+  const [descending, setDescending] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     let active = true;
-    exploreVisualization(definition, { page, page_size: 25, search, sort_by: sortBy, descending })
-      .then(data => { if (active) { setResult(data); setError(''); } })
-      .catch(err => { if (active) setError(err.message); });
+    Promise.resolve().then(() => {
+      if (!active) return null;
+      setLoading(true);
+      setError('');
+      return exploreVisualization(definition, {
+        page, page_size: 25, search, sort_by: sortBy, descending,
+      });
+    }).then(data => {
+      if (active && data) setResult(data);
+    }).catch(err => {
+      if (active) setError(err.message);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
     return () => { active = false; };
   }, [definition, page, search, sortBy, descending]);
-  const columns = result?.columns || ['dimension', 'value'];
+
+  const columns = (result?.columns || []).map(item =>
+    typeof item === 'string'
+      ? { key: item, label: item.replaceAll('_', ' ') }
+      : item
+  );
   const total = Number(result?.total || 0);
-  return <div className="flex h-full min-h-0 flex-col gap-3">
-    <h3 className="font-bold">{definition.title}</h3>
-    {definition.group_by && <input className="rounded-lg border p-2" placeholder="Buscar..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />}
-    {error && <p className="text-red-500">{error}</p>}
-    <div className="min-h-0 flex-1 overflow-auto">
-      <table className="w-full text-sm"><thead><tr>{columns.map(column => <th className="p-3 text-left" key={column}><button type="button" onClick={() => { setDescending(sortBy === column ? !descending : true); setSortBy(column); setPage(1); }}>{column === 'dimension' ? definition.group_by : definition.aggregation} {sortBy === column ? (descending ? '↓' : '↑') : ''}</button></th>)}</tr></thead><tbody>{(result?.data || []).map((row, i) => <tr key={i} className="border-t">{columns.map(column => <td className="p-3" key={column}>{String(row[column] ?? '—')}</td>)}</tr>)}</tbody></table>
+  const pages = Math.max(1, Math.ceil(total / 25));
+
+  return <div className="flex h-full min-h-0 flex-col gap-3" style={{ color: colors.text }}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="font-bold">{definition.title}</h3>
+      <span className="text-xs" style={{ color: colors.muted }}>
+        {es ? 'Consulta paginada de la base activa' : 'Paginated active database query'}
+      </span>
     </div>
-    <div className="flex items-center justify-between gap-3 text-sm"><span>{total} resultados</span><div className="flex items-center gap-3"><button disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button><span>{page} / {Math.max(1, Math.ceil(total / 25))}</span><button disabled={page * 25 >= total} onClick={() => setPage(p => p + 1)}>Siguiente</button></div></div>
+    <input type="search" className="w-full rounded-lg border p-2 text-sm"
+      style={{ color: colors.text, backgroundColor: colors.card, borderColor: colors.border }}
+      aria-label={es ? 'Buscar en todos los resultados' : 'Search all matching rows'}
+      placeholder={es ? 'Buscar en todos los resultados...' : 'Search all matching rows...'}
+      value={search} onChange={event => {
+        setSearch(event.target.value);
+        setPage(1);
+      }} />
+    {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+    {loading && <p className="text-xs" style={{ color: colors.muted }}>
+      {es ? 'Consultando registros...' : 'Fetching rows...'}
+    </p>}
+    <div className="min-h-0 flex-1 overflow-auto rounded-xl border" style={{ borderColor: colors.border }}>
+      <table className="w-full min-w-[350px] text-sm">
+        <thead className="sticky top-0" style={{ backgroundColor: colors.card }}>
+          <tr>{columns.map(column => (
+            <th className="border-b p-3 text-left" style={{ borderColor: colors.border }} key={column.key}>
+              <button type="button" onClick={() => {
+                setDescending(sortBy === column.key ? !descending : false);
+                setSortBy(column.key);
+                setPage(1);
+              }} className="flex items-center gap-1 font-semibold">
+                {column.label}
+                {sortBy === column.key ? (descending ? '↓' : '↑') : ''}
+              </button>
+            </th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {(result?.data || []).map((row, i) => (
+            <tr key={i} className="border-t" style={{ borderColor: colors.border }}>
+              {columns.map(column => (
+                <td className="max-w-[280px] break-words p-3" key={column.key}>
+                  {String(row[column.key] ?? '—')}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {!loading && !result?.data?.length && (
+            <tr><td colSpan={Math.max(columns.length, 1)} className="p-6 text-center"
+              style={{ color: colors.muted }}>
+              {es ? 'No se encontraron registros.' : 'No matching rows.'}
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <span style={{ color: colors.muted }}>
+        {total ? (page - 1) * 25 + 1 : 0}–{Math.min(page * 25, total)} {es ? 'de' : 'of'} {total}
+      </span>
+      <div className="flex items-center gap-3">
+        <button type="button" disabled={loading || page <= 1}
+          className="disabled:opacity-40" onClick={() => setPage(p => p - 1)}>
+          {es ? 'Anterior' : 'Previous'}
+        </button>
+        <span>{page}/{pages}</span>
+        <button type="button" disabled={loading || page >= pages}
+          className="disabled:opacity-40" onClick={() => setPage(p => p + 1)}>
+          {es ? 'Siguiente' : 'Next'}
+        </button>
+      </div>
+    </div>
   </div>;
 };
 
