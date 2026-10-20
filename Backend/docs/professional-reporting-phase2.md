@@ -17,6 +17,7 @@ Primera entrega funcional, desarrollada en `feature/professional-reporting-phase
 {
   "report_type": "custom",
   "title": "Resultados de operaciones · 2025",
+  "author_name": "Nombre de quien elaboró el informe",
   "start_month": "2025-01",
   "end_month": "2025-12",
   "sections": ["executive", "analytics", "predictive", "visualizations", "methodology"],
@@ -25,6 +26,8 @@ Primera entrega funcional, desarrollada en `feature/professional-reporting-phase
   "source_key": "<usar exactamente el valor de GET /api/reports/options>"
 }
 ```
+
+El campo opcional `author_name` permite indicar quién elaboró el informe (hasta 120 caracteres). El valor se refleja en la vista previa, en la portada del PDF y en su propiedad de autor; al dejarlo vacío se utiliza la identificación predeterminada de Kenneth en los metadatos.
 
 Los tipos de reporte admitidos son `executive`, `analytics`, `predictive`, `complete` y `custom`. Las secciones se activan por separado. Si se omite `sections`, se utiliza la composición predeterminada del tipo escogido.
 
@@ -43,6 +46,14 @@ Las anomalías utilizan el historial completo para aprender una referencia estac
 El sistema recupera exclusivamente visualizaciones asociadas a la fuente activa. Mantiene la definición validada (tipo, tabla, métrica, agregación, dimensión y filtros) y obtiene una instantánea de sus datos al generar el informe. En un informe con rango, solo agrega filtros de fecha cuando puede identificar una columna de fecha inequívoca en la tabla y la visualización no mezcla entidades cuya relación temporal sería dudosa. En los demás casos, se omite la gráfica con una advertencia específica.
 
 Se admiten KPIs, barras, líneas, distribución tipo dona y tablas; se incluyen aclaraciones de ejes X/Y. La versión actual conserva los primeros registros de la consulta de vista previa, hasta los límites seguros del motor de visualizaciones.
+
+## Paginación sin páginas vacías
+
+Se reemplazaron los saltos de página obligatorios entre apartados por saltos condicionales, que solo avanzan de hoja si no hay espacio suficiente. Además, se intenta mantener los encabezados junto a sus contenidos y se agrupa la portada en un único bloque para que los títulos y nombres extensos no causen una página en blanco adicional.
+
+La misma mejora se aplica a los PDF generados por el endpoint anterior (`/api/reports/pdf`). La portada sigue ocupando una hoja propia por diseño. Los apartados pueden compartir una misma hoja cuando hay espacio suficiente.
+
+Las pruebas usan `pypdf` para extraer el texto de cada página y detectar hojas que contengan solamente la numeración o el pie de página. Se incluyen reportes sintéticos extensos, tablas múltiples y ejemplos de portada con título/autor largos.
 
 ## Interpretación responsable
 
