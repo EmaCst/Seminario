@@ -13,7 +13,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import CondPageBreak, PageBreak, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import CondPageBreak, KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
 from app.reports.report_configuration import ReportConfiguration, prepare_report, SECTION_NAMES
 from app.reports.report_service import (
@@ -214,24 +214,29 @@ def render_report_snapshot(snapshot: dict) -> tuple[bytes, str]:
         title=config.title, author=config.author_name.strip() or "Kenneth - AI Business Assistant",
     )
     story = []
-    story.append(Spacer(1, 48 * mm))
-    _paragraph(story, styles, "KENNETH / BUSINESS INTELLIGENCE", "ReportSubtitle")
-    story.append(Spacer(1, 8 * mm))
-    _paragraph(story, styles, config.title, "CoverTitle")
+    cover = []
+    cover.append(Spacer(1, 48 * mm))
+    _paragraph(cover, styles, "KENNETH / BUSINESS INTELLIGENCE", "ReportSubtitle")
+    cover.append(Spacer(1, 8 * mm))
+    _paragraph(cover, styles, config.title, "CoverTitle")
     if config.author_name.strip():
-        story.append(Spacer(1, 4 * mm))
-        _paragraph(story, styles, f"Elaborado por: {config.author_name.strip()}", "ReportSubtitle")
-    _paragraph(story, styles, f"{source.get('database')} | {source.get('provider')}", "ReportSubtitle")
+        cover.append(Spacer(1, 4 * mm))
+        _paragraph(cover, styles, f"Elaborado por: {config.author_name.strip()}", "ReportSubtitle")
+    _paragraph(cover, styles, f"{source.get('database')} | {source.get('provider')}", "ReportSubtitle")
     period = snapshot.get("period")
-    _paragraph(story, styles,
+    _paragraph(cover, styles,
                f"Período: {period['from']} a {period['to']}" if period else "Período: historial disponible",
                "ReportSubtitle")
-    story.append(Spacer(1, 15 * mm))
-    _paragraph(story, styles, f"Generado: {generated:%d/%m/%Y %H:%M} UTC", "ReportSubtitle")
-    story.append(Spacer(1, 20 * mm))
-    _paragraph(story, styles,
+    cover.append(Spacer(1, 15 * mm))
+    _paragraph(cover, styles, f"Generado: {generated:%d/%m/%Y %H:%M} UTC", "ReportSubtitle")
+    cover.append(Spacer(1, 20 * mm))
+    _paragraph(cover, styles,
                "Contenido: " + " · ".join(SECTION_NAMES.get(section, section)
                                          for section in snapshot["sections"]), "NoteText")
+    # Keep the entire cover on one sheet even when a title or author wraps.
+    # Otherwise an overflow followed by an explicit PageBreak can produce
+    # a nearly empty intervening sheet.
+    story.append(KeepInFrame(165 * mm, 225 * mm, cover, mode="shrink", hAlign="CENTER"))
     story.append(PageBreak())
 
     sections = snapshot["sections"]
