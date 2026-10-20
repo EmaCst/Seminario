@@ -232,6 +232,141 @@ def _placement(text: str) -> dict:
     return {"dashboard": dashboard, "analytics": analytics or not dashboard}
 
 
+def _customer_rank_request(text: str) -> bool:
+    """Business customer rankings are *sales-based*, not customer row counts."""
+    return (
+        any(_contains(text, word) for word in ("cliente", "clientes", "customers", "customer"))
+        and any(_contains(text, word) for word in (
+            "compra", "compras", "compran", "compraron", "gastaron", "gastan",
+            "gasto", "gastos", "spend", "spent", "buy", "purchases",
+        ))
+        and any(_contains(text, word) for word in (
+            "menos", "menor", "menores", "mas", "mayor", "mayores",
+            "top", "bottom", "least", "most",
+        ))
+    )
+
+
+def _customer_metric_kind(text: str) -> str:
+    """Resolve spending vs. frequency; ambiguous 'compran menos' asks instead."""
+    if any(_contains(text, term) for term in ("por categoria", "por category", "by category")):
+        raise ValueError(
+            "Tu solicitud era un ranking de clientes, no de categorías. "
+            "¿Quieres los cinco clientes con menor importe gastado o con menor número de compras?"
+        )
+    spending = any(_contains(text, term) for term in (
+        "importe", "monto", "dinero", "gasto", "gastaron", "gastan", "gastado",
+        "facturacion", "valor comprado", "total gastado", "spent", "amount",
+        "revenue", "dinero gastado",
+    ))
+    frequency = any(_contains(text, term) for term in (
+        "cantidad de compras", "numero de compras", "numero de pedidos",
+        "cantidad de pedidos", "frecuencia", "veces que compraron",
+        "cuantas compras", "compras realizadas", "purchase count",
+        "number of purchases", "fewest purchases", "menos compras",
+    ))
+    if spending and frequency:
+        raise ValueError(
+            "Mencionaste tanto importe como frecuencia. ¿Quieres ordenar por "
+            "dinero gastado o por cantidad de compras?"
+        )
+    if not spending and not frequency:
+        raise ValueError(
+            "Para crear el ranking de clientes necesito una aclaración: "
+            "¿«compran menos» significa menor importe gastado o menor número "
+            "de compras? Responde «por importe» o «por cantidad de compras»."
+        )
+    return "amount" if spending else "count"
+
+
+def _rank_limit(text: str) -> int:
+    match = re.search(
+        r"\b(?:los|las|top|bottom)\s+(\d{1,3})\b|\b(\d{1,3})\s+(?:clientes|customers)\b",
+        text,
+    )
+    if not match:
+        return 5
+    value = int(match.group(1) or match.group(2))
+    if not 1 <= value <= 100:
+        raise ValueError("El ranking debe incluir entre 1 y 100 clientes.")
+    return value
+
+
+def _customer_ranking(text: str, catalog: dict) -> tuple[VisualizationDefinition, str, str]:
+    kind = _customer_metric_kind(text)
+    entities = catalog.get("entities") or []
+    sales = [item for item in entities if item.get("semantic_role") == "sales"]
+    customers = [item for item in entities if item.get("semantic_role") == "customers"]
+    if len(sales) != 1 or len(customers) != 1:
+        raise ValueError(
+            "No puedo identificar una única tabla de ventas y clientes "
+            "para construir un ranking verificable."
+        )
+    fact, customer = sales[0], customers[0]
+    links = [
+        rel for rel in catalog.get("relationships") or []
+        if rel["from_table"] == fact["table"] and rel["to_table"] == customer["table"]
+    ]
+    if len(links) != 1:
+        raise ValueError(
+            "No encontré una relación inequívoca de ventas hacia clientes. "
+            "Es necesario verificar las claves para no atribuir compras al cliente equivocado."
+        )
+    # The backend validates this FK target against its real primary key.
+    from app.database.inspector import inspect_database
+    schema = inspect_database()
+    customer_schema = schema.tables.get(customer["table"])
+    if not customer_schema or links[0]["to_column"] not in customer_schema.primary_key:
+        raise ValueError(
+            "La relación cliente-venta no apunta a una clave primaria verificada."
+        )
+    identifiers = [
+        field for field in customer.get("fields") or []
+        if field.get("semantic") == "name" and field.get("key") != links[0]["to_column"]
+    ]
+    if len(identifiers) != 1:
+        raise ValueError(
+            "No pude identificar un único nombre de cliente; revisa el catálogo semántico."
+        )
+    label = identifiers[0]
+    if kind == "amount":
+        measures = [
+            field for field in fact.get("metrics") or []
+            if field.get("semantic") in {"total", "amount"}
+        ]
+        if len(measures) != 1:
+            raise ValueError(
+                "Las ventas no tienen un único importe verificable. "
+                "Especifica una métrica monetaria antes de generar el ranking."
+            )
+        metric = measures[0]
+        aggregation, y_label = "sum", "Importe total comprado"
+    else:
+        metric = None
+        aggregation, y_label = "count", "Número de compras"
+    smaller = any(_contains(text, term) for term in (
+        "menos", "menor", "menores", "bottom", "least",
+    ))
+    limit = _rank_limit(text)
+    filters = _year_bounds(text, fact)
+    measure_name = "importe" if kind == "amount" else "compras"
+    definition = VisualizationDefinition(
+        title=(f"{limit} clientes con {'menor' if smaller else 'mayor'} {measure_name}")[:120],
+        visualization=_visual_type(text),
+        table=fact["table"],
+        metric=metric["key"] if metric else None,
+        metric_table=fact["table"],
+        aggregation=aggregation,
+        group_by=label["key"],
+        group_by_table=customer["table"],
+        group_by_identity=links[0]["to_column"],
+        sort_direction="asc" if smaller else "desc",
+        filters=filters,
+        limit=limit,
+    )
+    return definition, "Clientes", y_label
+
+
 def interpret_visualization_request(question: str) -> dict:
     """Return a verified preview + editable draft, without any write action."""
     normalized = _normalize(question)
@@ -239,45 +374,49 @@ def interpret_visualization_request(question: str) -> dict:
     entities = catalog.get("entities") or []
     if not entities:
         raise ValueError("No encontré entidades disponibles en la fuente activa.")
-    selected = _pick_entity(normalized, entities)
-    chart_type = _visual_type(normalized)
-    dimension, grain = _choose_dimension(normalized, selected, chart_type)
-    metric, aggregation = _choose_metric(normalized, selected)
-    filters = _year_bounds(normalized, selected)
-    if metric and aggregation not in metric.get("aggregations", []):
-        raise ValueError("La métrica solicitada no admite esa operación.")
-    if chart_type == "donut" and grain != "raw":
-        raise ValueError("Para series temporales usa barras o líneas; la gráfica de dona no representa bien meses.")
-    period = " por mes" if grain == "month" else " por año" if grain == "year" else (
-        " por " + dimension["label"].lower() if dimension else ""
-    )
-    measure_name = metric["label"] if metric else "Cantidad de registros"
-    years = sorted(set(re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", normalized)))
-    year_part = f" ({'-'.join(years)})" if years else ""
-    definition = VisualizationDefinition(
-        title=(measure_name + " de " + selected["label"] + period + year_part)[:120],
-        visualization=chart_type,
-        table=selected["table"],
-        metric=metric["key"] if metric else None,
-        metric_table=selected["table"],
-        aggregation=aggregation,
-        group_by=dimension["key"] if dimension else None,
-        group_by_table=selected["table"],
-        time_granularity=grain,
-        filters=filters,
-        limit=100 if grain != "raw" else 20,
-    )
+    ranking = _customer_rank_request(normalized)
+    if ranking:
+        definition, x_label, y_label = _customer_ranking(normalized, catalog)
+    else:
+        selected = _pick_entity(normalized, entities)
+        chart_type = _visual_type(normalized)
+        dimension, grain = _choose_dimension(normalized, selected, chart_type)
+        metric, aggregation = _choose_metric(normalized, selected)
+        filters = _year_bounds(normalized, selected)
+        if metric and aggregation not in metric.get("aggregations", []):
+            raise ValueError("La métrica solicitada no admite esa operación.")
+        if chart_type == "donut" and grain != "raw":
+            raise ValueError("Para series temporales usa barras o líneas; la gráfica de dona no representa bien meses.")
+        period = " por mes" if grain == "month" else " por año" if grain == "year" else (
+            " por " + dimension["label"].lower() if dimension else ""
+        )
+        measure_name = metric["label"] if metric else "Cantidad de registros"
+        years = sorted(set(re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", normalized)))
+        year_part = f" ({'-'.join(years)})" if years else ""
+        definition = VisualizationDefinition(
+            title=(measure_name + " de " + selected["label"] + period + year_part)[:120],
+            visualization=chart_type,
+            table=selected["table"],
+            metric=metric["key"] if metric else None,
+            metric_table=selected["table"],
+            aggregation=aggregation,
+            group_by=dimension["key"] if dimension else None,
+            group_by_table=selected["table"],
+            time_granularity=grain,
+            filters=filters,
+            limit=100 if grain != "raw" else 20,
+        )
+        x_label = dimension["label"] if dimension else "Indicador"
+        if grain == "month":
+            x_label = "Mes y año"
+        elif grain == "year":
+            x_label = "Año"
+        y_label = ("Cantidad de registros" if not metric else
+                   ("Promedio de " if aggregation == "avg" else "Suma de ") + metric["label"])
     result = preview_visualization(definition)
     rows = result.get("data") or []
     placement = _placement(normalized)
     status = database_manager.status()
-    x_label = dimension["label"] if dimension else "Indicador"
-    if grain == "month":
-        x_label = "Mes y año"
-    elif grain == "year":
-        x_label = "Año"
-    y_label = ("Cantidad de registros" if not metric else
-               ("Promedio de " if aggregation == "avg" else "Suma de ") + metric["label"])
     return {
         "definition": definition.model_dump(),
         "preview": result,
