@@ -335,6 +335,7 @@ def preview_report(config: ReportConfiguration) -> dict:
     trend = report["analytics"].get("trend") or {}
     return {
         "title": config.title,
+        "author_name": config.author_name.strip(),
         "source": report["source"], "period": report["period"],
         "sections": report["sections"], "warnings": report["warnings"],
         "kpis": report["dashboard"].get("kpis") or [],
