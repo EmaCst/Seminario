@@ -464,40 +464,78 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
 
 class VisualizationPageRequest(BaseModel):
     definition: VisualizationDefinition
-    page: int = Field(default=1, ge=1)
+    page: int = Field(default=1, ge=1, le=10000)
     page_size: int = Field(default=25, ge=1, le=100)
     search: str = Field(default="", max_length=100)
-    sort_by: Literal["dimension", "value"] = "value"
+    sort_by: str = Field(default="value", max_length=30)
     descending: bool = True
+
+
+def _result_columns(definition: VisualizationDefinition) -> list[dict]:
+    if definition.visualization == "table" and definition.table_mode == "detail":
+        return [
+            {
+                "key": f"field_{index}", "table": column.table or definition.table,
+                "column": column.column,
+                "label": column.column.replace("_", " ").capitalize(),
+            }
+            for index, column in enumerate(definition.detail_columns)
+        ]
+    return (
+        ([{"key": "dimension", "label": definition.group_by.replace("_", " ").capitalize()}]
+         if definition.group_by else [])
+        + [{"key": "value", "label": definition.aggregation.replace("_", " ").capitalize()}]
+    )
 
 
 def explore_visualization(request: VisualizationPageRequest) -> dict:
     definition = request.definition
     if definition.visualization != "table":
-        raise ValueError("La exploración está disponible para tablas.")
+        raise ValueError("La exploración está disponible únicamente para tablas.")
     sql = build_visualization_query(definition)
     provider = database_manager.status().get("provider")
     if provider == "sqlserver":
-        sql = re.sub(r"^SELECT TOP \d+ ", "SELECT ", sql, count=1)
+        sql = re.sub(r"^SELECT TOP \\d+ ", "SELECT ", sql, count=1)
     else:
-        sql = re.sub(r" LIMIT \d+;?$", "", sql)
-    sql = re.sub(r" ORDER BY (?:value (?:ASC|DESC), dimension ASC|dimension ASC);?$", "", sql).rstrip(";")
-    columns = ["dimension", "value"] if definition.group_by else ["value"]
-    where = ""
-    if request.search and definition.group_by:
-        cast_type = "NVARCHAR(4000)" if provider == "sqlserver" else "TEXT"
-        escaped = request.search.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
-        where = f" WHERE CAST(dimension AS {cast_type}) LIKE '%{escaped}%' ESCAPE '\\'"
+        sql = re.sub(r" LIMIT \\d+;?$", "", sql)
+    # Strip only our trusted ORDER BY (after the filter and GROUP BY).
+    # SQL Server cannot use ORDER BY inside this derived SELECT unless TOP
+    # or OFFSET is also present.
+    sql = re.sub(r" ORDER BY [^;]+;?$", "", sql).rstrip(";")
+    columns = _result_columns(definition)
+    allowed = {item["key"] for item in columns}
+    search_where = ""
+    if request.search:
+        provider_cast = "NVARCHAR(4000)" if provider == "sqlserver" else "TEXT"
+        escaped = (request.search.replace("\\", "\\\\")
+                   .replace("'", "''").replace("%", "\\%").replace("_", "\\_"))
+        comparisons = [
+            f"CAST({_quote(key)} AS {provider_cast}) LIKE '%{escaped}%' ESCAPE '\\'"
+            for key in sorted(allowed)
+        ]
+        search_where = " WHERE (" + " OR ".join(comparisons) + ")"
     source = f"({sql}) AS results"
-    total = execute_query(f"SELECT COUNT(*) AS total FROM {source}{where}")[0]["total"]
-    sort = request.sort_by if request.sort_by in columns else "value"
+    total_rows = execute_query(
+        f"SELECT COUNT(*) AS total FROM {source}{search_where}"
+    )
+    total = int(total_rows[0]["total"]) if total_rows else 0
+    sort = request.sort_by if request.sort_by in allowed else columns[0]["key"]
     direction = "DESC" if request.descending else "ASC"
     offset = (request.page - 1) * request.page_size
     if provider == "sqlserver":
-        page_sql = f"SELECT * FROM {source}{where} ORDER BY {sort} {direction} OFFSET {offset} ROWS FETCH NEXT {request.page_size} ROWS ONLY"
+        page_sql = (
+            f"SELECT * FROM {source}{search_where} ORDER BY {_quote(sort)} {direction} "
+            f"OFFSET {offset} ROWS FETCH NEXT {request.page_size} ROWS ONLY"
+        )
     else:
-        page_sql = f"SELECT * FROM {source}{where} ORDER BY {sort} {direction} LIMIT {request.page_size} OFFSET {offset}"
-    return {"data": execute_query(page_sql), "total": total, "page": request.page, "page_size": request.page_size, "columns": columns}
+        page_sql = (
+            f"SELECT * FROM {source}{search_where} ORDER BY {_quote(sort)} {direction} "
+            f"LIMIT {request.page_size} OFFSET {offset}"
+        )
+    return {
+        "data": execute_query(page_sql), "total": total, "page": request.page,
+        "page_size": request.page_size, "columns": columns,
+    }
 
 
 def preview_visualization(definition: VisualizationDefinition) -> dict:
@@ -510,22 +548,7 @@ def preview_visualization(definition: VisualizationDefinition) -> dict:
             "Revisa las relaciones, los filtros y los tipos de datos. "
             f"Detalle técnico: {exc}"
         ) from exc
-    columns = (
-        [
-            {
-                "key": f"field_{index}",
-                "table": column.table or definition.table,
-                "column": column.column,
-                "label": column.column.replace("_", " ").capitalize(),
-            }
-            for index, column in enumerate(definition.detail_columns)
-        ]
-        if definition.visualization == "table" and definition.table_mode == "detail"
-        else (
-            [{"key": "dimension", "label": definition.group_by.replace("_", " ").capitalize()}]
-            if definition.group_by else []
-        ) + [{"key": "value", "label": definition.aggregation.replace("_", " ").capitalize()}]
-    )
+    columns = _result_columns(definition)
     return {
         "definition": definition.model_dump(),
         "data": rows,
