@@ -223,6 +223,16 @@ class ReportPdfTests(unittest.TestCase):
         self.assertIn("María López", first_page)
         self._assert_no_blank_content_pages(document)
 
+    def test_long_title_and_author_stay_on_single_cover_sheet(self):
+        snapshot = self._snapshot()
+        snapshot["configuration"]["title"] = "Análisis general de rendimiento para " + "operaciones " * 8
+        snapshot["configuration"]["author_name"] = "Equipo de inteligencia empresarial " * 3
+        document, _ = render_report_snapshot(snapshot)
+        pages = PdfReader(BytesIO(document)).pages
+        self.assertIn("Elaborado por", pages[0].extract_text())
+        self.assertIn("Resumen ejecutivo", pages[1].extract_text())
+        self._assert_no_blank_content_pages(document)
+
     def test_many_sections_and_long_saved_tables_have_no_blank_pages(self):
         from app.ml.seasonal_forecasting import forecast_monthly
         snapshot = self._snapshot()
