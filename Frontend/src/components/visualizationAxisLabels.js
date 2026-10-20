@@ -9,6 +9,7 @@ export const visualizationAxisLabels = (definition, catalog, language = 'es') =>
   const aggregation = definition?.aggregation || 'count';
   const aggregationNames = {
     count: isSpanish ? 'Cantidad de registros' : 'Record count',
+    distinct_count: isSpanish ? 'Valores únicos de' : 'Unique values of',
     sum: isSpanish ? 'Suma' : 'Sum',
     avg: isSpanish ? 'Promedio' : 'Average',
     min: isSpanish ? 'Mínimo' : 'Minimum',
@@ -17,8 +18,10 @@ export const visualizationAxisLabels = (definition, catalog, language = 'es') =>
   return {
     x: definition?.time_granularity === 'month'
       ? (isSpanish ? 'Mes y año' : 'Month and year')
-      : definition?.time_granularity === 'year'
-        ? (isSpanish ? 'Año' : 'Year')
+      : definition?.time_granularity === 'quarter'
+        ? (isSpanish ? 'Trimestre y año' : 'Quarter and year')
+        : definition?.time_granularity === 'year'
+          ? (isSpanish ? 'Año' : 'Year')
         : dimension?.label || definition?.group_by || (isSpanish ? 'Categoría' : 'Category'),
     y: aggregation === 'count'
       ? aggregationNames.count
