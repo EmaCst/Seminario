@@ -313,9 +313,16 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
             order = f" ORDER BY value {direction}, dimension ASC"
     select.append(f"{expression} AS value")
 
-    where = ""
-    if definition.filters:
-        where = " WHERE " + " AND ".join(_filter_sql(item, definition.table) for item in definition.filters)
+    restrictions = [
+        _filter_sql(item, definition.table) for item in definition.filters
+    ]
+    if definition.group_by_identity and group_table != definition.table:
+        # LEFT JOIN preserves orphaned foreign keys, but an orphan is not a
+        # verified customer/product. Exclude it from named-entity rankings.
+        restrictions.append(
+            f"{_qualified(group_table, definition.group_by_identity)} IS NOT NULL"
+        )
+    where = " WHERE " + " AND ".join(restrictions) if restrictions else ""
 
     provider = database_manager.status().get("provider")
     limit = ""
