@@ -31,6 +31,9 @@ export const Chatbot = () => {
     .map((message) => ({
       role: message.from === 'user' ? 'user' : 'assistant',
       content: message.text,
+      ...(message.pendingVisualizationRequest ? {
+        pending_visualization_request: message.pendingVisualizationRequest,
+      } : {}),
     }));
 
   const sendMessage = async () => {
@@ -57,6 +60,7 @@ export const Chatbot = () => {
           mode: result.mode,
           performance: result.performance,
           visualizationDraft: result.visualization_draft || null,
+          pendingVisualizationRequest: result.pending_visualization_request || null,
         },
       ]);
     } catch (error) {
