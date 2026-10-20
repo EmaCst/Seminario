@@ -26,6 +26,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const [dimension, setDimension] = useState('');
   const [timeGranularity, setTimeGranularity] = useState('raw');
   const [rowLimit, setRowLimit] = useState(20);
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [groupIdentity, setGroupIdentity] = useState(null);
   const [sourceMismatch, setSourceMismatch] = useState(false);
   const [visualization, setVisualization] = useState('bar');
   const [title, setTitle] = useState('');
@@ -92,6 +94,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setDimension(def.group_by || '');
       setTimeGranularity(def.time_granularity || 'raw');
       setRowLimit(def.limit || 20);
+      setSortDirection(def.sort_direction || 'desc');
+      setGroupIdentity(def.group_by_identity || null);
       setAggregation(def.aggregation || 'count');
       setVisualization(def.visualization || 'bar');
       setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
@@ -110,6 +114,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       if (!active) return;
       setMetric(''); setDimension(''); setMetricEntityKey(entityKey);
       setDimensionEntityKey(entityKey); setFilters([]); setTimeGranularity('raw'); setPreview(null);
+      setGroupIdentity(null); setSortDirection('desc');
     });
     return () => { active = false; };
   }, [entityKey, open, initialItem]);
@@ -129,6 +134,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
     visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation: effectiveAggregation,
     group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table,
+    group_by_identity: groupIdentity || null, sort_direction: sortDirection,
     time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: rowLimit,
   });
 
@@ -191,7 +197,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-5 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>setVisualization(item.key)} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
           <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>
           {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>{setAggregation(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
-          {supportsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{setDimension(e.target.value);setTimeGranularity('raw');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          {supportsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{setDimension(e.target.value);setTimeGranularity('raw');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           {dimensionIsDate && supportsDimension && (
             <Field label={language === 'es' ? 'Agrupación temporal' : 'Time grouping'} colors={colors}>
               <select value={timeGranularity} onChange={(e)=>{setTimeGranularity(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
@@ -222,6 +228,20 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               {filters.length>1&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Se deben cumplir todas las condiciones (Y).':'All conditions must match (AND).'}</p>}
             </div>}
           </div>
+          {supportsDimension && (
+            <Field label={language === 'es' ? 'Orden de resultados' : 'Result order'} colors={colors}>
+              <select value={sortDirection} onChange={(e)=>{setSortDirection(e.target.value);setPreview(null)}}
+                className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
+                <option value="desc">{language === 'es' ? 'Mayor a menor' : 'Highest to lowest'}</option>
+                <option value="asc">{language === 'es' ? 'Menor a mayor' : 'Lowest to highest'}</option>
+              </select>
+            </Field>
+          )}
+          {groupIdentity && <p className="text-xs leading-5" style={{ color: colors.muted }}>
+            {language === 'es'
+              ? 'Se conserva el identificador de cada cliente para evitar combinar personas con nombres iguales.'
+              : 'Each customer identifier is preserved so identical names are not merged.'}
+          </p>}
           <Field label={language === 'es' ? 'Máximo de grupos' : 'Maximum groups'} colors={colors}>
             <input type="number" min={1} max={100} value={rowLimit}
               onChange={(e)=>{setRowLimit(Math.max(1,Math.min(100,Number(e.target.value)||1)));setPreview(null)}}
