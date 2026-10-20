@@ -355,7 +355,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
         </div>
         <div className="min-h-[560px] p-6"><div className="flex h-full min-h-[500px] flex-col rounded-2xl border p-5" style={{backgroundColor:colors.card,borderColor:colors.border}}>
           <p className="text-xs font-semibold uppercase tracking-wider" style={{color:colors.muted}}>{language==='es'?'Vista previa':'Preview'}</p><h3 className="mt-1 text-xl font-extrabold" style={{color:colors.text}}>{preview?.definition?.title||title||(language==='es'?'Tu visualización aparecerá aquí':'Your visualization will appear here')}</h3>
-          {!preview?<div className="flex flex-1 items-center justify-center text-sm" style={{color:colors.muted}}>{language==='es'?'Configura la visualización y genera una vista previa.':'Configure the visualization and generate a preview.'}</div>:visualization==='kpi'?<div className="flex flex-1 items-center justify-center"><div className="text-6xl font-black" style={{color:theme.primary}}>{Number(data[0]?.value||0).toLocaleString()}</div></div>:visualization==='table'?<div className="mt-6 overflow-auto"><table className="w-full text-sm"><tbody>{data.map((row,i)=><tr key={i} className="border-b" style={{borderColor:colors.border}}>{Object.values(row).map((value,j)=><td key={j} className="px-3 py-3" style={{color:colors.text}}>{String(value)}</td>)}</tr>)}</tbody></table></div>:<div className="mt-6 flex min-h-0 flex-1 flex-col">{visualization==='donut'?<p className="mb-2 text-xs" style={{color:colors.muted}}>{language==='es'?'Categoría':'Category'}: {axes.x} · {language==='es'?'Valor':'Value'}: {axes.y}</p>:<ChartAxisHint className="mb-2" x={axes.x} y={axes.y} language={language} colors={colors} />}<div className="min-h-0 flex-1"><ResponsiveContainer width="100%" height="100%">{visualization==='donut'?<PieChart><Pie data={data} dataKey="value" nameKey="dimension" cx="50%" cy="50%" innerRadius="43%" outerRadius="72%" paddingAngle={2}>{data.map((row,i)=><Cell key={`${row.dimension}-${i}`} fill={['#2563eb','#0891b2','#16a34a','#d97706','#9333ea','#db2777'][i%6]}/>)}</Pie><Tooltip/></PieChart>:visualization==='line'?<ReLineChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Line dataKey="value" stroke={theme.primary} strokeWidth={3}/></ReLineChart>:<BarChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Bar dataKey="value" fill={theme.primary} radius={[7,7,0,0]}/></BarChart>}</ResponsiveContainer></div></div>}
+          {!preview?<div className="flex flex-1 items-center justify-center text-sm" style={{color:colors.muted}}>{language==='es'?'Configura la visualización y genera una vista previa.':'Configure the visualization and generate a preview.'}</div>:visualization==='kpi'?<div className="flex flex-1 items-center justify-center"><div className="text-6xl font-black" style={{color:theme.primary}}>{Number(data[0]?.value||0).toLocaleString()}</div></div>:visualization==='table'?<div className="mt-6 min-w-0 flex-1"><VisualizationResultTable key={JSON.stringify(preview?.definition)} preview={preview} colors={colors} language={language}/></div>:<div className="mt-6 flex min-h-0 flex-1 flex-col">{visualization==='donut'?<p className="mb-2 text-xs" style={{color:colors.muted}}>{language==='es'?'Categoría':'Category'}: {axes.x} · {language==='es'?'Valor':'Value'}: {axes.y}</p>:<ChartAxisHint className="mb-2" x={axes.x} y={axes.y} language={language} colors={colors} />}<div className="min-h-0 flex-1"><ResponsiveContainer width="100%" height="100%">{visualization==='donut'?<PieChart><Pie data={data} dataKey="value" nameKey="dimension" cx="50%" cy="50%" innerRadius="43%" outerRadius="72%" paddingAngle={2}>{data.map((row,i)=><Cell key={`${row.dimension}-${i}`} fill={['#2563eb','#0891b2','#16a34a','#d97706','#9333ea','#db2777'][i%6]}/>)}</Pie><Tooltip/></PieChart>:visualization==='line'?<ReLineChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Line dataKey="value" stroke={theme.primary} strokeWidth={3}/></ReLineChart>:visualization==='area'?<AreaChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Area type="monotone" dataKey="value" stroke={theme.primary} fill={theme.primary} fillOpacity={0.22}/></AreaChart>:<BarChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Bar dataKey="value" fill={theme.primary} radius={[7,7,0,0]}/></BarChart>}</ResponsiveContainer></div></div>}
         </div></div>
       </div>
     </div>
@@ -386,6 +386,27 @@ const FilterValueInput = ({table, field, operator, value, onChange, colors, lang
     return () => { active = false; clearTimeout(delay); };
   }, [table, field?.key, search, supportsOptions]);
   const selected = value.split(',').map(v => v.trim()).filter(Boolean);
+  if (operator==='is_null'||operator==='not_null') return (
+    <p className="text-xs" style={{color:colors.muted}}>
+      {language==='es'?'Esta condición no necesita un valor adicional.':'No additional value is required.'}
+    </p>
+  );
+  if (operator==='between') return (
+    <div className="grid grid-cols-2 gap-2">
+      {['Inicio','Final'].map((label,index)=>(
+        <input key={label} aria-label={language==='es'?label:index?'End':'Start'}
+          type={field?.kind==='date'?'date':field?.kind==='number'?'number':'text'}
+          value={value.split(',')[index]||''}
+          onChange={e=>{
+            const next=value.split(',');
+            next[index]=e.target.value;
+            onChange(`${next[0]||''},${next[1]||''}`);
+          }}
+          placeholder={language==='es'?label:(index?'End':'Start')}
+          className="w-full rounded-lg border p-2 text-xs" style={inputStyle(colors)}/>
+      ))}
+    </div>
+  );
   if (operator.endsWith('_field')) return <select
     aria-label={language==='es'?'Columna numérica de comparación':'Comparison numeric field'}
     value={value ? JSON.stringify([valueTable||table,value]) : ''}
