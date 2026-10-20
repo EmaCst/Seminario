@@ -8,8 +8,13 @@ from app.database.inspector import inspect_database
 from app.database.query_executor import execute_query
 
 
-VisualizationType = Literal["kpi", "bar", "line", "donut", "table"]
-AggregationType = Literal["count", "sum", "avg", "min", "max"]
+VisualizationType = Literal["kpi", "bar", "line", "area", "donut", "table"]
+AggregationType = Literal["count", "distinct_count", "sum", "avg", "min", "max"]
+
+
+class VisualizationColumn(BaseModel):
+    table: str | None = None
+    column: str
 
 
 class VisualizationFilter(BaseModel):
@@ -19,6 +24,7 @@ class VisualizationFilter(BaseModel):
     operator: Literal[
         "eq", "neq", "gt", "gte", "lt", "lte", "contains", "in",
         "lt_field", "lte_field", "gt_field", "gte_field",
+        "is_null", "not_null", "between",
     ] = "eq"
     value: str | int | float | bool | list[str | int | float]
 
@@ -35,19 +41,30 @@ class VisualizationDefinition(BaseModel):
     group_by_identity: str | None = None
     sort_direction: Literal["asc", "desc"] = "desc"
     time_granularity: Literal["raw", "month", "year"] = "raw"
-    filters: list[VisualizationFilter] = Field(default_factory=list)
+    filters: list[VisualizationFilter] = Field(default_factory=list, max_length=20)
+    table_mode: Literal["aggregate", "detail"] = "aggregate"
+    detail_columns: list[VisualizationColumn] = Field(default_factory=list, max_length=8)
     limit: int = Field(default=20, ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_shape(self):
         if self.aggregation != "count" and not self.metric:
             raise ValueError("Selecciona una métrica para esta agregación.")
-        if self.visualization in {"bar", "line", "donut"} and not self.group_by:
+        if self.visualization in {"bar", "line", "area", "donut"} and not self.group_by:
             raise ValueError("Esta visualización necesita una dimensión para agrupar.")
         if self.time_granularity != "raw" and not self.group_by:
             raise ValueError("Selecciona una fecha para agrupar por mes o año.")
         if self.group_by_identity and (not self.group_by or self.time_granularity != "raw"):
             raise ValueError("La identidad solo se aplica a dimensiones no temporales.")
+        if self.table_mode == "detail":
+            if self.visualization != "table":
+                raise ValueError("El modo de registros está disponible únicamente para tablas.")
+            if not self.detail_columns:
+                raise ValueError("Selecciona al menos una columna para mostrar los registros.")
+        if self.visualization == "kpi" and self.group_by:
+            raise ValueError("Un indicador KPI no admite agrupación por dimensión.")
+        if self.aggregation == "distinct_count" and not self.metric and self.table_mode != "detail":
+            raise ValueError("Selecciona la columna cuyos valores únicos deseas contar.")
 
         return self
 
@@ -178,8 +195,13 @@ def _resolve_definition(definition: VisualizationDefinition):
         requested.append((group_table, definition.group_by))
     if definition.group_by_identity:
         requested.append((group_table, definition.group_by_identity))
-        if definition.group_by_identity not in schema.tables[group_table].primary_key:
+        target = schema.tables.get(group_table)
+        if target is None or definition.group_by_identity not in target.primary_key:
             raise ValueError("La identidad de agrupación debe ser una clave primaria verificada.")
+    requested.extend(
+        ((column.table or definition.table), column.column)
+        for column in definition.detail_columns
+    )
     requested.extend(((item.table or definition.table), item.column) for item in definition.filters)
     for item in definition.filters:
         if item.operator.endswith("_field"):
@@ -243,6 +265,13 @@ def _resolve_definition(definition: VisualizationDefinition):
             )
             if not recognized_date:
                 raise ValueError("La agrupación mensual/anual requiere una columna de fecha verificable.")
+    if (definition.aggregation in {"sum", "avg"}
+            and definition.metric and metric_table != definition.table):
+        raise ValueError(
+            "No es seguro sumar o promediar importes de una tabla relacionada "
+            "por cada fila de la tabla principal: se podrían duplicar valores. "
+            "Selecciona como origen la entidad que contiene esa métrica."
+        )
     if definition.aggregation in {"sum", "avg"} and definition.metric:
         metric_columns = {column.name: column for column in schema.tables[metric_table].columns}
         if _column_kind(metric_columns[definition.metric].type) != "number":
@@ -330,10 +359,39 @@ def _time_bucket(expression: str, granularity: str) -> str:
 
 def build_visualization_query(definition: VisualizationDefinition) -> str:
     schema, paths = _resolve_definition(definition)
+    if definition.visualization == "table" and definition.table_mode == "detail":
+        fields = [
+            f"{_qualified(item.table or definition.table, item.column)} AS {_quote(f'field_{index}')}"
+            for index, item in enumerate(definition.detail_columns)
+        ]
+        filters = [
+            _filter_sql(item, definition.table) for item in definition.filters
+        ]
+        where = " WHERE " + " AND ".join(filters) if filters else ""
+        provider = database_manager.status().get("provider")
+        prefix = f"TOP {definition.limit} " if provider == "sqlserver" else ""
+        ending = "" if provider == "sqlserver" else f" LIMIT {definition.limit}"
+        # A user-selected column is preferred for sorting; for same values
+        # the primary key makes the result deterministic on large sources.
+        base_pk = schema.tables[definition.table].primary_key
+        ordering = f"field_0 {definition.sort_direction.upper()}"
+        if base_pk:
+            ordering += ", " + ", ".join(
+                _qualified(definition.table, col) + " ASC" for col in base_pk
+            )
+        return (
+            f"SELECT {prefix}{', '.join(fields)} FROM {_quote(definition.table)}"
+            f"{_join_sql(schema, definition.table, paths)}{where}"
+            f" ORDER BY {ordering}{ending};"
+        )
     metric_table = definition.metric_table or definition.table
     group_table = definition.group_by_table or definition.table
     metric = "*" if definition.aggregation == "count" and not definition.metric else _qualified(metric_table, definition.metric or "")
-    expression = f"{definition.aggregation.upper()}({metric})"
+    expression = (
+        f"COUNT(DISTINCT {metric})"
+        if definition.aggregation == "distinct_count"
+        else f"{definition.aggregation.upper()}({metric})"
+    )
 
     select = []
     group = ""
@@ -438,11 +496,30 @@ def preview_visualization(definition: VisualizationDefinition) -> dict:
             "Revisa las relaciones, los filtros y los tipos de datos. "
             f"Detalle técnico: {exc}"
         ) from exc
+    columns = (
+        [
+            {
+                "key": f"field_{index}",
+                "table": column.table or definition.table,
+                "column": column.column,
+                "label": column.column.replace("_", " ").capitalize(),
+            }
+            for index, column in enumerate(definition.detail_columns)
+        ]
+        if definition.visualization == "table" and definition.table_mode == "detail"
+        else (
+            [{"key": "dimension", "label": definition.group_by.replace("_", " ").capitalize()}]
+            if definition.group_by else []
+        ) + [{"key": "value", "label": definition.aggregation.replace("_", " ").capitalize()}]
+    )
     return {
         "definition": definition.model_dump(),
         "data": rows,
         "meta": {
             "rows": len(rows),
+            "columns": columns,
+            "limited": bool(definition.group_by or definition.table_mode == "detail"),
+            "limit": definition.limit,
             "provider": database_manager.status().get("provider"),
         },
     }
