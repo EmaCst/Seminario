@@ -5,15 +5,19 @@ Run: python -m unittest discover -s tests -p 'test_professional_reports.py' -v
 from __future__ import annotations
 
 import unittest
+from io import BytesIO
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from pydantic import ValidationError
+from pypdf import PdfReader
 from sqlalchemy import create_engine, text
 
 from app.analysis.adaptive_analytics_service import _trend_analysis
 from app.reports import report_configuration as report
 from app.reports.configured_pdf import render_report_snapshot
+from app.reports.report_service import generate_report_pdf
 
 
 def series(start_year=2024, count=24, base=100):
@@ -65,6 +69,9 @@ class ReportConfigurationTests(unittest.TestCase):
             visualization_ids=["one"], start_month="2025-01", end_month="2025-03",
         )
         self.assertEqual(("2025-01-01", "2025-04-01"), config.period_bounds)
+        self.assertEqual("", report.ReportConfiguration().author_name)
+        with self.assertRaises(ValidationError):
+            report.ReportConfiguration(author_name="X" * 121)
 
     def test_source_changed_rejects_cross_database_report(self):
         with patch.object(report, "get_report_options", return_value={
@@ -187,6 +194,78 @@ class ReportPdfTests(unittest.TestCase):
                                 "aggregation": "count", "filters": []}},
             ],
         }
+
+    @staticmethod
+    def _assert_no_blank_content_pages(data: bytes) -> int:
+        reader = PdfReader(BytesIO(data))
+        for index, page in enumerate(reader.pages, 1):
+            body = page.extract_text() or ""
+            # Page-only footer text is NOT actual report content.
+            lines = [
+                line.strip() for line in body.splitlines()
+                if line.strip()
+                and "AI Business Assistant" not in line
+                and not re.fullmatch(r"P[aá]gina\\s*\\d+", line.strip(), re.IGNORECASE)
+            ]
+            assert len(" ".join(lines)) > 20, (
+                f"PDF page {index} has no useful content; extracted: {body[:150]!r}"
+            )
+        return len(reader.pages)
+
+    def test_author_is_optional_and_visible_on_cover_and_pdf_metadata(self):
+        snapshot = self._snapshot()
+        snapshot["configuration"]["author_name"] = "María López & Equipo"
+        document, _ = render_report_snapshot(snapshot)
+        reader = PdfReader(BytesIO(document))
+        self.assertEqual("María López & Equipo", reader.metadata.author)
+        first_page = reader.pages[0].extract_text()
+        self.assertIn("Elaborado por:", first_page)
+        self.assertIn("María López", first_page)
+        self._assert_no_blank_content_pages(document)
+
+    def test_many_sections_and_long_saved_tables_have_no_blank_pages(self):
+        from app.ml.seasonal_forecasting import forecast_monthly
+        snapshot = self._snapshot()
+        sections = ["executive", "analytics", "predictive", "visualizations", "methodology"]
+        snapshot["configuration"]["sections"] = sections
+        snapshot["sections"] = sections
+        snapshot["configuration"]["visualization_ids"] = [f"table-{n}" for n in range(8)]
+        snap_analytics = fixture("healthcare")[1]
+        snapshot["analytics"] = snap_analytics
+        actual = series(start_year=2023, count=36)
+        snapshot["forecast"] = {**forecast_monthly(actual, 12), "training_points": actual}
+        snapshot["anomalies"] = {"anomalies": [{
+            "year": 2025, "month": idx + 1, "total": 100 + idx,
+            "expected_total": 130, "deviation": idx - 30,
+            "severity": "media", "pct_vs_expected": -20.0,
+            "explanation": f"Variación de actividad en el mes {idx + 1}.",
+            "diagnostic_explanation": "No se verificó una causa.",
+        } for idx in range(12)]}
+        snapshot["visualizations"] = [{
+            "id": f"table-{n}", "title": f"Detalle operativo {n + 1}",
+            "type": "table",
+            "definition": {
+                "table": "citas", "group_by": "estado",
+                "aggregation": "count", "filters": [],
+            },
+            "data": [{
+                "dimension": f"Categoría {n + 1}-{i + 1}",
+                "value": 100 + i,
+            } for i in range(30)],
+        } for n in range(8)]
+        document, _ = render_report_snapshot(snapshot)
+        pages = self._assert_no_blank_content_pages(document)
+        self.assertGreaterEqual(pages, 4)
+
+    def test_legacy_complete_report_has_no_empty_pages(self):
+        dashboard, analytics = fixture("healthcare")
+        with patch("app.reports.report_service.get_adaptive_dashboard_summary",
+                   return_value=dashboard):
+            with patch("app.reports.report_service.get_adaptive_analytics",
+                       return_value=analytics):
+                with patch("app.reports.report_service._safe_ml", return_value=(None, None)):
+                    document, _ = generate_report_pdf("complete")
+        self._assert_no_blank_content_pages(document)
 
     def test_pdf_with_cover_sections_and_verified_chart(self):
         data, filename = render_report_snapshot(self._snapshot())
