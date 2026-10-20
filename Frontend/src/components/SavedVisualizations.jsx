@@ -55,7 +55,7 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
 
   useEffect(() => {
     let active = true;
-    getSavedVisualizations(destination).then((result)=>{
+    const reload = () => getSavedVisualizations(destination).then((result)=>{
       if (!active) return;
       const incoming = result.items || [];
       const order = (() => {
@@ -65,7 +65,12 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
       const rank = new Map(order.map((id, index) => [id, index]));
       setItems([...incoming].sort((a,b)=>(rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999)));
     }).catch((err)=>active&&setError(err.message));
-    return ()=>{active=false};
+    reload();
+    window.addEventListener('kenneth-custom-visualizations-changed', reload);
+    return ()=>{
+      active=false;
+      window.removeEventListener('kenneth-custom-visualizations-changed', reload);
+    };
   }, [destination, refreshKey, storageKey]);
 
   const persistOrder = (next) => {
