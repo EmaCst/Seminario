@@ -5,6 +5,7 @@ import { DashboardContext } from '../context/DashboardContext';
 import { ChartAxisHint } from './ChartAxisHint';
 import { visualizationAxisLabels } from './visualizationAxisLabels';
 import { VisualizationResultTable } from './VisualizationResultTable';
+import { TableExplorer } from './TableExplorer';
 import { getDatabaseStatus, getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, area: LineChart, donut: BarChart3, table: Table2 };
@@ -38,6 +39,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const [filters, setFilters] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [exploring, setExploring] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -374,10 +376,34 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
         </div>
         <div className="min-h-[560px] p-6"><div className="flex h-full min-h-[500px] flex-col rounded-2xl border p-5" style={{backgroundColor:colors.card,borderColor:colors.border}}>
           <p className="text-xs font-semibold uppercase tracking-wider" style={{color:colors.muted}}>{language==='es'?'Vista previa':'Preview'}</p><h3 className="mt-1 text-xl font-extrabold" style={{color:colors.text}}>{preview?.definition?.title||title||(language==='es'?'Tu visualización aparecerá aquí':'Your visualization will appear here')}</h3>
-          {!preview?<div className="flex flex-1 items-center justify-center text-sm" style={{color:colors.muted}}>{language==='es'?'Configura la visualización y genera una vista previa.':'Configure the visualization and generate a preview.'}</div>:visualization==='kpi'?<div className="flex flex-1 items-center justify-center"><div className="text-6xl font-black" style={{color:theme.primary}}>{Number(data[0]?.value||0).toLocaleString()}</div></div>:visualization==='table'?<div className="mt-6 min-w-0 flex-1"><VisualizationResultTable key={JSON.stringify(preview?.definition)} preview={preview} colors={colors} language={language}/></div>:<div className="mt-6 flex min-h-0 flex-1 flex-col">{visualization==='donut'?<p className="mb-2 text-xs" style={{color:colors.muted}}>{language==='es'?'Categoría':'Category'}: {axes.x} · {language==='es'?'Valor':'Value'}: {axes.y}</p>:<ChartAxisHint className="mb-2" x={axes.x} y={axes.y} language={language} colors={colors} />}<div className="min-h-0 flex-1"><ResponsiveContainer width="100%" height="100%">{visualization==='donut'?<PieChart><Pie data={data} dataKey="value" nameKey="dimension" cx="50%" cy="50%" innerRadius="43%" outerRadius="72%" paddingAngle={2}>{data.map((row,i)=><Cell key={`${row.dimension}-${i}`} fill={['#2563eb','#0891b2','#16a34a','#d97706','#9333ea','#db2777'][i%6]}/>)}</Pie><Tooltip/></PieChart>:visualization==='line'?<ReLineChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Line dataKey="value" stroke={theme.primary} strokeWidth={3}/></ReLineChart>:visualization==='area'?<AreaChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Area type="monotone" dataKey="value" stroke={theme.primary} fill={theme.primary} fillOpacity={0.22}/></AreaChart>:<BarChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Bar dataKey="value" fill={theme.primary} radius={[7,7,0,0]}/></BarChart>}</ResponsiveContainer></div></div>}
+          {!preview?<div className="flex flex-1 items-center justify-center text-sm" style={{color:colors.muted}}>{language==='es'?'Configura la visualización y genera una vista previa.':'Configure the visualization and generate a preview.'}</div>:visualization==='kpi'?<div className="flex flex-1 items-center justify-center"><div className="text-6xl font-black" style={{color:theme.primary}}>{Number(data[0]?.value||0).toLocaleString()}</div></div>:visualization==='table'?<div className="mt-6 min-w-0 flex-1"><VisualizationResultTable key={JSON.stringify(preview?.definition)} preview={preview} colors={colors} language={language}/>
+              <button type="button" onClick={()=>setExploring(true)}
+                className="mt-3 rounded-lg border px-3 py-2 text-sm font-bold"
+                style={{borderColor:theme.primary,color:theme.primary}}>
+                {language==='es'?'Explorar todos los registros':'Explore all records'}
+              </button>
+            </div>:<div className="mt-6 flex min-h-0 flex-1 flex-col">{visualization==='donut'?<p className="mb-2 text-xs" style={{color:colors.muted}}>{language==='es'?'Categoría':'Category'}: {axes.x} · {language==='es'?'Valor':'Value'}: {axes.y}</p>:<ChartAxisHint className="mb-2" x={axes.x} y={axes.y} language={language} colors={colors} />}<div className="min-h-0 flex-1"><ResponsiveContainer width="100%" height="100%">{visualization==='donut'?<PieChart><Pie data={data} dataKey="value" nameKey="dimension" cx="50%" cy="50%" innerRadius="43%" outerRadius="72%" paddingAngle={2}>{data.map((row,i)=><Cell key={`${row.dimension}-${i}`} fill={['#2563eb','#0891b2','#16a34a','#d97706','#9333ea','#db2777'][i%6]}/>)}</Pie><Tooltip/></PieChart>:visualization==='line'?<ReLineChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Line dataKey="value" stroke={theme.primary} strokeWidth={3}/></ReLineChart>:visualization==='area'?<AreaChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Area type="monotone" dataKey="value" stroke={theme.primary} fill={theme.primary} fillOpacity={0.22}/></AreaChart>:<BarChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension"/><YAxis/><Tooltip/><Bar dataKey="value" fill={theme.primary} radius={[7,7,0,0]}/></BarChart>}</ResponsiveContainer></div></div>}
         </div></div>
       </div>
     </div>
+    {exploring && preview?.definition && (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"
+        role="presentation" onMouseDown={e=>e.target===e.currentTarget&&setExploring(false)}>
+        <div className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border p-5 shadow-xl"
+          role="dialog" aria-modal="true"
+          aria-label={language==='es'?'Explorador de tabla':'Table explorer'}
+          style={{backgroundColor:colors.panel,borderColor:colors.border}}>
+          <button type="button" onClick={()=>setExploring(false)}
+            className="mb-3 self-end rounded-lg border px-3 py-1.5 text-sm font-bold"
+            style={{color:colors.text,borderColor:colors.border}}>
+            {language==='es'?'Cerrar':'Close'}
+          </button>
+          <div className="min-h-0 flex-1">
+            <TableExplorer definition={preview.definition}/>
+          </div>
+        </div>
+      </div>
+    )}
   </div>;
 };
 
