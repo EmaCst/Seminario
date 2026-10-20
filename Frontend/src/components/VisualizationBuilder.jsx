@@ -123,7 +123,6 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     queueMicrotask(() => {
       if (!active) return;
       if (visualization === 'kpi') setDimension('');
-      setPreview(null);
     });
     return () => { active = false; };
   }, [visualization]);
@@ -194,7 +193,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       <div className="grid max-h-[calc(92vh-104px)] overflow-y-auto lg:grid-cols-[380px_1fr]">
         <div className="space-y-5 border-r p-6" style={{ borderColor: colors.border }}>
           <Field label={language === 'es' ? '¿Qué quieres analizar?' : 'What do you want to analyze?'} colors={colors}><select value={entityKey} onChange={(e)=>setEntityKey(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(catalog?.entities||[]).map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>
-          <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-5 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>setVisualization(item.key)} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
+          <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-5 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>{setVisualization(item.key);setPreview(null)}} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
           <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>
           {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>{setAggregation(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
           {supportsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{setDimension(e.target.value);setTimeGranularity('raw');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
@@ -213,15 +212,21 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               {filters.map((filter,index)=>{
                 const source=relatedEntities.find(e=>e.table===filter.table)||entity;
                 const field=source?.filters?.find(f=>f.key===filter.column);
-                const ops=field?.kind==='text'?['eq','neq','contains','in']:['eq','neq','gt','gte','lt','lte','in'];
-                const names={eq:language==='es'?'Igual a':'Equals',neq:language==='es'?'Distinto de':'Not equal',gt:'>',gte:'≥',lt:'<',lte:'≤',contains:language==='es'?'Contiene':'Contains',in:language==='es'?'Uno de (comas)':'One of (commas)'};
+                const ops=field?.kind==='text'?['eq','neq','contains','in']:field?.kind==='number'
+                  ? ['eq','neq','gt','gte','lt','lte','in','lt_field','lte_field','gt_field','gte_field']
+                  : ['eq','neq','gt','gte','lt','lte','in'];
+                const names={eq:language==='es'?'Igual a':'Equals',neq:language==='es'?'Distinto de':'Not equal',gt:'>',gte:'≥',lt:'<',lte:'≤',contains:language==='es'?'Contiene':'Contains',in:language==='es'?'Uno de (comas)':'One of (commas)',
+                  lt_field:language==='es'?'Menor que columna':'Less than field',
+                  lte_field:language==='es'?'Menor o igual que columna':'Less than or equal to field',
+                  gt_field:language==='es'?'Mayor que columna':'Greater than field',
+                  gte_field:language==='es'?'Mayor o igual que columna':'Greater than or equal to field'};
                 const update=patch=>{setFilters(old=>old.map((f,i)=>i===index?{...f,...patch}:f));setPreview(null)};
                 return <div key={index} className="space-y-2 rounded-xl border p-3" style={{borderColor:colors.border,backgroundColor:colors.card}}>
                   <div className="flex justify-between"><span className="text-xs" style={{color:colors.muted}}>{language==='es'?'Condición':'Condition'}</span><button type="button" className="text-xs text-red-500" onClick={()=>{setFilters(old=>old.filter((_,i)=>i!==index));setPreview(null)}}>{language==='es'?'Quitar':'Remove'}</button></div>
                   <select aria-label="Filter entity" value={source?.table||''} onChange={e=>{const next=relatedEntities.find(x=>x.table===e.target.value);update({table:e.target.value,column:next?.filters?.[0]?.key||'',operator:'eq',value:''})}} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{relatedEntities.map(e=><option key={e.table} value={e.table}>{e.label}</option>)}</select>
                   <select aria-label="Filter field" value={filter.column} onChange={e=>update({column:e.target.value,operator:'eq',value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{(source?.filters||[]).map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select>
                   <select aria-label="Filter operator" value={filter.operator} onChange={e=>update({operator:e.target.value,value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{ops.map(op=><option key={op} value={op}>{names[op]}</option>)}</select>
-                  <FilterValueInput key={`${source?.table}:${field?.key}:${filter.operator}`} table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language}/>
+                  <FilterValueInput key={`${source?.table}:${field?.key}:${filter.operator}`} table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language} numericFields={(source?.filters||[]).filter(item=>item.kind==='number'&&!item.is_identifier&&item.key!==field?.key)}/>
                 </div>;
               })}
               <button type="button" onClick={()=>{setFilters(old=>[...old,{table:entity?.table||'',column:entity?.filters?.[0]?.key||'',operator:'eq',value:''}]);setPreview(null)}} className="w-full rounded-lg border px-3 py-2 text-sm font-semibold" style={{borderColor:theme.primary,color:theme.primary}}>{language==='es'?'+ Agregar filtro':'+ Add filter'}</button>
@@ -239,8 +244,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           )}
           {groupIdentity && <p className="text-xs leading-5" style={{ color: colors.muted }}>
             {language === 'es'
-              ? 'Se conserva el identificador de cada cliente para evitar combinar personas con nombres iguales.'
-              : 'Each customer identifier is preserved so identical names are not merged.'}
+              ? 'Se conserva el identificador verificado para no combinar elementos con nombres iguales.'
+              : 'A verified identifier is preserved to avoid merging items with identical names.'}
           </p>}
           <Field label={language === 'es' ? 'Máximo de grupos' : 'Maximum groups'} colors={colors}>
             <input type="number" min={1} max={100} value={rowLimit}
@@ -271,7 +276,7 @@ const inputStyle=(colors)=>({backgroundColor:colors.card,borderColor:colors.bord
 const Field=({label,colors,children})=><label className="block"><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{label}</span>{children}</label>;
 
 
-const FilterValueInput = ({table, field, operator, value, onChange, colors, language}) => {
+const FilterValueInput = ({table, field, operator, value, onChange, colors, language, numericFields=[]}) => {
   const [options, setOptions] = useState([]);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -291,6 +296,13 @@ const FilterValueInput = ({table, field, operator, value, onChange, colors, lang
     return () => { active = false; clearTimeout(delay); };
   }, [table, field?.key, search, supportsOptions]);
   const selected = value.split(',').map(v => v.trim()).filter(Boolean);
+  if (operator.endsWith('_field')) return <select
+    aria-label={language==='es'?'Columna numérica de comparación':'Comparison numeric field'}
+    value={value} onChange={e=>onChange(e.target.value)}
+    className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>
+    <option value="">{language==='es'?'Selecciona una columna numérica':'Select a numeric field'}</option>
+    {numericFields.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}
+  </select>;
   if (!supportsOptions) return <input aria-label="Filter value" type={field?.kind==='number'&&operator!=='in'?'number':field?.kind==='date'&&operator!=='in'?'date':'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={language==='es'?'Escribe un valor':'Enter a value'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>;
   return <div className="space-y-2">
     <input aria-label={language==='es'?'Buscar valores':'Search values'} value={search} onChange={e=>setSearch(e.target.value)} placeholder={language==='es'?'Buscar valores disponibles...':'Search available values...'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>
