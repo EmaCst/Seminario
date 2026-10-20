@@ -284,7 +284,9 @@ def interpret_visualization_request(question: str) -> dict:
         "placement": placement,
         "axes": {"x": x_label, "y": y_label},
         "source": {"key": _source_key(), "database": status.get("database"),
-                   "provider": status.get("provider")},
+                   "provider": status.get("provider"),
+                   "server": status.get("server"), "host": status.get("host"),
+                   "port": status.get("port")},
         "notes": [
             "Es una propuesta editable; no se guardará hasta que confirmes en el creador.",
             *([] if rows else ["No hay registros para esa combinación de filtros. Revísala antes de guardar."]),
