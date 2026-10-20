@@ -13,7 +13,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import CondPageBreak, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.analysis.adaptive_analytics_service import get_adaptive_analytics
 from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
@@ -239,9 +239,13 @@ def _add_title(story, styles, title: str, subtitle: str):
 
 
 def _add_section(story, styles, title: str):
+    # A heading should not end up alone at the foot of a page, and a
+    # separator must never force an otherwise empty sheet.
+    story.append(CondPageBreak(48 * mm))
     story.append(Spacer(1, 3 * mm))
     story.append(Paragraph(title, styles["SectionTitle"]))
-    story.append(Spacer(1, 2 * mm))
+    # SectionTitle already provides spaceAfter; an extra Spacer here can be
+    # orphaned and consume a page when a section is near a boundary.
 
 
 def _executive_narrative(dashboard: dict, analytics: dict) -> list[str]:
@@ -557,8 +561,8 @@ def generate_report_pdf(report_type: str) -> tuple[bytes, str]:
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="ReportTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, leading=27, textColor=DARK_BLUE, alignment=TA_CENTER, spaceAfter=6))
     styles.add(ParagraphStyle(name="ReportSubtitle", parent=styles["Normal"], fontSize=9.5, leading=13, textColor=MUTED, alignment=TA_CENTER))
-    styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=15, leading=19, textColor=DARK_BLUE, spaceAfter=4))
-    styles.add(ParagraphStyle(name="SubsectionTitle", parent=styles["Heading3"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#243B53"), spaceAfter=5))
+    styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=15, leading=19, textColor=DARK_BLUE, spaceAfter=4, keepWithNext=1))
+    styles.add(ParagraphStyle(name="SubsectionTitle", parent=styles["Heading3"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#243B53"), spaceAfter=5, keepWithNext=1))
     styles.add(ParagraphStyle(name="BodyTextReport", parent=styles["BodyText"], fontSize=9.5, leading=14.5, textColor=TEXT, spaceAfter=2))
     styles.add(ParagraphStyle(name="NoteText", parent=styles["BodyText"], fontSize=8.3, leading=12, textColor=MUTED))
     story = []
@@ -566,11 +570,11 @@ def generate_report_pdf(report_type: str) -> tuple[bytes, str]:
     if report_type in {"executive", "complete"}:
         _add_executive(story, styles, dashboard, analytics)
     if report_type == "complete":
-        story.append(PageBreak())
+        story.append(CondPageBreak(80 * mm))
     if report_type in {"analytics", "complete"}:
         _add_analytics(story, styles, analytics)
     if report_type == "complete":
-        story.append(PageBreak())
+        story.append(CondPageBreak(80 * mm))
     if report_type in {"predictive", "complete"}:
         _add_predictive(story, styles, forecast, anomalies)
     story.append(Spacer(1, 8 * mm))
