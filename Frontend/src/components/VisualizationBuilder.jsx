@@ -18,6 +18,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const [aggregation, setAggregation] = useState('count');
   const [dimension, setDimension] = useState('');
   const [timeGranularity, setTimeGranularity] = useState('raw');
+  const [rowLimit, setRowLimit] = useState(20);
   const [sourceMismatch, setSourceMismatch] = useState(false);
   const [visualization, setVisualization] = useState('bar');
   const [title, setTitle] = useState('');
@@ -41,6 +42,9 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           initialItem?.source && (
             initialItem.source.database !== status.database
             || initialItem.source.provider !== status.provider
+            || Boolean(initialItem.source.server && initialItem.source.server !== status.server)
+            || Boolean(initialItem.source.host && initialItem.source.host !== status.host)
+            || Boolean(initialItem.source.port && initialItem.source.port !== status.port)
           )
         ));
         if (data.entities?.[0]) setEntityKey(data.entities[0].key);
@@ -88,6 +92,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setMetric(def.metric || '');
       setDimension(def.group_by || '');
       setTimeGranularity(def.time_granularity || 'raw');
+      setRowLimit(def.limit || 20);
       setAggregation(def.aggregation || 'count');
       setVisualization(def.visualization || 'bar');
       setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
@@ -125,7 +130,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
     visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation: effectiveAggregation,
     group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table,
-    time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: 20,
+    time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: rowLimit,
   });
 
   const runPreview = async () => {
@@ -211,6 +216,11 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               {filters.length>1&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Se deben cumplir todas las condiciones (Y).':'All conditions must match (AND).'}</p>}
             </div>}
           </div>
+          <Field label={language === 'es' ? 'Máximo de grupos' : 'Maximum groups'} colors={colors}>
+            <input type="number" min={1} max={100} value={rowLimit}
+              onChange={(e)=>{setRowLimit(Math.max(1,Math.min(100,Number(e.target.value)||1)));setPreview(null)}}
+              className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)} />
+          </Field>
           <Field label={language === 'es' ? 'Título' : 'Title'} colors={colors}><input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder={language === 'es'?'Ej. Ventas por canal':'E.g. Sales by channel'} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}/></Field>
           <button disabled={!canPreview||loading||sourceMismatch} onClick={runPreview} className="w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{loading?(language==='es'?'Generando...':'Generating...'):(language==='es'?'Generar vista previa':'Generate preview')}</button>
           {preview && <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
