@@ -451,5 +451,232 @@ class CustomerRankingFollowupTests(unittest.TestCase):
             engine.dispose()
 
 
+
+def inventory_catalog(*, embedded_name=False, include_minimum=True, role_on_products=False):
+    owner_role = "products" if role_on_products else "inventory"
+    stock_fields = [
+        {"key": "stock", "label": "Existencias", "semantic": "stock",
+         "kind": "number", "is_identifier": False, "metric": True, "filter": True,
+         "aggregations": ["sum", "avg", "count"]},
+    ]
+    if include_minimum:
+        stock_fields.append({
+            "key": "stock_minimo", "label": "Stock mínimo",
+            "semantic": "minimum", "kind": "number", "is_identifier": False,
+            "metric": True, "filter": True, "aggregations": ["sum", "avg", "count"],
+        })
+    if embedded_name:
+        stock_fields.append({
+            "key": "nombre_producto", "label": "Nombre producto", "semantic": "name",
+            "kind": "text", "dimension": True, "filter": True,
+        })
+    owner = {
+        "key": owner_role, "semantic_role": owner_role,
+        "label": "Productos" if role_on_products else "Inventario",
+        "table": "productos" if role_on_products else "inventario",
+        "fields": stock_fields,
+        "metrics": [item for item in stock_fields if item.get("metric")],
+        "dimensions": [item for item in stock_fields if item.get("dimension")],
+        "filters": [item for item in stock_fields if item.get("filter")],
+    }
+    if role_on_products:
+        owner["fields"].append({
+            "key": "nombre", "label": "Nombre", "semantic": "name",
+            "kind": "text", "dimension": True, "filter": True,
+        })
+        owner["dimensions"] = [owner["fields"][-1]]
+        return {"entities": [owner], "relationships": []}
+    products = {
+        "key": "products", "semantic_role": "products", "label": "Productos",
+        "table": "productos", "fields": [
+            {"key": "nombre", "label": "Nombre", "semantic": "name",
+             "kind": "text", "dimension": True, "filter": True},
+        ],
+        "metrics": [], "filters": [],
+        "dimensions": [
+            {"key": "nombre", "label": "Nombre", "semantic": "name",
+             "kind": "text", "dimension": True},
+        ],
+    }
+    return {"entities": [owner, products], "relationships": [{
+        "from_table": "inventario", "from_column": "producto_id",
+        "to_table": "productos", "to_column": "id",
+    }]}
+
+
+def inventory_schema(*, embedded_name=False, product_stock=False):
+    fields = [
+        SimpleNamespace(name="id", type="INTEGER"),
+        SimpleNamespace(name="stock", type="INTEGER"),
+        SimpleNamespace(name="stock_minimo", type="INTEGER"),
+    ]
+    if embedded_name:
+        fields.append(SimpleNamespace(name="nombre_producto", type="VARCHAR"))
+    if not product_stock:
+        fields.append(SimpleNamespace(name="producto_id", type="INTEGER"))
+    products = [
+        SimpleNamespace(name="id", type="INTEGER"),
+        SimpleNamespace(name="nombre", type="VARCHAR"),
+    ]
+    return SimpleNamespace(
+        database="empresa",
+        tables={
+            "inventario": SimpleNamespace(
+                name="inventario", columns=fields,
+                primary_key=["id"],
+            ),
+            "productos": SimpleNamespace(
+                name="productos", columns=fields if product_stock else products,
+                primary_key=["id"],
+            ),
+        },
+        relationships=[
+            SimpleNamespace(
+                table="inventario", column="producto_id",
+                references_table="productos", references_column="id",
+            ),
+        ] if not product_stock else [],
+    )
+
+
+class CriticalInventoryTests(unittest.TestCase):
+    REQUEST = "hazme una grafica con los productos en inventario critico"
+
+    def _proposal(self, question=None, catalog_data=None, schema=None,
+                  duplicates=None):
+        with patch.object(draft, "get_semantic_visualization_catalog",
+                          return_value=catalog_data or inventory_catalog()):
+            with patch("app.database.inspector.inspect_database",
+                       return_value=schema or inventory_schema()):
+                with patch("app.database.query_executor.execute_query",
+                           return_value=duplicates or []):
+                    with patch.object(draft.database_manager, "status",
+                                      return_value={"provider": "excel", "database": "empresa"}):
+                        with patch.object(draft, "preview_visualization",
+                                          side_effect=fake_preview):
+                            return draft.interpret_visualization_request(question or self.REQUEST)
+
+    def test_inventory_products_are_related_not_competing_entities(self):
+        proposal = self._proposal()
+        config = proposal["definition"]
+        self.assertEqual("inventario", config["table"])
+        self.assertEqual("productos", config["group_by_table"])
+        self.assertEqual("nombre", config["group_by"])
+        self.assertEqual("stock", config["metric"])
+        self.assertEqual("sum", config["aggregation"])
+        self.assertEqual("id", config["group_by_identity"])
+        self.assertEqual("asc", config["sort_direction"])
+        self.assertEqual([{
+            "table": "inventario", "column": "stock", "operator": "lte_field",
+            "value": "stock_minimo",
+        }], config["filters"])
+        self.assertIn("menor o igual", proposal["notes"][1])
+
+    def test_followup_inventory_does_not_repeat_entity_conflict(self):
+        question = self.REQUEST + " seria el inventario"
+        proposal = self._proposal(question)
+        self.assertEqual("ready", proposal["status"])
+        self.assertEqual("inventario", proposal["definition"]["table"])
+        with patch.object(assistant_service, "interpret_visualization_request",
+                          return_value=proposal) as called:
+            with patch.object(assistant_service, "route_request",
+                              side_effect=AssertionError("restarted generic conversation")):
+                answer = assistant_service.ask_database(
+                    "sería el inventario", history=[
+                        {"role": "user", "content": self.REQUEST},
+                        {"role": "assistant", "content":
+                         "Para continuar con la visualización: "
+                         "La solicitud coincide con varias entidades: Inventario, Productos. "
+                         "Especifica cuál deseas analizar."},
+                    ],
+                )
+        called.assert_called_once_with(self.REQUEST + " sería el inventario")
+        self.assertEqual("visualization_draft", answer["mode"])
+
+    def test_product_schema_can_contain_stock_and_minimum_directly(self):
+        proposal = self._proposal(
+            catalog_data=inventory_catalog(role_on_products=True),
+            schema=inventory_schema(product_stock=True),
+        )
+        self.assertEqual("productos", proposal["definition"]["table"])
+        self.assertEqual("productos", proposal["definition"]["group_by_table"])
+
+    def test_missing_minimum_is_reported_not_faked(self):
+        with self.assertRaisesRegex(ValueError, "mínimo permitido"):
+            self._proposal(catalog_data=inventory_catalog(include_minimum=False))
+
+    def test_multiple_warehouse_stock_rows_not_called_total_product_shortage(self):
+        with self.assertRaisesRegex(ValueError, "varios registros"):
+            self._proposal(duplicates=[{"product_id": 123}])
+
+    def test_unlinked_inventory_not_used_to_guess_product_names(self):
+        data = inventory_catalog()
+        data["relationships"] = []
+        with self.assertRaisesRegex(ValueError, "nombre de producto"):
+            self._proposal(catalog_data=data)
+
+    def test_filter_rejects_non_numeric_comparison_and_injection(self):
+        schema = inventory_schema()
+        req = visual.VisualizationDefinition(
+            title="Critical inventory", visualization="bar", table="inventario",
+            metric="stock", aggregation="sum", group_by="id",
+            filters=[
+                visual.VisualizationFilter(
+                    table="inventario", column="stock",
+                    operator="lte_field", value="stock_minimo; DROP TABLE inventario",
+                ),
+            ],
+        )
+        with patch.object(visual, "inspect_database", return_value=schema):
+            with self.assertRaisesRegex(ValueError, "no existe"):
+                visual.build_visualization_query(req)
+
+    def test_sqlite_real_data_only_critical_rows_are_included(self):
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        schema = inventory_schema()
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "CREATE TABLE productos (id INTEGER PRIMARY KEY, nombre TEXT)"
+                ))
+                conn.execute(text(
+                    "CREATE TABLE inventario (id INTEGER PRIMARY KEY, producto_id INTEGER,"
+                    " stock INTEGER, stock_minimo INTEGER)"
+                ))
+                for pk, name in [(1, "Teclado"), (2, "Mouse"), (3, "Monitor"), (4, "Monitor")]:
+                    conn.execute(text(
+                        "INSERT INTO productos(id,nombre) VALUES (:pk,:name)"
+                    ), {"pk": pk, "name": name})
+                for pk, item, stock, minimum in [
+                    (1,1,3,5), (2,2,20,5), (3,3,0,1), (4,4,8,8),
+                ]:
+                    conn.execute(text(
+                        "INSERT INTO inventario(id,producto_id,stock,stock_minimo)"
+                        " VALUES(:pk,:item,:stock,:minimum)"
+                    ), {"pk": pk, "item": item, "stock": stock, "minimum": minimum})
+            config = visual.VisualizationDefinition(
+                title="Inventario crítico", visualization="bar",
+                table="inventario", metric="stock", aggregation="sum",
+                group_by="nombre", group_by_table="productos",
+                group_by_identity="id",
+                filters=[visual.VisualizationFilter(
+                    table="inventario", column="stock",
+                    operator="lte_field", value="stock_minimo",
+                )], sort_direction="asc", limit=50,
+            )
+            with patch.object(visual, "inspect_database", return_value=schema):
+                with patch.object(visual.database_manager, "status",
+                                  return_value={"provider": "excel"}):
+                    sql = visual.build_visualization_query(config)
+            self.assertIn('"inventario"."stock" <= "inventario"."stock_minimo"', sql)
+            with engine.connect() as conn:
+                rows = [dict(row) for row in conn.execute(text(sql)).mappings()]
+            self.assertEqual([0, 3, 8], [int(row["value"]) for row in rows])
+            self.assertEqual(["Monitor (#3)", "Teclado (#1)", "Monitor (#4)"],
+                             [row["dimension"] for row in rows])
+        finally:
+            engine.dispose()
+
+
 if __name__ == "__main__":
     unittest.main()
