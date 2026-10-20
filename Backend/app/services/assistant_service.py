@@ -504,6 +504,9 @@ def _pending_visualization_request(question: str, history: list[dict]) -> str | 
     if not (answer.startswith("Para continuar con la visualización:")
             or answer.startswith("¿Cómo quieres agrupar los datos?")):
         return None
+    explicit = str(latest.get("pending_visualization_request") or "").strip()
+    if explicit and is_visualization_creation_request(explicit):
+        return explicit
     for item in reversed(history[:-1][-8:]):
         if (item.get("role") or item.get("from")) not in ("user", "usuario"):
             continue
@@ -529,6 +532,7 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
                 "question": question, "mode": "visualization_clarification",
                 "sql": None, "data": [],
                 "answer": "Para continuar con la visualización: " + str(exc),
+                "pending_visualization_request": pending_request or question,
                 "visualization_draft": None,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
             }
