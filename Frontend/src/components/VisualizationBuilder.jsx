@@ -134,7 +134,9 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation: effectiveAggregation,
     group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table,
     group_by_identity: groupIdentity || null, sort_direction: sortDirection,
-    time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: rowLimit,
+    time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value,value_table}) => ({table,column,operator,
+      value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim(),
+      value_table:operator.endsWith('_field')?(value_table||table):null})), limit: rowLimit,
   });
 
   const runPreview = async () => {
@@ -223,10 +225,16 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
                 const update=patch=>{setFilters(old=>old.map((f,i)=>i===index?{...f,...patch}:f));setPreview(null)};
                 return <div key={index} className="space-y-2 rounded-xl border p-3" style={{borderColor:colors.border,backgroundColor:colors.card}}>
                   <div className="flex justify-between"><span className="text-xs" style={{color:colors.muted}}>{language==='es'?'Condición':'Condition'}</span><button type="button" className="text-xs text-red-500" onClick={()=>{setFilters(old=>old.filter((_,i)=>i!==index));setPreview(null)}}>{language==='es'?'Quitar':'Remove'}</button></div>
-                  <select aria-label="Filter entity" value={source?.table||''} onChange={e=>{const next=relatedEntities.find(x=>x.table===e.target.value);update({table:e.target.value,column:next?.filters?.[0]?.key||'',operator:'eq',value:''})}} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{relatedEntities.map(e=><option key={e.table} value={e.table}>{e.label}</option>)}</select>
-                  <select aria-label="Filter field" value={filter.column} onChange={e=>update({column:e.target.value,operator:'eq',value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{(source?.filters||[]).map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select>
-                  <select aria-label="Filter operator" value={filter.operator} onChange={e=>update({operator:e.target.value,value:''})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{ops.map(op=><option key={op} value={op}>{names[op]}</option>)}</select>
-                  <FilterValueInput key={`${source?.table}:${field?.key}:${filter.operator}`} table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language} numericFields={(source?.filters||[]).filter(item=>item.kind==='number'&&!item.is_identifier&&item.key!==field?.key)}/>
+                  <select aria-label="Filter entity" value={source?.table||''} onChange={e=>{const next=relatedEntities.find(x=>x.table===e.target.value);update({table:e.target.value,column:next?.filters?.[0]?.key||'',operator:'eq',value:'',value_table:null})}} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{relatedEntities.map(e=><option key={e.table} value={e.table}>{e.label}</option>)}</select>
+                  <select aria-label="Filter field" value={filter.column} onChange={e=>update({column:e.target.value,operator:'eq',value:'',value_table:null})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{(source?.filters||[]).map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select>
+                  <select aria-label="Filter operator" value={filter.operator} onChange={e=>update({operator:e.target.value,value:'',value_table:null})} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>{ops.map(op=><option key={op} value={op}>{names[op]}</option>)}</select>
+                  <FilterValueInput key={`${source?.table}:${field?.key}:${filter.operator}`} table={source?.table} field={field} operator={filter.operator} value={filter.value} onChange={value=>update({value})} colors={colors} language={language} numericFields={relatedEntities.filter(item=>item.table===source?.table
+                    || (catalog?.relationships||[]).some(rel=>rel.from_table===source?.table&&rel.to_table===item.table))
+                    .flatMap(item=>(item.filters||[]).filter(f=>f.kind==='number'&&!f.is_identifier
+                      && !(item.table===source?.table&&f.key===field?.key))
+                      .map(f=>({...f,table:item.table,sourceLabel:item.label})))}
+                    valueTable={filter.value_table}
+                    onComparisonChange={(table,value)=>update({value,value_table:table})}/>
                 </div>;
               })}
               <button type="button" onClick={()=>{setFilters(old=>[...old,{table:entity?.table||'',column:entity?.filters?.[0]?.key||'',operator:'eq',value:''}]);setPreview(null)}} className="w-full rounded-lg border px-3 py-2 text-sm font-semibold" style={{borderColor:theme.primary,color:theme.primary}}>{language==='es'?'+ Agregar filtro':'+ Add filter'}</button>
@@ -276,7 +284,7 @@ const inputStyle=(colors)=>({backgroundColor:colors.card,borderColor:colors.bord
 const Field=({label,colors,children})=><label className="block"><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{label}</span>{children}</label>;
 
 
-const FilterValueInput = ({table, field, operator, value, onChange, colors, language, numericFields=[]}) => {
+const FilterValueInput = ({table, field, operator, value, onChange, colors, language, numericFields=[], valueTable, onComparisonChange}) => {
   const [options, setOptions] = useState([]);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -298,10 +306,16 @@ const FilterValueInput = ({table, field, operator, value, onChange, colors, lang
   const selected = value.split(',').map(v => v.trim()).filter(Boolean);
   if (operator.endsWith('_field')) return <select
     aria-label={language==='es'?'Columna numérica de comparación':'Comparison numeric field'}
-    value={value} onChange={e=>onChange(e.target.value)}
+    value={value ? JSON.stringify([valueTable||table,value]) : ''}
+    onChange={e=>{
+      const picked=numericFields.find(item=>JSON.stringify([item.table,item.key])===e.target.value);
+      if (picked) onComparisonChange(picked.table,picked.key);
+      else onComparisonChange(null,'');
+    }}
     className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}>
     <option value="">{language==='es'?'Selecciona una columna numérica':'Select a numeric field'}</option>
-    {numericFields.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}
+    {numericFields.map(item=><option key={JSON.stringify([item.table,item.key])}
+      value={JSON.stringify([item.table,item.key])}>{item.sourceLabel} · {item.label}</option>)}
   </select>;
   if (!supportsOptions) return <input aria-label="Filter value" type={field?.kind==='number'&&operator!=='in'?'number':field?.kind==='date'&&operator!=='in'?'date':'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={language==='es'?'Escribe un valor':'Enter a value'} className="w-full rounded-lg border p-2 text-sm" style={inputStyle(colors)}/>;
   return <div className="space-y-2">
