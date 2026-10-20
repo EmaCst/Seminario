@@ -558,10 +558,16 @@ def preview_visualization(definition: VisualizationDefinition) -> dict:
         ) from exc
     columns = _result_columns(definition)
     if definition.visualization == "donut":
-        if any(float(row.get("value") or 0) < 0 for row in rows):
+        values = [float(row.get("value") or 0) for row in rows]
+        if any(value < 0 for value in values):
             raise ValueError(
                 "Una gráfica de dona no puede representar valores negativos. "
                 "Selecciona barras o líneas para estos indicadores."
+            )
+        if rows and sum(values) <= 0:
+            raise ValueError(
+                "La distribución solo contiene ceros; una gráfica de dona no "
+                "mostraría una proporción significativa. Prueba con barras."
             )
     return {
         "definition": definition.model_dump(),
