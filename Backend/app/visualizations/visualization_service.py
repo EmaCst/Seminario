@@ -14,6 +14,7 @@ AggregationType = Literal["count", "sum", "avg", "min", "max"]
 
 class VisualizationFilter(BaseModel):
     table: str | None = None
+    value_table: str | None = None
     column: str
     operator: Literal[
         "eq", "neq", "gt", "gte", "lt", "lte", "contains", "in",
@@ -153,7 +154,7 @@ def _resolve_definition(definition: VisualizationDefinition):
         if item.operator.endswith("_field"):
             if not isinstance(item.value, str):
                 raise ValueError("La comparación de columnas requiere seleccionar una columna válida.")
-            requested.append((item.table or definition.table, item.value))
+            requested.append((item.value_table or item.table or definition.table, item.value))
 
     for table_name, column_name in requested:
         table = schema.tables.get(table_name)
@@ -165,16 +166,36 @@ def _resolve_definition(definition: VisualizationDefinition):
 
     for item in definition.filters:
         if item.operator.endswith("_field"):
-            table = schema.tables[item.table or definition.table]
-            numeric_columns = {
-                col.name for col in table.columns
+            left_table = item.table or definition.table
+            right_table = item.value_table or left_table
+            numeric_left = {
+                col.name for col in schema.tables[left_table].columns
                 if _column_kind(col.type) == "number"
             }
-            if item.column not in numeric_columns or item.value not in numeric_columns:
+            numeric_right = {
+                col.name for col in schema.tables[right_table].columns
+                if _column_kind(col.type) == "number"
+            }
+            if item.column not in numeric_left or item.value not in numeric_right:
                 raise ValueError(
-                    "Las comparaciones entre campos requieren dos columnas "
-                    "numéricas verificables de la misma tabla."
+                    "Las comparaciones requieren columnas numéricas verificables."
                 )
+            if left_table != right_table:
+                # A dependent inventory row can safely compare with a unique
+                # parent product threshold. Refuse arbitrary reverse/sideways
+                # joins: those may multiply or misattribute stock.
+                relation = [
+                    link for link in schema.relationships
+                    if link.table == left_table
+                    and link.references_table == right_table
+                    and link.references_column in schema.tables[right_table].primary_key
+                ]
+                if (left_table != definition.table or len(relation) != 1):
+                    raise ValueError(
+                        "La comparación entre tablas requiere una relación "
+                        "única desde la tabla principal hasta la clave "
+                        "primaria de la tabla de referencia."
+                    )
 
     if definition.time_granularity != "raw":
         group_columns = {c.name: c for c in schema.tables[group_table].columns}
@@ -249,7 +270,7 @@ def _filter_sql(item: VisualizationFilter, base_table: str) -> str:
             "lt_field": "<", "lte_field": "<=",
             "gt_field": ">", "gte_field": ">=",
         }
-        return f"{column} {operators[item.operator]} {_qualified(item.table or base_table, item.value)}"
+        return f"{column} {operators[item.operator]} {_qualified(item.value_table or item.table or base_table, item.value)}"
     if item.operator == "in":
         if not isinstance(item.value, list) or not item.value:
             raise ValueError("El filtro IN necesita una lista con valores.")
