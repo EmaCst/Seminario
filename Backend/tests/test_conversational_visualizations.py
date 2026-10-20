@@ -246,5 +246,210 @@ class TemporalQueryTests(unittest.TestCase):
             engine.dispose()
 
 
+def customer_ranking_catalog():
+    customer = {
+        "key": "customers", "semantic_role": "customers",
+        "label": "Clientes", "table": "clientes",
+        "fields": [
+            {"key": "id", "label": "ID", "semantic": "id",
+             "kind": "number", "dimension": False},
+            {"key": "nombre", "label": "Nombre", "semantic": "name",
+             "kind": "text", "dimension": True},
+        ],
+        "dimensions": [{"key": "nombre", "label": "Nombre", "semantic": "name",
+                        "kind": "text", "dimension": True}],
+        "metrics": [],
+    }
+    sales = {
+        "key": "sales", "semantic_role": "sales", "label": "Ventas", "table": "ventas",
+        "fields": [
+            {"key": "fecha", "label": "Fecha", "semantic": "date", "kind": "date"},
+            {"key": "total", "label": "Total", "semantic": "total",
+             "kind": "number", "aggregations": ["sum", "avg", "count"]},
+        ],
+        "metrics": [
+            {"key": "total", "label": "Total", "semantic": "total",
+             "kind": "number", "aggregations": ["sum", "avg", "count"]},
+        ],
+        "dimensions": [
+            {"key": "fecha", "label": "Fecha", "semantic": "date", "kind": "date"},
+        ],
+    }
+    return {
+        "entities": [sales, customer],
+        "relationships": [{
+            "from_table": "ventas", "from_column": "cliente_id",
+            "to_table": "clientes", "to_column": "id",
+        }],
+    }
+
+
+def customer_schema():
+    return SimpleNamespace(
+        database="empresa",
+        tables={
+            "ventas": SimpleNamespace(
+                name="ventas", primary_key=["id"],
+                columns=[
+                    SimpleNamespace(name="id", type="INTEGER"),
+                    SimpleNamespace(name="cliente_id", type="INTEGER"),
+                    SimpleNamespace(name="fecha", type="DATE"),
+                    SimpleNamespace(name="total", type="NUMERIC"),
+                ],
+            ),
+            "clientes": SimpleNamespace(
+                name="clientes", primary_key=["id"],
+                columns=[
+                    SimpleNamespace(name="id", type="INTEGER"),
+                    SimpleNamespace(name="nombre", type="VARCHAR"),
+                ],
+            ),
+        },
+        relationships=[
+            SimpleNamespace(
+                table="ventas", column="cliente_id",
+                references_table="clientes", references_column="id",
+            ),
+        ],
+    )
+
+
+class CustomerRankingFollowupTests(unittest.TestCase):
+    REQUEST = "Puedes crearme una grafica que tenga los 5 clientes que compran menos?"
+
+    def _generate(self, question, semantic=None):
+        semantic = semantic or customer_ranking_catalog()
+        schema = customer_schema()
+        with patch.object(draft, "get_semantic_visualization_catalog",
+                          return_value=semantic):
+            with patch("app.database.inspector.inspect_database", return_value=schema):
+                with patch.object(draft, "preview_visualization",
+                                  side_effect=fake_preview):
+                    with patch.object(draft.database_manager, "status",
+                                      return_value={"provider": "excel",
+                                                    "database": "empresa"}):
+                        return draft.interpret_visualization_request(question)
+
+    def test_user_question_is_valid_but_metric_is_ambiguous(self):
+        self.assertTrue(draft.is_visualization_creation_request(self.REQUEST))
+        with self.assertRaisesRegex(ValueError, "importe gastado.*número"):
+            self._generate(self.REQUEST)
+
+    def test_bottom_five_sales_amount_has_join_ascending_and_identity(self):
+        result = self._generate(self.REQUEST + " por importe")
+        definition = result["definition"]
+        self.assertEqual("ventas", definition["table"])
+        self.assertEqual("clientes", definition["group_by_table"])
+        self.assertEqual("nombre", definition["group_by"])
+        self.assertEqual("id", definition["group_by_identity"])
+        self.assertEqual("total", definition["metric"])
+        self.assertEqual("sum", definition["aggregation"])
+        self.assertEqual("asc", definition["sort_direction"])
+        self.assertEqual(5, definition["limit"])
+        self.assertEqual("Clientes", result["axes"]["x"])
+
+    def test_bottom_five_frequency_is_count_without_money(self):
+        result = self._generate(
+            "Crea una grafica de los 5 clientes con menos compras"
+        )
+        self.assertEqual("count", result["definition"]["aggregation"])
+        self.assertIsNone(result["definition"]["metric"])
+        self.assertEqual(5, result["definition"]["limit"])
+
+    def test_no_join_refuses_to_guess_customer_relationship(self):
+        schema = customer_ranking_catalog()
+        schema["relationships"] = []
+        with self.assertRaisesRegex(ValueError, "relación inequívoca"):
+            self._generate(self.REQUEST + " por importe", schema)
+
+    def test_chat_followup_preserves_customer_ranking_request(self):
+        # Exercise real request parser but avoid DB calls until metric is known.
+        with patch.object(draft, "get_semantic_visualization_catalog",
+                          return_value=customer_ranking_catalog()):
+            first = assistant_service.ask_database(self.REQUEST)
+        self.assertEqual("visualization_clarification", first["mode"])
+        self.assertIn("importe", first["answer"])
+        history = [
+            {"role": "user", "content": self.REQUEST},
+            {"role": "assistant", "content": first["answer"]},
+        ]
+        # Relevant answer completes the draft; no second SQL-chat route.
+        result = self._generate(self.REQUEST + " por cantidad de compras")
+        with patch.object(assistant_service, "interpret_visualization_request",
+                          return_value=result) as mocked:
+            with patch.object(assistant_service, "route_request",
+                              side_effect=AssertionError("generic route called")):
+                second = assistant_service.ask_database("por cantidad de compras",
+                                                        history=history)
+            mocked.assert_called_once_with(self.REQUEST + " por cantidad de compras")
+        self.assertEqual("visualization_draft", second["mode"])
+        self.assertEqual("asc", second["visualization_draft"]["definition"]["sort_direction"])
+
+        # Irrelevant follow-up must stay in ranking clarification, not switch to
+        # an independent category ranking.
+        with patch.object(draft, "get_semantic_visualization_catalog",
+                          return_value=customer_ranking_catalog()):
+            with patch.object(assistant_service, "route_request",
+                              side_effect=AssertionError("generic route called")):
+                third = assistant_service.ask_database("por categoria", history=history)
+        self.assertEqual("visualization_clarification", third["mode"])
+        self.assertIn("ranking de clientes", third["answer"])
+        self.assertIsNone(third["visualization_draft"])
+
+    def test_real_sqlite_ranking_keeps_same_names_separate_and_ascending(self):
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        schema = customer_schema()
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("CREATE TABLE clientes (id INT PRIMARY KEY, nombre TEXT)"))
+                conn.execute(text(
+                    "CREATE TABLE ventas (id INT PRIMARY KEY, cliente_id INT,"
+                    " fecha TEXT, total NUMERIC)"
+                ))
+                for client, name in [(1, "Ana"), (2, "Ana"), (3, "Carlos"),
+                                     (4, "Diego"), (5, "Eva"), (6, "Francisca")]:
+                    conn.execute(text(
+                        "INSERT INTO clientes(id, nombre) VALUES (:id, :name)"
+                    ), {"id": client, "name": name})
+                for index, client, value in [(1,1,200),(2,2,10),(3,2,5),
+                                             (4,3,30),(5,4,50),(6,5,80),(7,6,100)]:
+                    conn.execute(text(
+                        "INSERT INTO ventas(id, cliente_id, fecha, total)"
+                        " VALUES (:id, :client, '2026-01-10', :value)"
+                    ), {"id": index, "client": client, "value": value})
+            req = visual.VisualizationDefinition(
+                title="5 clientes que compraron menos", visualization="bar",
+                table="ventas", metric="total", metric_table="ventas",
+                aggregation="sum", group_by="nombre",
+                group_by_table="clientes", group_by_identity="id",
+                sort_direction="asc", limit=5,
+            )
+            with patch.object(visual, "inspect_database", return_value=schema):
+                with patch.object(visual.database_manager, "status",
+                                  return_value={"provider":"excel","database":"empresa"}):
+                    sql = visual.build_visualization_query(req)
+            self.assertIn("ORDER BY value ASC", sql)
+            with engine.connect() as conn:
+                rows = conn.execute(text(sql)).mappings().all()
+            self.assertEqual(5, len(rows))
+            self.assertEqual([15, 30, 50, 80, 100],
+                             [int(row["value"]) for row in rows])
+            self.assertEqual("Ana (#2)", rows[0]["dimension"])
+            self.assertNotIn("Ana (#1)", [row["dimension"] for row in rows])
+            # Count number of purchases gives 1, 2 etc without aggregating
+            # different clients with identical display names.
+            count_req = req.model_copy(update={"metric": None, "aggregation": "count"})
+            with patch.object(visual, "inspect_database", return_value=schema):
+                with patch.object(visual.database_manager, "status",
+                                  return_value={"provider":"excel","database":"empresa"}):
+                    count_sql = visual.build_visualization_query(count_req)
+            with engine.connect() as conn:
+                count_rows = conn.execute(text(count_sql)).mappings().all()
+            self.assertEqual(5, len(count_rows))
+            self.assertEqual(1, min(row["value"] for row in count_rows))
+        finally:
+            engine.dispose()
+
+
 if __name__ == "__main__":
     unittest.main()
