@@ -58,18 +58,20 @@ La configuración admite `sort_direction = asc|desc` y `group_by_identity` opcio
 Caso reproducido: `hazme una grafica con los productos en inventario critico`. Antes, Kenneth detectaba «Inventario» y «Productos» como dos entidades ambiguas, pedía una elección y repetía exactamente la misma pregunta después de respuestas como «sería el inventario».
 
 La solicitud **no es ambigua por mencionar ambas entidades**: es un análisis de existencias con etiquetas de producto. Cuando el modelo semántico identifica columnas numéricas verificables de `stock` y `minimum` en Inventario o Productos, Kenneth propone una gráfica de existencias cuya condición SQL es **existencias menores o iguales al mínimo** (dos columnas, no un número inventado). Para asegurar los datos:
-- Valida que ambas columnas numéricas existan en la misma tabla.
+- Verifica ambos campos numéricos: pueden pertenecer a la misma tabla, o el **stock estar en Inventario y el mínimo en la tabla padre Productos**, únicamente si existe una relación directa y única desde Inventario hacia la clave primaria de Productos. No se permiten uniones arbitrarias entre entidades.
 - Si el nombre está en Productos, utiliza una única relación explícita o inferida Inventario → Productos que termine en clave primaria.
 - Conserva los identificadores únicos de los productos para no fusionar productos homónimos.
 - Si existen varias filas de inventario del mismo producto (por ejemplo, bodegas distintas), solicita aclarar el alcance, en lugar de presentar solo posiciones críticas como si fueran el stock total.
 - Excluye las ventas/existencias sin un producto relacionado cuando se requiere una dimensión de producto.
 - Si falta un mínimo configurado, **no declara un stock bajo arbitrariamente**; puede aplicar un umbral numérico explícito del usuario (por ejemplo, `mínimo de 5 unidades`). Si tampoco se proporcionó, explica qué información hace falta.
-- Las comparaciones de campos `lt_field`, `lte_field`, `gt_field` y `gte_field` pasan por verificación de columnas y tipos antes de generar una consulta SQL. La interfaz del constructor ofrece un selector de columnas numéricas para editar el filtro.
+- Las comparaciones de campos `lt_field`, `lte_field`, `gt_field` y `gte_field` pasan por verificación de columnas, tipos y cardinalidad segura de la relación antes de generar SQL. La interfaz del constructor ofrece un selector de columnas numéricas de la tabla y de sus tablas padre relacionadas para editar el filtro (`value_table` es opcional en definiciones antiguas).
 - Se informa el límite máximo de 100 elementos por visualización y puede ajustarse en el creador.
 
 ### Aclaraciones sin bucles
 
 La respuesta `visualization_clarification` devuelve un campo opcional `pending_visualization_request` con la solicitud original. El chat lo reenvía junto con el historial inmediato. Esto conserva la intención aunque el historial visible se limite a las últimas seis intervenciones; también permite responder `sería el inventario` o `mínimo de 5 unidades` sin reiniciar el análisis. No se añade estado global en el backend.
+
+Las pruebas específicas `Backend/tests/test_inventory_critical_phase3.py` comprueban contra SQLite que el stock de Inventario se filtre correctamente según el mínimo almacenado en Productos, y que se rechacen comparaciones inversas o uniones sin una relación válida. Se ejecutan en CI sobre Python 3.11 y 3.12.
 
 Las pruebas reproducen la frase del usuario, las aclaraciones y varias estructuras de esquema sintético; incluyen una consulta ejecutada en SQLite real con Inventario/Productos, registros en el límite exacto, identificadores homónimos, mínimos ausentes y rechazo de comparaciones con nombres de columna no verificados.
 
