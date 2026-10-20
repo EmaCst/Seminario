@@ -38,6 +38,21 @@ Para filtrar `2026`, se utilizan los límites `fecha >= '2026-01-01'` y `fecha <
 - Se revalida la vista al guardar y se comprueba que la fuente física activa coincida con la del borrador.
 - Las gráficas vacías se muestran como borradores editables, pero no pueden guardarse hasta obtener registros válidos.
 
+## Ranking de clientes y continuidad de aclaraciones
+
+Caso reportado y reproducido:
+`Puedes crearme una gráfica que tenga los 5 clientes que compran menos?`
+
+La instrucción es válida, pero `compran menos` puede representar dos métricas diferentes:
+- **Importe:** suma monetaria de las ventas de cada cliente.
+- **Frecuencia:** número de compras de cada cliente.
+
+Kenneth pregunta únicamente esa diferencia. La siguiente respuesta, por ejemplo `por importe` o `por cantidad de compras`, **retoma la solicitud anterior** en vez de pasar al analizador SQL de preguntas generales. Si el usuario responde `por categoría`, Kenneth explica que esa dimensión no corresponde al ranking de clientes solicitado y vuelve a pedir la métrica, sin inventar una nueva consulta.
+
+El borrador de los cinco clientes utiliza **ventas como tabla de hechos** y **clientes como tabla de nombres** únicamente cuando existe una relación inequívoca de clave foránea desde ventas hacia la clave primaria de clientes. La identidad del cliente se preserva al agrupar para evitar sumar personas homónimas. Se aplica `ORDER BY value ASC, dimension ASC` y `LIMIT 5` o `TOP 5` según el motor SQL. Solo se incluyen clientes con compras registradas; los que nunca compraron son un análisis diferente.
+
+La configuración admite `sort_direction = asc|desc` y `group_by_identity` opcional, compatibles por defecto con las visualizaciones guardadas en fases anteriores. El creador muestra el orden, el límite y permite modificarlos antes de guardar. La conexión y la consulta se revalidan para que el asistente no afirme que ha publicado una gráfica que solo ha previsualizado.
+
 ## Estado de desarrollo
 
 Primera integración funcional en `feature/conversational-visualization-drafts-phase-3`, PR #8 abierto en **borrador**. Este incremento cubre creación mediante el chat, previsualización y confirmación desde el constructor. La parte conversacional para **editar, duplicar o eliminar** visualizaciones previamente guardadas aún no está implementada y no debería invocarse automáticamente; siguen disponibles los controles de la biblioteca existente.
