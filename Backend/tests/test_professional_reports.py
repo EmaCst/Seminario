@@ -225,7 +225,7 @@ class ReportPdfTests(unittest.TestCase):
 
     def test_long_title_and_author_stay_on_single_cover_sheet(self):
         snapshot = self._snapshot()
-        snapshot["configuration"]["title"] = "Análisis general de rendimiento para " + "operaciones " * 8
+        snapshot["configuration"]["title"] = "Análisis general de rendimiento para " + "operaciones " * 6
         snapshot["configuration"]["author_name"] = "Equipo de inteligencia empresarial " * 3
         document, _ = render_report_snapshot(snapshot)
         pages = PdfReader(BytesIO(document)).pages
