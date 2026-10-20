@@ -20,6 +20,8 @@ from app.database.postgresql_backup_loader import (
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
+from app.reports.report_configuration import ReportConfiguration, get_report_options, preview_report
+from app.reports.configured_pdf import generate_configured_report
 from app.services.assistant_service import ask_database
 from app.visualizations.semantic_catalog import get_semantic_visualization_catalog
 from app.visualizations.visualization_store import (
@@ -210,6 +212,38 @@ def visualization_preview(definition: VisualizationDefinition):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible generar la visualización: {exc}") from exc
+
+@app.get("/api/reports/options")
+def report_configuration_options():
+    try:
+        return get_report_options()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/reports/preview")
+def report_preview(request: ReportConfiguration):
+    try:
+        return preview_report(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible previsualizar el informe: {exc}") from exc
+
+
+@app.post("/api/reports/generate")
+def report_generate(request: ReportConfiguration):
+    try:
+        content, filename = generate_configured_report(request)
+        return Response(
+            content=content, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible generar el informe: {exc}") from exc
+
 
 @app.get("/api/reports/pdf")
 def report_pdf(type: str = "executive"):

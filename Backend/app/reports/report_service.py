@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from html import escape
 
 from reportlab.graphics.charts.barcharts import HorizontalBarChart
 from reportlab.graphics.charts.linecharts import HorizontalLineChart
@@ -12,7 +13,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import CondPageBreak, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.analysis.adaptive_analytics_service import get_adaptive_analytics
 from app.analysis.adaptive_dashboard_service import get_adaptive_dashboard_summary
@@ -104,7 +105,7 @@ def _kpi_table(dashboard: dict) -> Table | None:
     value_style = ParagraphStyle("KpiValue", fontName="Helvetica-Bold", fontSize=18, textColor=DARK_BLUE, alignment=TA_CENTER)
     for item in kpis[:4]:
         cells.append(Table([
-            [Paragraph(_role(item.get("role")).title(), label_style)],
+            [Paragraph(escape(_role(item.get("role")).title()), label_style)],
             [Paragraph(_fmt(item.get("value")), value_style)],
         ], colWidths=[39 * mm], rowHeights=[8 * mm, 13 * mm]))
     row = Table([cells], colWidths=[41 * mm] * len(cells))
@@ -238,9 +239,13 @@ def _add_title(story, styles, title: str, subtitle: str):
 
 
 def _add_section(story, styles, title: str):
+    # A heading should not end up alone at the foot of a page, and a
+    # separator must never force an otherwise empty sheet.
+    story.append(CondPageBreak(48 * mm))
     story.append(Spacer(1, 3 * mm))
     story.append(Paragraph(title, styles["SectionTitle"]))
-    story.append(Spacer(1, 2 * mm))
+    # SectionTitle already provides spaceAfter; an extra Spacer here can be
+    # orphaned and consume a page when a section is near a boundary.
 
 
 def _executive_narrative(dashboard: dict, analytics: dict) -> list[str]:
@@ -359,15 +364,18 @@ def _predictive_narrative(forecast: dict | None, anomalies: dict | None) -> list
     if anomalies:
         rows = anomalies.get("anomalies") or []
         if rows:
-            strongest = max(rows, key=lambda item: abs(float(item.get("pct_vs_average") or 0)))
+            strongest = max(rows, key=lambda item: abs(float(item.get("deviation") or 0)))
             paragraphs.append(
-                f"Se detectaron {len(rows)} período(s) atípico(s). El caso más relevante fue {int(strongest['month']):02d}/{strongest['year']}, "
-                f"con {_fmt(strongest.get('total'))} registros, {abs(float(strongest.get('pct_vs_average') or 0)):.1f}% "
-                f"{'por encima' if float(strongest.get('pct_vs_average') or 0) >= 0 else 'por debajo'} del promedio habitual. "
-                f"Su severidad fue {strongest.get('severity') or 'no determinada'}."
+                f"Se detectaron {len(rows)} período(s) atípico(s) respecto a la "
+                f"referencia temporal y estacional. El caso más relevante fue "
+                f"{int(strongest['month']):02d}/{strongest['year']}: observado "
+                f"{_fmt(strongest.get('total'))}, esperado {_fmt(strongest.get('expected_total'))} "
+                f"y severidad {strongest.get('severity') or 'no determinada'}."
             )
-            if strongest.get("reason"):
-                paragraphs.append(str(strongest.get("reason")))
+            if strongest.get("explanation") or strongest.get("reason"):
+                paragraphs.append(str(strongest.get("explanation") or strongest.get("reason")))
+            if strongest.get("diagnostic_explanation"):
+                paragraphs.append(str(strongest["diagnostic_explanation"]))
         else:
             paragraphs.append("El detector de anomalías no identificó meses que se alejen de forma relevante del patrón histórico disponible.")
     return paragraphs
@@ -378,15 +386,15 @@ def _add_narrative(story, styles, paragraphs: list[str], title: str):
         return
     story.append(Paragraph(title, styles["SubsectionTitle"]))
     for text in paragraphs:
-        story.append(Paragraph(text, styles["BodyTextReport"]))
+        story.append(Paragraph(escape(str(text)), styles["BodyTextReport"]))
         story.append(Spacer(1, 2 * mm))
 
 
 def _add_executive(story, styles, dashboard: dict, analytics: dict):
     _add_section(story, styles, "Resumen ejecutivo")
     story.append(Paragraph(
-        f"Este reporte resume el comportamiento de la base <b>{dashboard.get('database') or '-'}</b>, identificada como dominio "
-        f"<b>{dashboard.get('domain') or 'generic'}</b> sobre <b>{dashboard.get('provider') or '-'}</b>. El objetivo es explicar qué está ocurriendo "
+        f"Este reporte resume el comportamiento de la base <b>{escape(str(dashboard.get('database') or '-'))}</b>, identificada como dominio "
+        f"<b>{escape(str(dashboard.get('domain') or 'generic'))}</b> sobre <b>{escape(str(dashboard.get('provider') or '-'))}</b>. El objetivo es explicar qué está ocurriendo "
         "en el negocio y complementar los indicadores con una lectura ejecutiva.",
         styles["BodyTextReport"],
     ))
@@ -403,7 +411,7 @@ def _add_executive(story, styles, dashboard: dict, analytics: dict):
     if insights:
         story.append(Paragraph("Hallazgos destacados", styles["SubsectionTitle"]))
         for insight in insights[:5]:
-            story.append(Paragraph(f"<b>{insight.get('title', 'Insight')}:</b> {insight.get('text', '')}", styles["BodyTextReport"]))
+            story.append(Paragraph(f"<b>{escape(str(insight.get('title', 'Insight')))}:</b> {escape(str(insight.get('text', '')))}", styles["BodyTextReport"]))
             story.append(Spacer(1, 1.5 * mm))
 
 
@@ -482,20 +490,41 @@ def _add_predictive(story, styles, forecast: dict | None, anomalies: dict | None
         ]
         story.append(_table(rows, widths=[30 * mm, 35 * mm, 64 * mm, 36 * mm]))
         story.append(Spacer(1, 3 * mm))
+        validation = forecast.get("validation") or {}
+        scored = validation.get("selected") or {}
         story.append(Paragraph(
-            f"Calidad predictiva: <b>{_quality_label(forecast.get('r2_score')).title()}</b> · R² validado = {_fmt(forecast.get('r2_score'))}. "
-            f"{forecast.get('warning') or ''}", styles["NoteText"]
+            "Confiabilidad orientativa: <b>"
+            + str(forecast.get("confidence") or "sin evaluar")
+            + "</b> · MAE temporal = " + _fmt(scored.get("mae"))
+            + " · RMSE = " + _fmt(scored.get("rmse"))
+            + " · R² fuera del entrenamiento = " + _fmt(scored.get("r2"))
+            + ". Las bandas de error no representan garantías de cobertura.",
+            styles["NoteText"],
         ))
+        if forecast.get("warning"):
+            story.append(Paragraph(escape(str(forecast["warning"])), styles["NoteText"]))
     else:
         story.append(Paragraph("No hay suficientes datos para generar un pronóstico confiable.", styles["BodyTextReport"]))
     story.append(Spacer(1, 5 * mm))
     if anomalies:
         story.append(Paragraph("Períodos atípicos detectados", styles["SubsectionTitle"]))
-        rows = [["Período", "Valor", "Severidad", "% vs promedio", "% vs anterior"]]
-        rows += [[f"{int(item['month']):02d}/{int(item['year'])}", _fmt(item.get("total")), item.get("severity") or "-", _fmt(item.get("pct_vs_average")), _fmt(item.get("pct_vs_previous"))] for item in anomalies.get("anomalies") or []]
+        rows = [["Período", "Observado", "Esperado", "Severidad", "% vs esperado"]]
+        rows += [
+            [f"{int(item['month']):02d}/{int(item['year'])}",
+             _fmt(item.get("total")), _fmt(item.get("expected_total")),
+             item.get("severity") or "-",
+             _fmt(item.get("pct_vs_expected"))]
+            for item in anomalies.get("anomalies") or []
+        ]
         if len(rows) == 1:
-            rows.append(["-", "-", "Sin anomalías relevantes", "-", "-"])
-        story.append(_table(rows, widths=[32 * mm, 32 * mm, 35 * mm, 33 * mm, 33 * mm]))
+            rows.append(["-", "-", "-", "Sin anomalías", "-"])
+        story.append(_table(rows, widths=[30 * mm, 32 * mm, 35 * mm, 35 * mm, 33 * mm]))
+        for item in (anomalies.get("anomalies") or [])[:3]:
+            if item.get("explanation"):
+                story.append(Paragraph(escape(str(item["explanation"])), styles["BodyTextReport"]))
+                if item.get("diagnostic_explanation"):
+                    story.append(Paragraph(escape(str(item["diagnostic_explanation"])), styles["NoteText"]))
+            story.append(Spacer(1, 2 * mm))
     else:
         story.append(Paragraph("No hay suficientes datos para ejecutar la detección de anomalías.", styles["BodyTextReport"]))
 
@@ -532,8 +561,8 @@ def generate_report_pdf(report_type: str) -> tuple[bytes, str]:
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="ReportTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, leading=27, textColor=DARK_BLUE, alignment=TA_CENTER, spaceAfter=6))
     styles.add(ParagraphStyle(name="ReportSubtitle", parent=styles["Normal"], fontSize=9.5, leading=13, textColor=MUTED, alignment=TA_CENTER))
-    styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=15, leading=19, textColor=DARK_BLUE, spaceAfter=4))
-    styles.add(ParagraphStyle(name="SubsectionTitle", parent=styles["Heading3"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#243B53"), spaceAfter=5))
+    styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=15, leading=19, textColor=DARK_BLUE, spaceAfter=4, keepWithNext=1))
+    styles.add(ParagraphStyle(name="SubsectionTitle", parent=styles["Heading3"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#243B53"), spaceAfter=5, keepWithNext=1))
     styles.add(ParagraphStyle(name="BodyTextReport", parent=styles["BodyText"], fontSize=9.5, leading=14.5, textColor=TEXT, spaceAfter=2))
     styles.add(ParagraphStyle(name="NoteText", parent=styles["BodyText"], fontSize=8.3, leading=12, textColor=MUTED))
     story = []
@@ -541,11 +570,11 @@ def generate_report_pdf(report_type: str) -> tuple[bytes, str]:
     if report_type in {"executive", "complete"}:
         _add_executive(story, styles, dashboard, analytics)
     if report_type == "complete":
-        story.append(PageBreak())
+        story.append(CondPageBreak(80 * mm))
     if report_type in {"analytics", "complete"}:
         _add_analytics(story, styles, analytics)
     if report_type == "complete":
-        story.append(PageBreak())
+        story.append(CondPageBreak(80 * mm))
     if report_type in {"predictive", "complete"}:
         _add_predictive(story, styles, forecast, anomalies)
     story.append(Spacer(1, 8 * mm))
