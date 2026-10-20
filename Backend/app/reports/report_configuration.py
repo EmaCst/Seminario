@@ -52,6 +52,7 @@ def _parse_month(value: str) -> tuple[int, int]:
 class ReportConfiguration(BaseModel):
     report_type: Literal["executive", "analytics", "predictive", "complete", "custom"] = "complete"
     title: str = Field(default="Informe empresarial", min_length=3, max_length=120)
+    author_name: str = Field(default="", max_length=120, description="Nombre de quien elaboró el informe")
     start_month: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     end_month: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     sections: list[Literal["executive", "analytics", "predictive", "visualizations", "methodology"]] | None = None
