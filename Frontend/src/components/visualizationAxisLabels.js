@@ -15,7 +15,11 @@ export const visualizationAxisLabels = (definition, catalog, language = 'es') =>
     max: isSpanish ? 'Máximo' : 'Maximum',
   };
   return {
-    x: dimension?.label || definition?.group_by || (isSpanish ? 'Categoría' : 'Category'),
+    x: definition?.time_granularity === 'month'
+      ? (isSpanish ? 'Mes y año' : 'Month and year')
+      : definition?.time_granularity === 'year'
+        ? (isSpanish ? 'Año' : 'Year')
+        : dimension?.label || definition?.group_by || (isSpanish ? 'Categoría' : 'Category'),
     y: aggregation === 'count'
       ? aggregationNames.count
       : `${aggregationNames[aggregation] || aggregation} · ${metric?.label || definition?.metric || (isSpanish ? 'valor' : 'value')}`,
