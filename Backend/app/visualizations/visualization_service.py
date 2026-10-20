@@ -503,9 +503,9 @@ def explore_visualization(request: VisualizationPageRequest) -> dict:
     sql = build_visualization_query(definition)
     provider = database_manager.status().get("provider")
     if provider == "sqlserver":
-        sql = re.sub(r"^SELECT TOP \\d+ ", "SELECT ", sql, count=1)
+        sql = re.sub(r"^SELECT TOP \d+ ", "SELECT ", sql, count=1)
     else:
-        sql = re.sub(r" LIMIT \\d+;?$", "", sql)
+        sql = re.sub(r" LIMIT \d+;?$", "", sql)
     # Strip only our trusted ORDER BY (after the filter and GROUP BY).
     # SQL Server cannot use ORDER BY inside this derived SELECT unless TOP
     # or OFFSET is also present.
