@@ -74,10 +74,16 @@ def _column_kind(type_name: str) -> str:
 
 def _column_capabilities(kind: str, is_identifier: bool) -> dict:
     if is_identifier:
-        return {"metric": False, "dimension": False, "filter": True, "aggregations": ["count"]}
+        return {"metric": True, "dimension": False, "filter": True,
+                "aggregations": ["distinct_count", "count"]}
     if kind == "number":
-        return {"metric": True, "dimension": False, "filter": True, "aggregations": ["sum", "avg", "min", "max", "count"]}
-    return {"metric": False, "dimension": True, "filter": True, "aggregations": ["count"]}
+        return {"metric": True, "dimension": True, "filter": True,
+                "aggregations": ["sum", "avg", "min", "max", "count", "distinct_count"]}
+    if kind == "date":
+        return {"metric": True, "dimension": True, "filter": True,
+                "aggregations": ["distinct_count", "count"]}
+    return {"metric": True, "dimension": True, "filter": True,
+            "aggregations": ["distinct_count", "count"]}
 
 
 def get_semantic_visualization_catalog() -> dict:
@@ -134,6 +140,8 @@ def get_semantic_visualization_catalog() -> dict:
             "metrics": [field for field in fields if field["metric"]],
             "dimensions": [field for field in fields if field["dimension"]],
             "filters": [field for field in fields if field["filter"]],
+            "primary_key": list(table.primary_key),
+            "row_count_label": "Cantidad de registros",
         })
 
     relations = []
@@ -158,11 +166,13 @@ def get_semantic_visualization_catalog() -> dict:
                 {"key": "kpi", "label": "Indicador"},
                 {"key": "bar", "label": "Barras"},
                 {"key": "line", "label": "Líneas"},
+                {"key": "area", "label": "Área"},
                 {"key": "donut", "label": "Dona"},
                 {"key": "table", "label": "Tabla"},
             ],
             "aggregations": {
                 "count": "Cantidad",
+                "distinct_count": "Valores únicos",
                 "sum": "Suma",
                 "avg": "Promedio",
                 "min": "Mínimo",
