@@ -1,12 +1,13 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { BarChart3, LineChart, Sigma, Table2, X } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart as ReLineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart as ReLineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
 import { ChartAxisHint } from './ChartAxisHint';
 import { visualizationAxisLabels } from './visualizationAxisLabels';
+import { VisualizationResultTable } from './VisualizationResultTable';
 import { getDatabaseStatus, getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
 
-const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
+const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, area: LineChart, donut: BarChart3, table: Table2 };
 const sameSource = (expected, actual) => !expected || (
   expected.database === actual.database &&
   expected.provider === actual.provider &&
@@ -30,6 +31,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const [groupIdentity, setGroupIdentity] = useState(null);
   const [sourceMismatch, setSourceMismatch] = useState(false);
   const [visualization, setVisualization] = useState('bar');
+  const [tableMode, setTableMode] = useState('aggregate');
+  const [detailColumns, setDetailColumns] = useState([]);
   const [title, setTitle] = useState('');
   const [filters, setFilters] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -57,21 +60,28 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const entity = useMemo(() => catalog?.entities?.find((item) => item.key === entityKey), [catalog, entityKey]);
   const relatedEntities = useMemo(() => {
     if (!catalog || !entity) return [];
+    // Only expose safe child->parent paths. A reverse join can multiply
+    // fact rows and corrupt counts or sums in all business domains.
     const reachable = new Set([entity.table]);
     let changed = true;
     while (changed) {
       changed = false;
       (catalog.relationships || []).forEach((rel) => {
-        if (reachable.has(rel.from_table) && !reachable.has(rel.to_table)) { reachable.add(rel.to_table); changed = true; }
-        if (reachable.has(rel.to_table) && !reachable.has(rel.from_table)) { reachable.add(rel.from_table); changed = true; }
+        const parent = catalog.entities.find(e => e.table === rel.to_table);
+        if (reachable.has(rel.from_table) && parent?.primary_key?.includes(rel.to_column)
+            && !reachable.has(rel.to_table)) {
+          reachable.add(rel.to_table);
+          changed = true;
+        }
       });
     }
     return (catalog.entities || []).filter((item) => reachable.has(item.table));
   }, [catalog, entity]);
   const metricEntity = relatedEntities.find((item) => item.key === metricEntityKey) || entity;
   const dimensionEntity = relatedEntities.find((item) => item.key === dimensionEntityKey) || entity;
-  const needsDimension = ['bar', 'line', 'donut'].includes(visualization);
-  const supportsDimension = needsDimension || visualization === 'table';
+  const isDetailTable = visualization === 'table' && tableMode === 'detail';
+  const needsDimension = ['bar', 'line', 'area', 'donut'].includes(visualization);
+  const supportsDimension = !isDetailTable && (needsDimension || visualization === 'table');
   const selectedDimensionField = dimensionEntity?.dimensions?.find(field => field.key === dimension);
   const dimensionIsDate = selectedDimensionField?.kind === 'date' || selectedDimensionField?.semantic === 'date';
   const metricOptions = metricEntity?.metrics?.find(field => field.key === metric)?.aggregations || [];
@@ -98,6 +108,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setGroupIdentity(def.group_by_identity || null);
       setAggregation(def.aggregation || 'count');
       setVisualization(def.visualization || 'bar');
+      setTableMode(def.table_mode || 'aggregate');
+      setDetailColumns(def.detail_columns || []);
       setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
       setFilters((def.filters || []).map(item => ({ ...item, table: item.table || def.table, value: Array.isArray(item.value) ? item.value.join(',') : String(item.value ?? '') })));
       setShowFilters(Boolean(def.filters?.length));
@@ -114,6 +126,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       if (!active) return;
       setMetric(''); setDimension(''); setMetricEntityKey(entityKey);
       setDimensionEntityKey(entityKey); setFilters([]); setTimeGranularity('raw'); setPreview(null);
+      setTableMode('aggregate'); setDetailColumns([]);
       setGroupIdentity(null); setSortDirection('desc');
     });
     return () => { active = false; };
@@ -131,9 +144,15 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
 
   const definition = () => ({
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
-    visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation: effectiveAggregation,
-    group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table,
-    group_by_identity: groupIdentity || null, sort_direction: sortDirection,
+    visualization, table: entity?.table,
+    metric: isDetailTable ? null : (metric || null),
+    metric_table: metricEntity?.table || entity?.table,
+    aggregation: isDetailTable ? 'count' : effectiveAggregation,
+    group_by: isDetailTable ? null : (dimension || null), group_by_table: dimensionEntity?.table || entity?.table,
+    group_by_identity: isDetailTable ? null : (groupIdentity || null),
+    sort_direction: sortDirection,
+    table_mode: isDetailTable ? 'detail' : 'aggregate',
+    detail_columns: isDetailTable ? detailColumns : [],
     time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value,value_table}) => ({table,column,operator,
       value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim(),
       value_table:operator.endsWith('_field')?(value_table||table):null})), limit: rowLimit,
@@ -184,7 +203,14 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
 
   const data = preview?.data || [];
   const axes = visualizationAxisLabels(preview?.definition || { table: entity?.table, group_by: dimension, group_by_table: dimensionEntity?.table, metric, metric_table: metricEntity?.table, aggregation: effectiveAggregation }, catalog, language);
-  const canPreview = entity && (!needsDimension || dimension) && (effectiveAggregation === 'count' || metric) && filters.every(f=>f.column&&f.value.trim());
+  const canPreview = entity && (
+    isDetailTable ? detailColumns.length > 0
+      : (!needsDimension || dimension) && (
+          effectiveAggregation === 'count' || Boolean(metric)
+        )
+  ) && filters.every(f =>
+    f.column && (['is_null', 'not_null'].includes(f.operator) || String(f.value ?? '').trim())
+  );
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-[26px] border shadow-2xl" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
