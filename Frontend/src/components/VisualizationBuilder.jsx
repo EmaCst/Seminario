@@ -7,6 +7,13 @@ import { visualizationAxisLabels } from './visualizationAxisLabels';
 import { getDatabaseStatus, getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
+const sameSource = (expected, actual) => !expected || (
+  expected.database === actual.database &&
+  expected.provider === actual.provider &&
+  (!expected.server || expected.server === actual.server) &&
+  (!expected.host || expected.host === actual.host) &&
+  (!expected.port || expected.port === actual.port)
+);
 
 export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = null, mode = 'create' }) => {
   const { colors, theme, language } = useContext(DashboardContext);
@@ -38,15 +45,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       .then(([data, status]) => {
         if (!active) return;
         setCatalog(data);
-        setSourceMismatch(Boolean(
-          initialItem?.source && (
-            initialItem.source.database !== status.database
-            || initialItem.source.provider !== status.provider
-            || Boolean(initialItem.source.server && initialItem.source.server !== status.server)
-            || Boolean(initialItem.source.host && initialItem.source.host !== status.host)
-            || Boolean(initialItem.source.port && initialItem.source.port !== status.port)
-          )
-        ));
+        setSourceMismatch(!sameSource(initialItem?.source, status));
         if (data.entities?.[0]) setEntityKey(data.entities[0].key);
       })
       .catch((err) => { if (active) setError(err.message); });
@@ -157,6 +156,13 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setSaving(true); setError('');
       // Validate again at the exact point of saving: data and source may have
       // changed since the chat preview. Never persist an empty visualization.
+      // The backend connection is globally active; re-check immediately before
+      // saving in case another browser session switched databases meanwhile.
+      if (!sameSource(initialItem?.source, await getDatabaseStatus())) {
+        throw new Error(language === 'es'
+          ? 'La fuente de datos cambió mientras editabas. Solicita nuevamente la gráfica.'
+          : 'The data source changed while editing. Please request the chart again.');
+      }
       const fresh = await previewVisualization(definition());
       if (!(fresh.data || []).length) {
         throw new Error(language === 'es'
