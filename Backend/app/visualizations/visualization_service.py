@@ -40,7 +40,7 @@ class VisualizationDefinition(BaseModel):
     group_by_table: str | None = None
     group_by_identity: str | None = None
     sort_direction: Literal["asc", "desc"] = "desc"
-    time_granularity: Literal["raw", "month", "year"] = "raw"
+    time_granularity: Literal["raw", "month", "quarter", "year"] = "raw"
     filters: list[VisualizationFilter] = Field(default_factory=list, max_length=20)
     table_mode: Literal["aggregate", "detail"] = "aggregate"
     detail_columns: list[VisualizationColumn] = Field(default_factory=list, max_length=8)
@@ -331,6 +331,12 @@ def _filter_sql(item: VisualizationFilter, base_table: str) -> str:
             "gt_field": ">", "gte_field": ">=",
         }
         return f"{column} {operators[item.operator]} {_qualified(item.value_table or item.table or base_table, item.value)}"
+    if item.operator in {"is_null", "not_null"}:
+        return f"{column} IS {'NOT ' if item.operator == 'not_null' else ''}NULL"
+    if item.operator == "between":
+        if not isinstance(item.value, list) or len(item.value) != 2:
+            raise ValueError("El filtro entre dos valores necesita un inicio y un final.")
+        return f"{column} BETWEEN {_literal(item.value[0])} AND {_literal(item.value[1])}"
     if item.operator == "in":
         if not isinstance(item.value, list) or not item.value:
             raise ValueError("El filtro IN necesita una lista con valores.")
@@ -346,13 +352,21 @@ def _time_bucket(expression: str, granularity: str) -> str:
         return expression
     provider = database_manager.status().get("provider")
     if provider == "postgresql":
+        if granularity == "quarter":
+            return (f"TO_CHAR({expression}, 'YYYY') || '-Q' || "
+                    f"CAST(EXTRACT(QUARTER FROM {expression}) AS TEXT)")
         fmt = "YYYY-MM" if granularity == "month" else "YYYY"
         return f"TO_CHAR({expression}, '{fmt}')"
     if provider == "sqlserver":
         if granularity == "month":
             return f"CONVERT(VARCHAR(7), {expression}, 120)"
+        if granularity == "quarter":
+            return f"CONCAT(YEAR({expression}), '-Q', DATEPART(QUARTER, {expression}))"
         return f"CONVERT(VARCHAR(4), {expression}, 112)"
     # Excel is imported into SQLite with ISO-formatted date values.
+    if granularity == "quarter":
+        return (f"strftime('%Y', {expression}) || '-Q' || "
+                f"CAST(((CAST(strftime('%m', {expression}) AS INTEGER) - 1) / 3 + 1) AS INTEGER)")
     fmt = "%Y-%m" if granularity == "month" else "%Y"
     return f"strftime('{fmt}', {expression})"
 
