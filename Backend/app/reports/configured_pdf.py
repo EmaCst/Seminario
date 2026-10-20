@@ -13,7 +13,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, KeepTogether
+from reportlab.platypus import CondPageBreak, PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
 from app.reports.report_configuration import ReportConfiguration, prepare_report, SECTION_NAMES
 from app.reports.report_service import (
@@ -46,11 +46,11 @@ def _styles():
     ))
     styles.add(ParagraphStyle(
         name="SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold",
-        fontSize=15, leading=20, textColor=DARK_BLUE, spaceAfter=6,
+        fontSize=15, leading=20, textColor=DARK_BLUE, spaceAfter=6, keepWithNext=1,
     ))
     styles.add(ParagraphStyle(
         name="SubsectionTitle", parent=styles["Heading3"], fontName="Helvetica-Bold",
-        fontSize=11, leading=15, textColor=TEXT, spaceAfter=6,
+        fontSize=11, leading=15, textColor=TEXT, spaceAfter=6, keepWithNext=1,
     ))
     styles.add(ParagraphStyle(
         name="BodyTextReport", parent=styles["BodyText"], fontSize=9.3,
@@ -211,13 +211,16 @@ def render_report_snapshot(snapshot: dict) -> tuple[bytes, str]:
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=18 * mm, bottomMargin=20 * mm,
-        title=config.title, author="Kenneth - AI Business Assistant",
+        title=config.title, author=config.author_name.strip() or "Kenneth - AI Business Assistant",
     )
     story = []
     story.append(Spacer(1, 48 * mm))
     _paragraph(story, styles, "KENNETH / BUSINESS INTELLIGENCE", "ReportSubtitle")
     story.append(Spacer(1, 8 * mm))
     _paragraph(story, styles, config.title, "CoverTitle")
+    if config.author_name.strip():
+        story.append(Spacer(1, 4 * mm))
+        _paragraph(story, styles, f"Elaborado por: {config.author_name.strip()}", "ReportSubtitle")
     _paragraph(story, styles, f"{source.get('database')} | {source.get('provider')}", "ReportSubtitle")
     period = snapshot.get("period")
     _paragraph(story, styles,
@@ -235,16 +238,18 @@ def render_report_snapshot(snapshot: dict) -> tuple[bytes, str]:
     if "executive" in sections:
         _add_executive(story, styles, snapshot["dashboard"], snapshot["analytics"])
     if "analytics" in sections:
-        if "executive" in sections:
-            story.append(PageBreak())
+        # Avoid unconditional PageBreak: when the preceding section already
+        # reached a page boundary, another break can create an empty page.
+        # CondPageBreak only advances if the next heading/content cannot fit.
+        story.append(CondPageBreak(80 * mm))
         _add_analytics(story, styles, snapshot["analytics"])
     if "predictive" in sections:
         if any(item in sections for item in ("executive", "analytics")):
-            story.append(PageBreak())
+            story.append(CondPageBreak(80 * mm))
         _add_predictive(story, styles, snapshot["forecast"], snapshot["anomalies"])
     if "visualizations" in sections:
         if any(item in sections for item in ("executive", "analytics", "predictive")):
-            story.append(PageBreak())
+            story.append(CondPageBreak(80 * mm))
         _add_visualizations(story, styles, snapshot["visualizations"])
     if "methodology" in sections:
         _add_methodology(story, styles, snapshot)
