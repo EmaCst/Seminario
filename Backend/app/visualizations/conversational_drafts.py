@@ -22,6 +22,21 @@ from app.visualizations.visualization_store import _source_key
 
 ROLE_ALIASES = {
     "sales": ("venta", "ventas", "sales"),
+    "doctors": ("doctor", "doctores", "medico", "medicos", "physicians"),
+    "teachers": ("docente", "docentes", "profesor", "profesores", "teachers"),
+    "courses": ("curso", "cursos", "materia", "materias", "courses"),
+    "routes": ("ruta", "rutas", "routes"),
+    "vehicles": ("vehiculo", "vehiculos", "vehicles"),
+    "drivers": ("conductor", "conductores", "drivers"),
+    "rooms": ("habitacion", "habitaciones", "rooms"),
+    "guests": ("huesped", "huespedes", "guests"),
+    "categories": ("categoria", "categorias", "categories"),
+    "departments": ("departamento", "departamentos", "departments"),
+    "accounts": ("cuenta", "cuentas", "accounts"),
+    "materials": ("material", "materiales", "materials"),
+    "suppliers": ("proveedor", "proveedores", "suppliers"),
+    "services": ("servicio", "servicios", "services"),
+    "clients": ("cliente", "clientes", "clients"),
     "sales_details": ("detalle de ventas",),
     "appointments": ("cita", "citas", "consultas", "appointment", "appointments"),
     "enrollments": ("inscripcion", "inscripciones", "matricula", "matriculas", "enrollment"),
@@ -164,6 +179,64 @@ def _choose_dimension(text: str, entity: dict, visual_type: str) -> tuple[dict |
             f"en «{entity['label']}». Selecciona una columna válida en el creador."
         )
     return matches[0], "raw"
+
+
+def _related_dimension(text: str, root: dict, catalog: dict) -> tuple[dict, dict] | None:
+    """Resolve 'by doctor/course/customer' through many-to-one relations only."""
+    matches = re.findall(r"\b(?:por|segun|by)\s+([a-z_]+)", text)
+    if not matches:
+        return None
+    requested = matches[-1]
+    entities = catalog.get("entities") or []
+    by_table = {entity["table"]: entity for entity in entities}
+    reachable = {root["table"]}
+    for _ in range(4):
+        changed = False
+        for link in catalog.get("relationships") or []:
+            if link["from_table"] in reachable and link["to_table"] not in reachable:
+                parent = by_table.get(link["to_table"])
+                if parent and link["to_column"] in (parent.get("primary_key") or []):
+                    reachable.add(link["to_table"])
+                    changed = True
+        if not changed:
+            break
+
+    candidates = []
+    for table in reachable - {root["table"]}:
+        entity = by_table[table]
+        role = entity.get("semantic_role") or ""
+        names = [
+            role.replace("_", " "), entity.get("label", ""),
+            entity.get("table", ""), *ROLE_ALIASES.get(role, ()),
+        ]
+        matched_role = any(_contains(requested, name) for name in names if name)
+        fields = entity.get("dimensions") or []
+        matching_fields = [
+            field for field in fields
+            if any(_contains(requested, name) for name in (
+                field.get("key") or "", field.get("label") or "",
+                field.get("semantic") or "",
+            ))
+        ]
+        if matched_role:
+            named = [field for field in fields if field.get("semantic") == "name"]
+            if len(named) != 1:
+                named = [
+                    field for field in fields
+                    if _normalize(field.get("key", "")) in (
+                        "nombre", "name", "title", "codigo", "code",
+                    )
+                ]
+            if len(named) == 1:
+                candidates.append((named[0], entity))
+        elif len(matching_fields) == 1:
+            candidates.append((matching_fields[0], entity))
+    if len(candidates) > 1:
+        raise ValueError(
+            f"La dimensión «{requested}» existe en varias entidades relacionadas. "
+            "Especifica cuál deseas usar en el creador."
+        )
+    return candidates[0] if candidates else None
 
 
 def _choose_metric(text: str, entity: dict) -> tuple[dict | None, str]:
@@ -628,7 +701,15 @@ def interpret_visualization_request(question: str) -> dict:
     else:
         selected = _pick_entity(normalized, entities)
         chart_type = _visual_type(normalized)
-        dimension, grain = _choose_dimension(normalized, selected, chart_type)
+        dimension_entity = selected
+        try:
+            dimension, grain = _choose_dimension(normalized, selected, chart_type)
+        except ValueError as exc:
+            related = _related_dimension(normalized, selected, catalog)
+            if related is None:
+                raise exc
+            dimension, dimension_entity = related
+            grain = "raw"
         metric, aggregation = _choose_metric(normalized, selected)
         filters = _year_bounds(normalized, selected)
         if metric and aggregation not in metric.get("aggregations", []):
@@ -649,7 +730,14 @@ def interpret_visualization_request(question: str) -> dict:
             metric_table=selected["table"],
             aggregation=aggregation,
             group_by=dimension["key"] if dimension else None,
-            group_by_table=selected["table"],
+            group_by_table=dimension_entity["table"],
+            group_by_identity=(
+                dimension_entity["primary_key"][0]
+                if dimension and dimension_entity["table"] != selected["table"]
+                and dimension.get("semantic") == "name"
+                and len(dimension_entity.get("primary_key") or []) == 1
+                else None
+            ),
             time_granularity=grain,
             filters=filters,
             limit=100 if grain != "raw" else 20,
