@@ -28,6 +28,7 @@ class VisualizationDefinition(BaseModel):
     aggregation: AggregationType = "count"
     group_by: str | None = None
     group_by_table: str | None = None
+    time_granularity: Literal["raw", "month", "year"] = "raw"
     filters: list[VisualizationFilter] = Field(default_factory=list)
     limit: int = Field(default=20, ge=1, le=100)
 
@@ -37,6 +38,8 @@ class VisualizationDefinition(BaseModel):
             raise ValueError("Selecciona una métrica para esta agregación.")
         if self.visualization in {"bar", "line", "donut"} and not self.group_by:
             raise ValueError("Esta visualización necesita una dimensión para agrupar.")
+        if self.time_granularity != "raw" and not self.group_by:
+            raise ValueError("Selecciona una fecha para agrupar por mes o año.")
         return self
 
 
@@ -143,6 +146,21 @@ def _resolve_definition(definition: VisualizationDefinition):
         if column_name not in columns:
             raise ValueError(f"La columna '{column_name}' no existe en '{table_name}'.")
 
+    if definition.time_granularity != "raw":
+        group_columns = {c.name: c for c in schema.tables[group_table].columns}
+        group_field = group_columns[definition.group_by]
+        if _column_kind(group_field.type) != "date":
+            # A mapped Excel date may be represented as TEXT in SQLite.
+            from app.analysis.semantic_mapper_v2 import inspect_semantic_model
+            entities = (inspect_semantic_model().get("semantic_model") or {}).get("entities") or {}
+            recognized_date = any(
+                item.get("table") == group_table
+                and not item.get("ambiguous")
+                and (item.get("columns") or {}).get("date") == definition.group_by
+                for item in entities.values()
+            )
+            if not recognized_date:
+                raise ValueError("La agrupación mensual/anual requiere una columna de fecha verificable.")
     if definition.aggregation in {"sum", "avg"} and definition.metric:
         metric_columns = {column.name: column for column in schema.tables[metric_table].columns}
         if _column_kind(metric_columns[definition.metric].type) != "number":
@@ -204,6 +222,22 @@ def _filter_sql(item: VisualizationFilter, base_table: str) -> str:
     return f"{column} {operators[item.operator]} {_literal(item.value)}"
 
 
+def _time_bucket(expression: str, granularity: str) -> str:
+    if granularity == "raw":
+        return expression
+    provider = database_manager.status().get("provider")
+    if provider == "postgresql":
+        fmt = "YYYY-MM" if granularity == "month" else "YYYY"
+        return f"TO_CHAR({expression}, '{fmt}')"
+    if provider == "sqlserver":
+        if granularity == "month":
+            return f"CONVERT(VARCHAR(7), {expression}, 120)"
+        return f"CONVERT(VARCHAR(4), {expression}, 112)"
+    # Excel is imported into SQLite with ISO-formatted date values.
+    fmt = "%Y-%m" if granularity == "month" else "%Y"
+    return f"strftime('{fmt}', {expression})"
+
+
 def build_visualization_query(definition: VisualizationDefinition) -> str:
     schema, paths = _resolve_definition(definition)
     metric_table = definition.metric_table or definition.table
@@ -215,10 +249,12 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
     group = ""
     order = ""
     if definition.group_by:
-        dimension = _qualified(group_table, definition.group_by)
+        dimension = _time_bucket(
+            _qualified(group_table, definition.group_by), definition.time_granularity
+        )
         select.append(f"{dimension} AS dimension")
         group = f" GROUP BY {dimension}"
-        order = " ORDER BY value DESC"
+        order = " ORDER BY dimension ASC" if definition.time_granularity != "raw" else " ORDER BY value DESC"
     select.append(f"{expression} AS value")
 
     where = ""
@@ -258,7 +294,7 @@ def explore_visualization(request: VisualizationPageRequest) -> dict:
         sql = re.sub(r"^SELECT TOP \d+ ", "SELECT ", sql, count=1)
     else:
         sql = re.sub(r" LIMIT \d+;?$", "", sql)
-    sql = re.sub(r" ORDER BY value DESC;?$", "", sql).rstrip(";")
+    sql = re.sub(r" ORDER BY (?:value DESC|dimension ASC);?$", "", sql).rstrip(";")
     columns = ["dimension", "value"] if definition.group_by else ["value"]
     where = ""
     if request.search and definition.group_by:
