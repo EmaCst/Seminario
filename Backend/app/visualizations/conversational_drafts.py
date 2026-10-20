@@ -38,6 +38,7 @@ ROLE_ALIASES = {
     "services": ("servicio", "servicios", "services"),
     "clients": ("cliente", "clientes", "clients"),
     "menu_items": ("plato", "platos", "producto", "productos", "menu", "menu item"),
+    "tables": ("mesa", "mesas", "tables"),
     "order_details": ("detalle", "detalle de pedidos", "lineas"),
     "sales_details": ("detalle de ventas",),
     "appointments": ("cita", "citas", "consultas", "appointment", "appointments"),
@@ -107,7 +108,9 @@ def _visual_type(text: str) -> str:
 
 
 def _pick_entity(text: str, entities: list[dict]) -> dict:
-    subject = re.split(r"\bpor (?:mes|ano|dia|fecha|estado|tipo|categoria|producto|cliente|departamento|metodo|semana)\b", text)[0]
+    # The entity before "por/by" is normally the fact to analyze.
+    # Do not give the same weight to a related dimension mentioned later.
+    subject = re.split(r"\b(?:por|segun|by)\s+[a-z_]+\b", text, maxsplit=1)[0]
     matches = []
     for item in entities:
         role = item.get("semantic_role")
