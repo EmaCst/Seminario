@@ -1,6 +1,7 @@
-import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CheckCheck, SlidersHorizontal } from 'lucide-react';
 import { ChartAxisHint } from './ChartAxisHint';
+import { VisualizationResultTable } from './VisualizationResultTable';
 
 const formatNumber = (value) => Number(value ?? 0).toLocaleString('es-GT', { maximumFractionDigits: 2 });
 
@@ -24,7 +25,7 @@ export const ChatVisualizationDraft = ({ draft, colors, theme, language, onRevie
         {draft.source?.database || ''} · {definition.filters?.length || 0} {es ? 'filtros' : 'filters'} · {rows.length} {es ? 'resultados mostrados' : 'results shown'}
       </p>
 
-      {['bar', 'line'].includes(type) && rows.length > 0 ? (
+      {['bar', 'line', 'area'].includes(type) && rows.length > 0 ? (
         <div className="mt-3 min-w-0">
           <ChartAxisHint className="mb-1" x={draft.axes?.x} y={draft.axes?.y} colors={colors} language={language} />
           <div className="h-44 min-w-0" role="img" aria-label={es ? 'Previsualización de los datos consultados' : 'Preview of queried data'}>
@@ -37,6 +38,14 @@ export const ChatVisualizationDraft = ({ draft, colors, theme, language, onRevie
                   <Tooltip/>
                   <Line dataKey="value" type="monotone" stroke={theme.primary} strokeWidth={2} dot={false}/>
                 </LineChart>
+              ) : type === 'area' ? (
+                <AreaChart data={rows} margin={{ top: 6, right: 6, left: -20, bottom: 8 }}>
+                  <CartesianGrid stroke={colors.border} strokeOpacity={0.35}/>
+                  <XAxis dataKey="dimension" tick={{ fontSize: 9, fill: colors.muted }} interval="preserveStartEnd"/>
+                  <YAxis tick={{ fontSize: 9, fill: colors.muted }}/>
+                  <Tooltip/>
+                  <Area dataKey="value" stroke={theme.primary} fill={theme.primary} fillOpacity={0.2}/>
+                </AreaChart>
               ) : (
                 <BarChart data={rows} margin={{ top: 6, right: 6, left: -20, bottom: 8 }}>
                   <CartesianGrid stroke={colors.border} strokeOpacity={0.35}/>
@@ -66,19 +75,8 @@ export const ChatVisualizationDraft = ({ draft, colors, theme, language, onRevie
           {formatNumber(rows[0].value)}
         </div>
       ) : type === 'table' && rows.length ? (
-        <div className="mt-3 max-h-44 overflow-auto rounded-lg border" style={{ borderColor: colors.border }}>
-          <table className="w-full text-xs">
-            <thead><tr>
-              {definition.group_by && <th className="p-2 text-left">{draft.axes?.x}</th>}
-              <th className="p-2 text-right">{draft.axes?.y}</th>
-            </tr></thead>
-            <tbody>{rows.map((item, i) => (
-              <tr key={i} className="border-t" style={{ borderColor: colors.border }}>
-                {definition.group_by && <td className="p-2">{String(item.dimension ?? '—')}</td>}
-                <td className="p-2 text-right">{formatNumber(item.value)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
+        <div className="mt-3">
+          <VisualizationResultTable preview={draft.preview} colors={colors} language={language} compact pageSize={5}/>
         </div>
       ) : (
         <p className="mt-3 text-xs" style={{ color: colors.muted }}>
