@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart as ReLineChart, Responsiv
 import { DashboardContext } from '../context/DashboardContext';
 import { ChartAxisHint } from './ChartAxisHint';
 import { visualizationAxisLabels } from './visualizationAxisLabels';
-import { getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
+import { getDatabaseStatus, getVisualizationSemanticCatalog, getVisualizationFilterValues, previewVisualization, saveVisualization, updateSavedVisualization } from '../services/api';
 
 const ICONS = { kpi: Sigma, bar: BarChart3, line: LineChart, donut: BarChart3, table: Table2 };
 
@@ -17,6 +17,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const [dimensionEntityKey, setDimensionEntityKey] = useState('');
   const [aggregation, setAggregation] = useState('count');
   const [dimension, setDimension] = useState('');
+  const [timeGranularity, setTimeGranularity] = useState('raw');
+  const [sourceMismatch, setSourceMismatch] = useState(false);
   const [visualization, setVisualization] = useState('bar');
   const [title, setTitle] = useState('');
   const [filters, setFilters] = useState([]);
@@ -30,11 +32,22 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
 
   useEffect(() => {
     if (!open) return;
-    getVisualizationSemanticCatalog().then((data) => {
-      setCatalog(data);
-      if (data.entities?.[0]) setEntityKey(data.entities[0].key);
-    }).catch((err) => setError(err.message));
-  }, [open]);
+    let active = true;
+    Promise.all([getVisualizationSemanticCatalog(), getDatabaseStatus()])
+      .then(([data, status]) => {
+        if (!active) return;
+        setCatalog(data);
+        setSourceMismatch(Boolean(
+          initialItem?.source && (
+            initialItem.source.database !== status.database
+            || initialItem.source.provider !== status.provider
+          )
+        ));
+        if (data.entities?.[0]) setEntityKey(data.entities[0].key);
+      })
+      .catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [open, initialItem]);
 
   const entity = useMemo(() => catalog?.entities?.find((item) => item.key === entityKey), [catalog, entityKey]);
   const relatedEntities = useMemo(() => {
@@ -53,6 +66,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const metricEntity = relatedEntities.find((item) => item.key === metricEntityKey) || entity;
   const dimensionEntity = relatedEntities.find((item) => item.key === dimensionEntityKey) || entity;
   const needsDimension = ['bar', 'line', 'donut'].includes(visualization);
+  const selectedDimensionField = dimensionEntity?.dimensions?.find(field => field.key === dimension);
+  const dimensionIsDate = selectedDimensionField?.kind === 'date' || selectedDimensionField?.semantic === 'date';
   const metricOptions = metricEntity?.metrics?.find(field => field.key === metric)?.aggregations || [];
   const effectiveAggregation = metric ? (metricOptions.includes(aggregation) ? aggregation : (metricOptions.includes('sum') ? 'sum' : metricOptions[0] || 'count')) : 'count';
 
@@ -71,6 +86,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setDimensionEntityKey(catalog.entities.find(e => e.table === (def.group_by_table || def.table))?.key || source.key);
       setMetric(def.metric || '');
       setDimension(def.group_by || '');
+      setTimeGranularity(def.time_granularity || 'raw');
       setAggregation(def.aggregation || 'count');
       setVisualization(def.visualization || 'bar');
       setTitle(mode === 'duplicate' ? `${def.title} (copia)` : def.title || '');
@@ -78,7 +94,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setShowFilters(Boolean(def.filters?.length));
       setSaveToAnalytics(initialItem.placement?.analytics ?? true);
       setSaveToDashboard(initialItem.placement?.dashboard ?? false);
-      setPreview(null);
+      setPreview(initialItem.preview || null);
     });
     return () => { active = false; };
   }, [open, catalog, initialItem, mode]);
@@ -88,7 +104,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     queueMicrotask(() => {
       if (!active) return;
       setMetric(''); setDimension(''); setMetricEntityKey(entityKey);
-      setDimensionEntityKey(entityKey); setFilters([]); setPreview(null);
+      setDimensionEntityKey(entityKey); setFilters([]); setTimeGranularity('raw'); setPreview(null);
     });
     return () => { active = false; };
   }, [entityKey, open, initialItem]);
@@ -107,10 +123,15 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const definition = () => ({
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
     visualization, table: entity?.table, metric: metric || null, metric_table: metricEntity?.table || entity?.table, aggregation: effectiveAggregation,
-    group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table, filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: 20,
+    group_by: dimension || null, group_by_table: dimensionEntity?.table || entity?.table,
+    time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value}) => ({table,column,operator,value:operator==='in'?value.split(',').map(v=>v.trim()).filter(Boolean):value.trim()})), limit: 20,
   });
 
   const runPreview = async () => {
+    if (sourceMismatch) {
+      setError(language === 'es' ? 'Cambió la fuente de datos. Cierra y vuelve a solicitar la gráfica.' : 'Data source changed. Please request the chart again.');
+      return;
+    }
     try {
       setLoading(true); setError(''); setPreview(null);
       setPreview(await previewVisualization(definition()));
@@ -122,8 +143,20 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setError(language === 'es' ? 'Selecciona al menos un destino.' : 'Select at least one destination.');
       return;
     }
+    if (sourceMismatch) {
+      setError(language === 'es' ? 'La fuente activa no coincide con la propuesta. Solicita una nueva.' : 'The active source does not match this draft.');
+      return;
+    }
     try {
       setSaving(true); setError('');
+      // Validate again at the exact point of saving: data and source may have
+      // changed since the chat preview. Never persist an empty visualization.
+      const fresh = await previewVisualization(definition());
+      if (!(fresh.data || []).length) {
+        throw new Error(language === 'es'
+          ? 'No hay datos para estos campos y filtros. Modifica la propuesta antes de guardarla.'
+          : 'No data for these fields and filters. Adjust the draft before saving.');
+      }
       const saved = mode === 'edit' && initialItem ? await updateSavedVisualization(initialItem.id, definition(), { analytics: saveToAnalytics, dashboard: saveToDashboard }) : await saveVisualization(definition(), { analytics: saveToAnalytics, dashboard: saveToDashboard });
       onSaved?.(saved);
       onClose();
@@ -146,7 +179,16 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-5 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>setVisualization(item.key)} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
           <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>
           {metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>setAggregation(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
-          {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>setDimension(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          {needsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('')}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{setDimension(e.target.value);setTimeGranularity('raw');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          {dimensionIsDate && needsDimension && (
+            <Field label={language === 'es' ? 'Agrupación temporal' : 'Time grouping'} colors={colors}>
+              <select value={timeGranularity} onChange={(e)=>{setTimeGranularity(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
+                <option value="raw">{language === 'es' ? 'Cada fecha' : 'Each date'}</option>
+                <option value="month">{language === 'es' ? 'Por mes (AAAA-MM)' : 'By month (YYYY-MM)'}</option>
+                <option value="year">{language === 'es' ? 'Por año' : 'By year'}</option>
+              </select>
+            </Field>
+          )}
           <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
             <button type="button" onClick={()=>setShowFilters(!showFilters)} className="flex w-full justify-between text-sm font-bold" style={{color:colors.text}}><span>{language==='es'?'Filtros (opcional)':'Filters (optional)'} ({filters.length})</span><span>{showFilters?'−':'+'}</span></button>
             {showFilters&&<div className="mt-3 space-y-3">
@@ -169,13 +211,14 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
             </div>}
           </div>
           <Field label={language === 'es' ? 'Título' : 'Title'} colors={colors}><input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder={language === 'es'?'Ej. Ventas por canal':'E.g. Sales by channel'} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}/></Field>
-          <button disabled={!canPreview||loading} onClick={runPreview} className="w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{loading?(language==='es'?'Generando...':'Generating...'):(language==='es'?'Generar vista previa':'Generate preview')}</button>
+          <button disabled={!canPreview||loading||sourceMismatch} onClick={runPreview} className="w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{loading?(language==='es'?'Generando...':'Generating...'):(language==='es'?'Generar vista previa':'Generate preview')}</button>
           {preview && <div className="rounded-2xl border p-4" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
             <p className="mb-3 text-sm font-bold" style={{color:colors.text}}>{language==='es'?'¿Dónde quieres mostrarla?':'Where do you want to show it?'}</p>
             <label className="mb-2 flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToAnalytics} onChange={(e)=>setSaveToAnalytics(e.target.checked)} className="h-4 w-4 accent-current"/><span>{language==='es'?'Analítica':'Analytics'} <small style={{color:colors.muted}}>({language==='es'?'predeterminado':'default'})</small></span></label>
             <label className="flex cursor-pointer items-center gap-3 text-sm" style={{color:colors.text}}><input type="checkbox" checked={saveToDashboard} onChange={(e)=>setSaveToDashboard(e.target.checked)} className="h-4 w-4 accent-current"/><span>Dashboard</span></label>
-            <button disabled={saving||(!saveToAnalytics&&!saveToDashboard&&mode!=='edit')} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?(mode==='edit'?'Guardar cambios':mode==='duplicate'?'Guardar copia':'Guardar visualización'):(mode==='edit'?'Save changes':mode==='duplicate'?'Save copy':'Save visualization'))}</button>
+            <button disabled={saving||sourceMismatch||(!saveToAnalytics&&!saveToDashboard&&mode!=='edit')} onClick={saveCurrent} className="mt-4 w-full rounded-xl px-4 py-3 font-bold text-white transition enabled:hover:scale-[1.02] disabled:opacity-40" style={{backgroundColor:theme.primary}}>{saving?(language==='es'?'Guardando...':'Saving...'):(language==='es'?(mode==='edit'?'Guardar cambios':mode==='duplicate'?'Guardar copia':'Guardar visualización'):(mode==='edit'?'Save changes':mode==='duplicate'?'Save copy':'Save visualization'))}</button>
           </div>}
+          {sourceMismatch && <p role="alert" className="text-sm text-red-500">{language === 'es' ? 'La fuente activa cambió; esta propuesta no puede guardarse.' : 'Active source changed; this draft cannot be saved.'}</p>}
           {error&&<p className="text-sm text-red-500">{error}</p>}
         </div>
         <div className="min-h-[560px] p-6"><div className="flex h-full min-h-[500px] flex-col rounded-2xl border p-5" style={{backgroundColor:colors.card,borderColor:colors.border}}>
