@@ -567,7 +567,8 @@ class CriticalInventoryTests(unittest.TestCase):
         self.assertEqual("id", config["group_by_identity"])
         self.assertEqual("asc", config["sort_direction"])
         self.assertEqual([{
-            "table": "inventario", "column": "stock", "operator": "lte_field",
+            "table": "inventario", "value_table": "inventario",
+            "column": "stock", "operator": "lte_field",
             "value": "stock_minimo",
         }], config["filters"])
         self.assertIn("menor o igual", proposal["notes"][1])
