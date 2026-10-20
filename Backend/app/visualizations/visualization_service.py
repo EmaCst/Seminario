@@ -40,6 +40,7 @@ class VisualizationDefinition(BaseModel):
     group_by_table: str | None = None
     group_by_identity: str | None = None
     sort_direction: Literal["asc", "desc"] = "desc"
+    time_direction: Literal["asc", "desc"] = "asc"
     time_granularity: Literal["raw", "month", "quarter", "year"] = "raw"
     filters: list[VisualizationFilter] = Field(default_factory=list, max_length=20)
     table_mode: Literal["aggregate", "detail"] = "aggregate"
@@ -430,8 +431,15 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
             grouping += f", {identity}"
         select.append(f"{dimension} AS dimension")
         group = f" GROUP BY {grouping}"
-        if definition.time_granularity != "raw":
-            order = " ORDER BY dimension ASC"
+        is_timeline = (
+            definition.time_granularity != "raw"
+            or _column_kind(next(
+                col.type for col in schema.tables[group_table].columns
+                if col.name == definition.group_by
+            )) == "date"
+        )
+        if is_timeline:
+            order = f" ORDER BY dimension {definition.time_direction.upper()}"
         else:
             direction = definition.sort_direction.upper()
             order = f" ORDER BY value {direction}, dimension ASC"
@@ -549,6 +557,12 @@ def preview_visualization(definition: VisualizationDefinition) -> dict:
             f"Detalle técnico: {exc}"
         ) from exc
     columns = _result_columns(definition)
+    if definition.visualization == "donut":
+        if any(float(row.get("value") or 0) < 0 for row in rows):
+            raise ValueError(
+                "Una gráfica de dona no puede representar valores negativos. "
+                "Selecciona barras o líneas para estos indicadores."
+            )
     return {
         "definition": definition.model_dump(),
         "data": rows,
