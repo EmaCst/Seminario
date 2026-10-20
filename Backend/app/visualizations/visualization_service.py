@@ -28,6 +28,8 @@ class VisualizationDefinition(BaseModel):
     aggregation: AggregationType = "count"
     group_by: str | None = None
     group_by_table: str | None = None
+    group_by_identity: str | None = None
+    sort_direction: Literal["asc", "desc"] = "desc"
     time_granularity: Literal["raw", "month", "year"] = "raw"
     filters: list[VisualizationFilter] = Field(default_factory=list)
     limit: int = Field(default=20, ge=1, le=100)
@@ -40,6 +42,9 @@ class VisualizationDefinition(BaseModel):
             raise ValueError("Esta visualización necesita una dimensión para agrupar.")
         if self.time_granularity != "raw" and not self.group_by:
             raise ValueError("Selecciona una fecha para agrupar por mes o año.")
+        if self.group_by_identity and (not self.group_by or self.time_granularity != "raw"):
+            raise ValueError("La identidad solo se aplica a dimensiones no temporales.")
+
         return self
 
 
@@ -136,6 +141,10 @@ def _resolve_definition(definition: VisualizationDefinition):
         requested.append((metric_table, definition.metric))
     if definition.group_by:
         requested.append((group_table, definition.group_by))
+    if definition.group_by_identity:
+        requested.append((group_table, definition.group_by_identity))
+        if definition.group_by_identity not in schema.tables[group_table].primary_key:
+            raise ValueError("La identidad de agrupación debe ser una clave primaria verificada.")
     requested.extend(((item.table or definition.table), item.column) for item in definition.filters)
 
     for table_name, column_name in requested:
@@ -252,9 +261,27 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
         dimension = _time_bucket(
             _qualified(group_table, definition.group_by), definition.time_granularity
         )
+        grouping = dimension
+        if definition.group_by_identity:
+            # Customer names can repeat. Preserve distinct primary keys and
+            # display each name with its verified identity instead of merging
+            # purchases from two people who happen to share a name.
+            identity = _qualified(group_table, definition.group_by_identity)
+            provider = database_manager.status().get("provider")
+            if provider == "excel":
+                dimension = (f"COALESCE(CAST({dimension} AS TEXT), 'Sin nombre')"
+                             f" || ' (#' || CAST({identity} AS TEXT) || ')'")
+            else:
+                dimension = (f"CONCAT(COALESCE(CAST({dimension} AS VARCHAR(200)), 'Sin nombre'),"
+                             f" ' (#', CAST({identity} AS VARCHAR(50)), ')')")
+            grouping += f", {identity}"
         select.append(f"{dimension} AS dimension")
-        group = f" GROUP BY {dimension}"
-        order = " ORDER BY dimension ASC" if definition.time_granularity != "raw" else " ORDER BY value DESC"
+        group = f" GROUP BY {grouping}"
+        if definition.time_granularity != "raw":
+            order = " ORDER BY dimension ASC"
+        else:
+            direction = definition.sort_direction.upper()
+            order = f" ORDER BY value {direction}, dimension ASC"
     select.append(f"{expression} AS value")
 
     where = ""
@@ -294,7 +321,7 @@ def explore_visualization(request: VisualizationPageRequest) -> dict:
         sql = re.sub(r"^SELECT TOP \d+ ", "SELECT ", sql, count=1)
     else:
         sql = re.sub(r" LIMIT \d+;?$", "", sql)
-    sql = re.sub(r" ORDER BY (?:value DESC|dimension ASC);?$", "", sql).rstrip(";")
+    sql = re.sub(r" ORDER BY (?:value (?:ASC|DESC), dimension ASC|dimension ASC);?$", "", sql).rstrip(";")
     columns = ["dimension", "value"] if definition.group_by else ["value"]
     where = ""
     if request.search and definition.group_by:
