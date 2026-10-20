@@ -15,7 +15,10 @@ AggregationType = Literal["count", "sum", "avg", "min", "max"]
 class VisualizationFilter(BaseModel):
     table: str | None = None
     column: str
-    operator: Literal["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"] = "eq"
+    operator: Literal[
+        "eq", "neq", "gt", "gte", "lt", "lte", "contains", "in",
+        "lt_field", "lte_field", "gt_field", "gte_field",
+    ] = "eq"
     value: str | int | float | bool | list[str | int | float]
 
 
@@ -146,6 +149,11 @@ def _resolve_definition(definition: VisualizationDefinition):
         if definition.group_by_identity not in schema.tables[group_table].primary_key:
             raise ValueError("La identidad de agrupación debe ser una clave primaria verificada.")
     requested.extend(((item.table or definition.table), item.column) for item in definition.filters)
+    for item in definition.filters:
+        if item.operator.endswith("_field"):
+            if not isinstance(item.value, str):
+                raise ValueError("La comparación de columnas requiere seleccionar una columna válida.")
+            requested.append((item.table or definition.table, item.value))
 
     for table_name, column_name in requested:
         table = schema.tables.get(table_name)
@@ -154,6 +162,19 @@ def _resolve_definition(definition: VisualizationDefinition):
         columns = {column.name: column for column in table.columns}
         if column_name not in columns:
             raise ValueError(f"La columna '{column_name}' no existe en '{table_name}'.")
+
+    for item in definition.filters:
+        if item.operator.endswith("_field"):
+            table = schema.tables[item.table or definition.table]
+            numeric_columns = {
+                col.name for col in table.columns
+                if _column_kind(col.type) == "number"
+            }
+            if item.column not in numeric_columns or item.value not in numeric_columns:
+                raise ValueError(
+                    "Las comparaciones entre campos requieren dos columnas "
+                    "numéricas verificables de la misma tabla."
+                )
 
     if definition.time_granularity != "raw":
         group_columns = {c.name: c for c in schema.tables[group_table].columns}
@@ -221,6 +242,14 @@ def _literal(value) -> str:
 
 def _filter_sql(item: VisualizationFilter, base_table: str) -> str:
     column = _qualified(item.table or base_table, item.column)
+    if item.operator.endswith("_field"):
+        # Both identifiers were checked against the live DB schema. The
+        # second operand is a COLUMN, never an untrusted SQL expression.
+        operators = {
+            "lt_field": "<", "lte_field": "<=",
+            "gt_field": ">", "gte_field": ">=",
+        }
+        return f"{column} {operators[item.operator]} {_qualified(item.table or base_table, item.value)}"
     if item.operator == "in":
         if not isinstance(item.value, list) or not item.value:
             raise ValueError("El filtro IN necesita una lista con valores.")
