@@ -248,6 +248,40 @@ def _related_dimension(text: str, root: dict, catalog: dict) -> tuple[dict, dict
     return candidates[0] if candidates else None
 
 
+def _safe_detail_columns(entity: dict) -> list[dict]:
+    """Pre-fill a short record table without exposing PII by default.
+
+    These fields still require review and confirmation in the builder.
+    Names, patient identifiers, salary, contact details and medical notes
+    are never automatically selected for a generic "make a table" request.
+    """
+    unsafe = (
+        "nombre", "name", "email", "correo", "telefono", "phone",
+        "direccion", "address", "documento", "document", "identidad",
+        "dni", "nit", "nacimiento", "birth", "salario", "salary",
+        "diagnostico", "diagnosis", "motivo", "reason", "receta",
+        "prescription", "licencia", "license", "ssn", "passport",
+        "password", "clave", "secret", "token", "bank",
+    )
+    selected = []
+    for field in entity.get("fields") or []:
+        key = _normalize(field.get("key") or "")
+        if field.get("is_identifier") or any(token in key for token in unsafe):
+            continue
+        if field.get("kind") not in {"date", "number", "text", "boolean"}:
+            continue
+        selected.append({"table": entity["table"], "column": field["key"]})
+        if len(selected) >= 6:
+            break
+    if not selected:
+        raise ValueError(
+            f"Para crear una tabla detallada de «{entity['label']}» necesito "
+            "que elijas las columnas que deseas mostrar. No seleccionaré "
+            "automáticamente nombres, datos de contacto o información sensible."
+        )
+    return selected
+
+
 def _choose_metric(text: str, entity: dict) -> tuple[dict | None, str]:
     metrics = entity.get("metrics") or []
     count_terms = ("cantidad de registros", "numero de", "cantidad de ventas",
@@ -719,7 +753,9 @@ def interpret_visualization_request(question: str) -> dict:
                 raise exc
             dimension, dimension_entity = related
             grain = "raw"
-        metric, aggregation = _choose_metric(normalized, selected)
+        is_detail = chart_type == "table" and dimension is None
+        detail_fields = _safe_detail_columns(selected) if is_detail else []
+        metric, aggregation = (None, "count") if is_detail else _choose_metric(normalized, selected)
         filters = _year_bounds(normalized, selected)
         if metric and aggregation not in metric.get("aggregations", []):
             raise ValueError("La métrica solicitada no admite esa operación.")
@@ -731,13 +767,16 @@ def interpret_visualization_request(question: str) -> dict:
             " por año" if grain == "year" else
             (" por " + dimension["label"].lower() if dimension else "")
         )
-        measure_name = metric["label"] if metric else "Cantidad de registros"
+        measure_name = ("Registros" if is_detail else
+                        metric["label"] if metric else "Cantidad de registros")
         years = sorted(set(re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", normalized)))
         year_part = f" ({'-'.join(years)})" if years else ""
         definition = VisualizationDefinition(
             title=(measure_name + " de " + selected["label"] + period + year_part)[:120],
             visualization=chart_type,
             table=selected["table"],
+            table_mode="detail" if is_detail else "aggregate",
+            detail_columns=detail_fields,
             metric=metric["key"] if metric else None,
             metric_table=selected["table"],
             aggregation=aggregation,
