@@ -367,6 +367,195 @@ def _customer_ranking(text: str, catalog: dict) -> tuple[VisualizationDefinition
     return definition, "Clientes", y_label
 
 
+def _inventory_critical_request(text: str) -> bool:
+    """A business condition can mention inventory AND products intentionally."""
+    has_stock = any(_contains(text, term) for term in (
+        "inventario", "inventory", "stock", "existencias",
+        "producto", "productos", "products",
+    ))
+    has_critical = any(_contains(text, term) for term in (
+        "critico", "criticos", "critica", "criticas", "critical",
+        "bajo stock", "stock bajo", "stock minimo", "minimo de inventario",
+        "existencias bajas", "punto de reposicion", "por agotarse",
+        "debajo del minimo", "por debajo del minimo",
+    ))
+    return has_stock and has_critical
+
+
+def _inventory_field(entity: dict, semantic: str, names: tuple[str, ...]) -> dict | None:
+    """Match exactly one verified numeric field; never guess a similarly named column."""
+    numbers = [
+        field for field in entity.get("fields") or []
+        if field.get("kind") == "number" and not field.get("is_identifier")
+    ]
+    semantic_matches = [field for field in numbers if field.get("semantic") == semantic]
+    if len(semantic_matches) > 1:
+        raise ValueError(
+            f"Hay varias columnas relacionadas con {semantic} en «{entity['label']}». "
+            "Revisa cuál debe utilizarse en el creador."
+        )
+    if semantic_matches:
+        return semantic_matches[0]
+    aliases = {_normalize(word) for word in names}
+    matches = [field for field in numbers if _normalize(field["key"]) in aliases]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Hay varias columnas candidatas para {semantic} en «{entity['label']}». "
+            "Especifica la métrica o revisa el esquema."
+        )
+    return matches[0] if matches else None
+
+
+def _inventory_label(entity: dict) -> dict | None:
+    """A human-readable dimension must be present in the active source catalog."""
+    possibilities = [
+        field for field in entity.get("dimensions") or []
+        if (field.get("semantic") == "name"
+            or _normalize(field.get("key", "")) in (
+                "nombre", "name", "nombre_producto", "producto_nombre",
+                "product_name", "sku", "codigo_producto", "product_code",
+            ))
+    ]
+    if len(possibilities) == 1:
+        return possibilities[0]
+    if not possibilities:
+        return None
+    preferred = [field for field in possibilities if field.get("semantic") == "name"]
+    return preferred[0] if len(preferred) == 1 else None
+
+
+def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefinition, str, str, list[str]]:
+    entities = catalog.get("entities") or []
+    candidates = []
+    for entity in entities:
+        if entity.get("semantic_role") not in {"inventory", "products"}:
+            continue
+        stock = _inventory_field(
+            entity, "stock", (
+                "stock", "stock_actual", "existencias", "existencia",
+                "cantidad_disponible", "unidades_disponibles", "stock_disponible",
+            ),
+        )
+        minimum = _inventory_field(
+            entity, "minimum", (
+                "stock_minimo", "min_stock", "minimum_stock", "minimo",
+                "minimum", "cantidad_minima", "existencias_minimas",
+                "punto_reorden", "punto_reposicion",
+            ),
+        )
+        if stock and minimum and stock["key"] != minimum["key"]:
+            candidates.append((entity, stock, minimum))
+
+    if not candidates:
+        raise ValueError(
+            "No encontré un par verificable de columnas numéricas de existencias "
+            "y mínimo permitido en Inventario o Productos. Para identificar "
+            "inventario crítico necesito ambas; si tu negocio utiliza un "
+            "umbral fijo, indícalo explícitamente."
+        )
+    if len(candidates) > 1:
+        # An inventory movement/stock table is more authoritative than
+        # product catalog metadata for an explicitly stated stock condition.
+        inventory = [row for row in candidates if row[0].get("semantic_role") == "inventory"]
+        if len(inventory) != 1:
+            raise ValueError(
+                "Hay varias fuentes de existencias con mínimo propio. "
+                "Indica cuál es la tabla autoritativa del inventario."
+            )
+        selected, stock, minimum = inventory[0]
+    else:
+        selected, stock, minimum = candidates[0]
+
+    group_entity = selected
+    name = _inventory_label(selected)
+    # If the inventory table only stores a product FK, obtain the human
+    # label through a single verified many-to-one inventory->product link.
+    if name is None and selected.get("semantic_role") == "inventory":
+        product_entities = [e for e in entities if e.get("semantic_role") == "products"]
+        links = [
+            (product, rel)
+            for product in product_entities
+            for rel in catalog.get("relationships") or []
+            if rel["from_table"] == selected["table"]
+            and rel["to_table"] == product["table"]
+        ]
+        if len(links) == 1:
+            product, relation = links[0]
+            from app.database.inspector import inspect_database
+            schema = inspect_database()
+            parent = schema.tables.get(product["table"])
+            if not parent or relation["to_column"] not in parent.primary_key:
+                raise ValueError(
+                    "La relación entre Inventario y Productos no apunta a una "
+                    "clave primaria validada."
+                )
+            name = _inventory_label(product)
+            if name:
+                group_entity = product
+                # Product-wide stock is only meaningful if there is exactly
+                # one inventory row for each product. Multiple warehouse
+                # entries require an explicit separate aggregation rule.
+                from app.database.query_executor import execute_query
+                from app.visualizations.visualization_service import _quote
+                col = _quote(relation["from_column"])
+                table = _quote(selected["table"])
+                provider = database_manager.status().get("provider")
+                limit = "TOP 1 " if provider == "sqlserver" else ""
+                suffix = "" if provider == "sqlserver" else " LIMIT 1"
+                duplicates = execute_query(
+                    f"SELECT {limit}{col} AS product_id FROM {table} "
+                    f"WHERE {col} IS NOT NULL GROUP BY {col} "
+                    f"HAVING COUNT(*) > 1{suffix}"
+                )
+                if duplicates:
+                    raise ValueError(
+                        "Hay varios registros de inventario para un mismo "
+                        "producto (por ejemplo, distintas bodegas). No puedo "
+                        "calificar el stock total como crítico comparando cada "
+                        "registro por separado. Define primero el alcance "
+                        "por bodega o el mínimo global."
+                    )
+    if name is None:
+        raise ValueError(
+            "Encontré existencias y mínimo, pero no un nombre de producto "
+            "verificable ni una relación única hacia Productos. "
+            "Revisa las columnas y claves en el constructor."
+        )
+    from app.database.inspector import inspect_database
+    schema = inspect_database()
+    named = schema.tables.get(group_entity["table"])
+    primary = named.primary_key if named else []
+    identity = primary[0] if len(primary) == 1 else None
+
+    # Critical means CURRENT STOCK <= MINIMUM for a single stock record.
+    # Comparing the two columns is performed by the trusted SQL query
+    # builder, which checks both identifiers against its live schema.
+    definition = VisualizationDefinition(
+        title="Productos con inventario crítico",
+        visualization=_visual_type(text),
+        table=selected["table"],
+        metric=stock["key"],
+        metric_table=selected["table"],
+        aggregation="sum",
+        group_by=name["key"],
+        group_by_table=group_entity["table"],
+        group_by_identity=identity,
+        filters=[
+            VisualizationFilter(
+                table=selected["table"], column=stock["key"],
+                operator="lte_field", value=minimum["key"],
+            ),
+        ],
+        sort_direction="asc",
+        limit=50,
+    )
+    return definition, "Producto", "Existencias disponibles", [
+        f"Criterio verificado: {stock['label']} menor o igual a "
+        f"{minimum['label']} en la tabla {selected['label']}.",
+        "No se considera crítico solo por tener un número bajo de unidades.",
+    ]
+
+
 def interpret_visualization_request(question: str) -> dict:
     """Return a verified preview + editable draft, without any write action."""
     normalized = _normalize(question)
@@ -375,7 +564,10 @@ def interpret_visualization_request(question: str) -> dict:
     if not entities:
         raise ValueError("No encontré entidades disponibles en la fuente activa.")
     ranking = _customer_rank_request(normalized)
-    if ranking:
+    extra_notes = []
+    if _inventory_critical_request(normalized):
+        definition, x_label, y_label, extra_notes = _inventory_critical(normalized, catalog)
+    elif ranking:
         definition, x_label, y_label = _customer_ranking(normalized, catalog)
     else:
         selected = _pick_entity(normalized, entities)
@@ -428,6 +620,7 @@ def interpret_visualization_request(question: str) -> dict:
                    "port": status.get("port")},
         "notes": [
             "Es una propuesta editable; no se guardará hasta que confirmes en el creador.",
+            *extra_notes,
             *([] if rows else ["No hay registros para esa combinación de filtros. Revísala antes de guardar."]),
         ],
         "status": "ready" if rows else "empty",
