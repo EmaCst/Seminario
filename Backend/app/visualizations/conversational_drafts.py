@@ -459,8 +459,39 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
                 "punto_reorden", "punto_reposicion",
             ),
         )
+        minimum_table = entity["table"]
+        if stock and minimum is None and threshold is None and entity.get("semantic_role") == "inventory":
+            # Some schemas store current units in Inventory and the minimum
+            # policy in Products. Verify a single forward inventory->product
+            # relation instead of inventing a cross-table association.
+            possible = []
+            for product in entities:
+                if product.get("semantic_role") != "products":
+                    continue
+                links = [
+                    rel for rel in catalog.get("relationships") or []
+                    if rel["from_table"] == entity["table"]
+                    and rel["to_table"] == product["table"]
+                ]
+                parent_min = _inventory_field(
+                    product, "minimum", (
+                        "stock_minimo", "min_stock", "minimum_stock", "minimo",
+                        "minimum", "cantidad_minima", "existencias_minimas",
+                        "punto_reorden", "punto_reposicion",
+                    ),
+                )
+                if len(links) == 1 and parent_min:
+                    possible.append((product, parent_min))
+            if len(possible) > 1:
+                raise ValueError(
+                    "Hay varias tablas relacionadas con un mínimo de producto. "
+                    "Especifica cuál define el umbral de inventario."
+                )
+            if possible:
+                minimum_table = possible[0][0]["table"]
+                minimum = possible[0][1]
         if stock and (threshold is not None or (minimum and stock["key"] != minimum["key"])):
-            candidates.append((entity, stock, minimum))
+            candidates.append((entity, stock, minimum, minimum_table))
 
     if not candidates:
         raise ValueError(
@@ -478,9 +509,9 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
                 "Hay varias fuentes de existencias con mínimo propio. "
                 "Indica cuál es la tabla autoritativa del inventario."
             )
-        selected, stock, minimum = inventory[0]
+        selected, stock, minimum, minimum_table = inventory[0]
     else:
-        selected, stock, minimum = candidates[0]
+        selected, stock, minimum, minimum_table = candidates[0]
 
     group_entity = selected
     name = _inventory_label(selected)
@@ -561,6 +592,7 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
                 table=selected["table"], column=stock["key"],
                 operator="lte" if threshold is not None else "lte_field",
                 value=threshold if threshold is not None else minimum["key"],
+                value_table=minimum_table if threshold is None else None,
             ),
         ],
         sort_direction="asc",
@@ -571,7 +603,7 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
         f"menor o igual a {threshold} unidades."
         if threshold is not None else
         f"Criterio verificado: {stock['label']} menor o igual a "
-        f"{minimum['label']} en la tabla {selected['label']}."
+        f"{minimum['label']} en la tabla {minimum_table}."
     )
     return definition, "Producto", "Existencias disponibles", [
         criterion,
