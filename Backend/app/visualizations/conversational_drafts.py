@@ -424,8 +424,24 @@ def _inventory_label(entity: dict) -> dict | None:
     return preferred[0] if len(preferred) == 1 else None
 
 
+def _explicit_critical_threshold(text: str) -> int | None:
+    """Only a number attached to an explicit stock threshold is accepted."""
+    expression = re.search(
+        r"\b(?:umbral(?: de)?|limite(?: de)?|minimo(?: de)?|"
+        r"menos de|debajo de|por debajo de|menor(?:es)? a|hasta)"
+        r"\s+(\d{1,6})\s*(?:unidades|productos|existencias)?\b",
+        text,
+    )
+    if not expression:
+        expression = re.search(r"\b(\d{1,6})\s+unidades\b", text)
+    if not expression:
+        return None
+    return int(expression.group(1))
+
+
 def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefinition, str, str, list[str]]:
     entities = catalog.get("entities") or []
+    threshold = _explicit_critical_threshold(text)
     candidates = []
     for entity in entities:
         if entity.get("semantic_role") not in {"inventory", "products"}:
@@ -443,15 +459,15 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
                 "punto_reorden", "punto_reposicion",
             ),
         )
-        if stock and minimum and stock["key"] != minimum["key"]:
+        if stock and (threshold is not None or (minimum and stock["key"] != minimum["key"])):
             candidates.append((entity, stock, minimum))
 
     if not candidates:
         raise ValueError(
             "No encontré un par verificable de columnas numéricas de existencias "
             "y mínimo permitido en Inventario o Productos. Para identificar "
-            "inventario crítico necesito ambas; si tu negocio utiliza un "
-            "umbral fijo, indícalo explícitamente."
+            "inventario crítico necesito ambas, o un umbral fijo "
+            "como «mínimo de 5 unidades»."
         )
     if len(candidates) > 1:
         # An inventory movement/stock table is more authoritative than
@@ -543,16 +559,24 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
         filters=[
             VisualizationFilter(
                 table=selected["table"], column=stock["key"],
-                operator="lte_field", value=minimum["key"],
+                operator="lte" if threshold is not None else "lte_field",
+                value=threshold if threshold is not None else minimum["key"],
             ),
         ],
         sort_direction="asc",
-        limit=50,
+        limit=100,
+    )
+    criterion = (
+        f"Umbral indicado en la solicitud: {stock['label']} "
+        f"menor o igual a {threshold} unidades."
+        if threshold is not None else
+        f"Criterio verificado: {stock['label']} menor o igual a "
+        f"{minimum['label']} en la tabla {selected['label']}."
     )
     return definition, "Producto", "Existencias disponibles", [
-        f"Criterio verificado: {stock['label']} menor o igual a "
-        f"{minimum['label']} en la tabla {selected['label']}.",
-        "No se considera crítico solo por tener un número bajo de unidades.",
+        criterion,
+        "Se muestran como máximo 100 resultados; el límite puede modificarse en el creador.",
+        "Una cifra pequeña, por sí sola, no determina inventario crítico.",
     ]
 
 
