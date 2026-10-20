@@ -205,7 +205,7 @@ class ReportPdfTests(unittest.TestCase):
                 line.strip() for line in body.splitlines()
                 if line.strip()
                 and "AI Business Assistant" not in line
-                and not re.fullmatch(r"P[aá]gina\\s*\\d+", line.strip(), re.IGNORECASE)
+                and not re.fullmatch(r"P[aá]gina\s*\d+", line.strip(), re.IGNORECASE)
             ]
             assert len(" ".join(lines)) > 20, (
                 f"PDF page {index} has no useful content; extracted: {body[:150]!r}"
