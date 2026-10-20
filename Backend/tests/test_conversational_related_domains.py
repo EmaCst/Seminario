@@ -36,7 +36,10 @@ def make_catalog(domain, role, label, fact_table, parent_role, parent_label, par
         "primary_key": ["id"],
         "fields": [{"key": "id", "label": "Identificador", "semantic": "id"}],
         "dimensions": [],
-        "metrics": [],
+        "metrics": [{
+            "key": "total", "label": "Total", "semantic": "total",
+            "kind": "number", "aggregations": ["sum", "avg", "count"],
+        }] if role == "sales" else [],
     }
     parent = {
         "key": parent_role, "semantic_role": parent_role,
@@ -72,7 +75,7 @@ class ConversationalRelatedBusinessTests(unittest.TestCase):
                 self.assertEqual(parent, definition["group_by_table"])
                 self.assertEqual("nombre", definition["group_by"])
                 self.assertEqual("id", definition["group_by_identity"])
-                self.assertEqual("count", definition["aggregation"])
+                self.assertEqual("sum" if role == "sales" else "count", definition["aggregation"])
 
     def test_missing_verified_relation_does_not_guess_a_join(self):
         db = make_catalog(
