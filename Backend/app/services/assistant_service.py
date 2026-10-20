@@ -9,6 +9,10 @@ from app.analysis.adaptive_dashboard_service import _monthly_count
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.query_executor import execute_query
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
+from app.visualizations.conversational_drafts import (
+    interpret_visualization_request, is_visualization_creation_request,
+)
+
 
 
 PREDICTION_TERMS = (
@@ -490,6 +494,48 @@ def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
+    # Visualization authoring is an explicit, read-only draft workflow.
+    # It must run before the generic LLM-to-SQL answering path.
+    if is_visualization_creation_request(question):
+        try:
+            draft = interpret_visualization_request(question)
+        except ValueError as exc:
+            return {
+                "question": question, "mode": "visualization_clarification",
+                "sql": None, "data": [], "answer": str(exc),
+                "visualization_draft": None,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
+            }
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Visualization draft failed")
+            return {
+                "question": question, "mode": "error", "sql": None, "data": [],
+                "answer": (
+                    "No pude preparar una previsualización con los datos actuales. "
+                    "Verifica la conexión o utiliza el creador de visualizaciones."
+                ),
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
+            }
+        if draft["status"] == "empty":
+            answer = (
+                "Preparé los campos y los filtros, pero la consulta no devolvió registros. "
+                "Puedes revisarla en el creador; todavía no se ha guardado nada."
+            )
+        else:
+            answer = (
+                f"Preparé una propuesta de «{draft['definition']['title']}» con "
+                f"{len(draft['preview']['data'])} resultado(s) verificados. "
+                "Revisa la gráfica y abre el creador para modificar filtros, "
+                "elegir su ubicación y confirmar si deseas guardarla."
+            )
+        return {
+            "question": question, "mode": "visualization_draft",
+            "sql": None, "data": [],
+            "answer": answer,
+            "visualization_draft": draft,
+            "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
+        }
     intent = route_request(question, history)
     intent_text = question.lower()
 
