@@ -490,19 +490,45 @@ def _attribution_followup(question: str, history: list[dict]) -> str | None:
     return " ".join(previous + [question])
 
 
+def _pending_visualization_request(question: str, history: list[dict]) -> str | None:
+    """Continue a clarification only if the immediately preceding assistant reply
+    explicitly requested missing visualization details. No global mutable state."""
+    if len(question.strip()) > 100 or is_visualization_creation_request(question):
+        return None
+    if not history:
+        return None
+    latest = history[-1]
+    if (latest.get("role") or latest.get("from")) not in ("assistant", "bot"):
+        return None
+    answer = str(latest.get("content") or latest.get("text") or "")
+    if not (answer.startswith("Para continuar con la visualización:")
+            or answer.startswith("¿Cómo quieres agrupar los datos?")):
+        return None
+    for item in reversed(history[:-1][-8:]):
+        if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+            continue
+        original = str(item.get("content") or item.get("text") or "").strip()
+        if is_visualization_creation_request(original):
+            return original
+    return None
+
+
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
     # Visualization authoring is an explicit, read-only draft workflow.
     # It must run before the generic LLM-to-SQL answering path.
-    if is_visualization_creation_request(question):
+    pending_request = _pending_visualization_request(question, history)
+    if is_visualization_creation_request(question) or pending_request:
+        visualization_question = (pending_request + " " + question) if pending_request else question
         try:
-            draft = interpret_visualization_request(question)
+            draft = interpret_visualization_request(visualization_question)
         except ValueError as exc:
             return {
                 "question": question, "mode": "visualization_clarification",
-                "sql": None, "data": [], "answer": str(exc),
+                "sql": None, "data": [],
+                "answer": "Para continuar con la visualización: " + str(exc),
                 "visualization_draft": None,
                 "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
             }
