@@ -601,6 +601,53 @@ class CriticalInventoryTests(unittest.TestCase):
         self.assertEqual("productos", proposal["definition"]["table"])
         self.assertEqual("productos", proposal["definition"]["group_by_table"])
 
+    def test_fixed_threshold_is_reliable_when_minimum_column_does_not_exist(self):
+        proposal = self._proposal(
+            question=self.REQUEST + " mínimo de 5 unidades",
+            catalog_data=inventory_catalog(include_minimum=False),
+        )
+        compare = proposal["definition"]["filters"][0]
+        self.assertEqual("lte", compare["operator"])
+        self.assertEqual(5, compare["value"])
+        self.assertIn("5 unidades", proposal["notes"][1])
+
+    def test_clarification_context_survives_short_history(self):
+        # The browser only sends a short recent history. The latest assistant
+        # message carries the original prompt, so repeated replies do not
+        # lose the user's chart request after several turns.
+        initial = self.REQUEST
+        prepared = self._proposal(initial)
+        with patch.object(assistant_service, "interpret_visualization_request",
+                          return_value=prepared) as called:
+            result = assistant_service.ask_database(
+                "deseo analizar el inventario de mis productos",
+                history=[
+                    {"role": "user", "content": "productos"},
+                    {"role": "assistant",
+                     "content": "Para continuar con la visualización: "
+                                "La solicitud coincide con varias entidades.",
+                     "pending_visualization_request": initial},
+                ],
+            )
+        self.assertEqual("visualization_draft", result["mode"])
+        called.assert_called_once_with(
+            initial + " deseo analizar el inventario de mis productos"
+        )
+
+    def test_repeated_ambiguous_question_remains_attached_to_original_prompt(self):
+        original = "Crea gráfica de los 5 clientes que compran menos"
+        with patch.object(assistant_service, "interpret_visualization_request",
+                          side_effect=ValueError("¿Por importe o número de compras?")):
+            response = assistant_service.ask_database(
+                "por categoria", history=[
+                    {"role": "assistant",
+                     "content": "Para continuar con la visualización: falta detalle.",
+                     "pending_visualization_request": original},
+                ],
+            )
+        self.assertEqual("visualization_clarification", response["mode"])
+        self.assertEqual(original, response["pending_visualization_request"])
+
     def test_missing_minimum_is_reported_not_faked(self):
         with self.assertRaisesRegex(ValueError, "mínimo permitido"):
             self._proposal(catalog_data=inventory_catalog(include_minimum=False))
