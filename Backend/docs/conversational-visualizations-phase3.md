@@ -53,6 +53,26 @@ El borrador de los cinco clientes utiliza **ventas como tabla de hechos** y **cl
 
 La configuración admite `sort_direction = asc|desc` y `group_by_identity` opcional, compatibles por defecto con las visualizaciones guardadas en fases anteriores. El creador muestra el orden, el límite y permite modificarlos antes de guardar. La conexión y la consulta se revalidan para que el asistente no afirme que ha publicado una gráfica que solo ha previsualizado.
 
+## Inventario crítico y relaciones con productos
+
+Caso reproducido: `hazme una grafica con los productos en inventario critico`. Antes, Kenneth detectaba «Inventario» y «Productos» como dos entidades ambiguas, pedía una elección y repetía exactamente la misma pregunta después de respuestas como «sería el inventario».
+
+La solicitud **no es ambigua por mencionar ambas entidades**: es un análisis de existencias con etiquetas de producto. Cuando el modelo semántico identifica columnas numéricas verificables de `stock` y `minimum` en Inventario o Productos, Kenneth propone una gráfica de existencias cuya condición SQL es **existencias menores o iguales al mínimo** (dos columnas, no un número inventado). Para asegurar los datos:
+- Valida que ambas columnas numéricas existan en la misma tabla.
+- Si el nombre está en Productos, utiliza una única relación explícita o inferida Inventario → Productos que termine en clave primaria.
+- Conserva los identificadores únicos de los productos para no fusionar productos homónimos.
+- Si existen varias filas de inventario del mismo producto (por ejemplo, bodegas distintas), solicita aclarar el alcance, en lugar de presentar solo posiciones críticas como si fueran el stock total.
+- Excluye las ventas/existencias sin un producto relacionado cuando se requiere una dimensión de producto.
+- Si falta un mínimo configurado, **no declara un stock bajo arbitrariamente**; puede aplicar un umbral numérico explícito del usuario (por ejemplo, `mínimo de 5 unidades`). Si tampoco se proporcionó, explica qué información hace falta.
+- Las comparaciones de campos `lt_field`, `lte_field`, `gt_field` y `gte_field` pasan por verificación de columnas y tipos antes de generar una consulta SQL. La interfaz del constructor ofrece un selector de columnas numéricas para editar el filtro.
+- Se informa el límite máximo de 100 elementos por visualización y puede ajustarse en el creador.
+
+### Aclaraciones sin bucles
+
+La respuesta `visualization_clarification` devuelve un campo opcional `pending_visualization_request` con la solicitud original. El chat lo reenvía junto con el historial inmediato. Esto conserva la intención aunque el historial visible se limite a las últimas seis intervenciones; también permite responder `sería el inventario` o `mínimo de 5 unidades` sin reiniciar el análisis. No se añade estado global en el backend.
+
+Las pruebas reproducen la frase del usuario, las aclaraciones y varias estructuras de esquema sintético; incluyen una consulta ejecutada en SQLite real con Inventario/Productos, registros en el límite exacto, identificadores homónimos, mínimos ausentes y rechazo de comparaciones con nombres de columna no verificados.
+
 ## Estado de desarrollo
 
 Primera integración funcional en `feature/conversational-visualization-drafts-phase-3`, PR #8 abierto en **borrador**. Este incremento cubre creación mediante el chat, previsualización y confirmación desde el constructor. La parte conversacional para **editar, duplicar o eliminar** visualizaciones previamente guardadas aún no está implementada y no debería invocarse automáticamente; siguen disponibles los controles de la biblioteca existente.
