@@ -28,6 +28,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const [timeGranularity, setTimeGranularity] = useState('raw');
   const [rowLimit, setRowLimit] = useState(20);
   const [sortDirection, setSortDirection] = useState('desc');
+  const [timeDirection, setTimeDirection] = useState('asc');
   const [groupIdentity, setGroupIdentity] = useState(null);
   const [sourceMismatch, setSourceMismatch] = useState(false);
   const [visualization, setVisualization] = useState('bar');
@@ -105,6 +106,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setTimeGranularity(def.time_granularity || 'raw');
       setRowLimit(def.limit || 20);
       setSortDirection(def.sort_direction || 'desc');
+      setTimeDirection(def.time_direction || 'asc');
       setGroupIdentity(def.group_by_identity || null);
       setAggregation(def.aggregation || 'count');
       setVisualization(def.visualization || 'bar');
@@ -127,7 +129,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       setMetric(''); setDimension(''); setMetricEntityKey(entityKey);
       setDimensionEntityKey(entityKey); setFilters([]); setTimeGranularity('raw'); setPreview(null);
       setTableMode('aggregate'); setDetailColumns([]);
-      setGroupIdentity(null); setSortDirection('desc');
+      setGroupIdentity(null); setSortDirection('desc'); setTimeDirection('asc');
     });
     return () => { active = false; };
   }, [entityKey, open, initialItem]);
@@ -151,6 +153,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     group_by: isDetailTable ? null : (dimension || null), group_by_table: dimensionEntity?.table || entity?.table,
     group_by_identity: isDetailTable ? null : (groupIdentity || null),
     sort_direction: sortDirection,
+    time_direction: timeDirection,
     table_mode: isDetailTable ? 'detail' : 'aggregate',
     detail_columns: isDetailTable ? detailColumns : [],
     time_granularity: dimensionIsDate ? timeGranularity : 'raw', filters: filters.map(({table,column,operator,value,value_table}) => ({table,column,operator,
@@ -273,7 +276,14 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               </div>
             </div>
           )}
-          {!isDetailTable && <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{setMetric(e.target.value);setAggregation(e.target.value?'sum':'count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          {!isDetailTable && <Field label={language === 'es' ? '¿Qué quieres medir?' : 'What do you want to measure?'} colors={colors}><div className="space-y-2"><select value={metricEntity?.key || ''} onChange={(e)=>{setMetricEntityKey(e.target.value);setMetric('');setAggregation('count');setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={metric} onChange={(e)=>{
+              const next=e.target.value;
+              const field=metricEntity?.metrics?.find(item=>item.key===next);
+              setMetric(next);
+              setAggregation(field?.aggregations?.includes('sum')?'sum'
+                :field?.aggregations?.includes('distinct_count')?'distinct_count':'count');
+              setPreview(null);
+            }} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           {!isDetailTable && metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>{setAggregation(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
           {supportsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{setDimension(e.target.value);setTimeGranularity('raw');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           {dimensionIsDate && supportsDimension && (
@@ -323,7 +333,16 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               {filters.length>1&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Se deben cumplir todas las condiciones (Y).':'All conditions must match (AND).'}</p>}
             </div>}
           </div>
-          {(supportsDimension || isDetailTable) && (
+          {supportsDimension && dimensionIsDate && (
+            <Field label={language==='es'?'Orden temporal':'Chronological order'} colors={colors}>
+              <select value={timeDirection} onChange={e=>{setTimeDirection(e.target.value);setPreview(null)}}
+                className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
+                <option value="asc">{language==='es'?'Del más antiguo al más reciente':'Oldest first'}</option>
+                <option value="desc">{language==='es'?'Del más reciente al más antiguo':'Newest first'}</option>
+              </select>
+            </Field>
+          )}
+          {(isDetailTable || (supportsDimension && !dimensionIsDate)) && (
             <Field label={language === 'es' ? 'Orden de resultados' : 'Result order'} colors={colors}>
               <select value={sortDirection} onChange={(e)=>{setSortDirection(e.target.value);setPreview(null)}}
                 className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
@@ -337,7 +356,7 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               ? 'Se conserva el identificador verificado para no combinar elementos con nombres iguales.'
               : 'A verified identifier is preserved to avoid merging items with identical names.'}
           </p>}
-          <Field label={language === 'es' ? 'Máximo de grupos' : 'Maximum groups'} colors={colors}>
+          <Field label={language === 'es' ? (isDetailTable ? 'Máximo de filas' : 'Máximo de grupos') : (isDetailTable ? 'Maximum rows' : 'Maximum groups')} colors={colors}>
             <input type="number" min={1} max={100} value={rowLimit}
               onChange={(e)=>{setRowLimit(Math.max(1,Math.min(100,Number(e.target.value)||1)));setPreview(null)}}
               className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)} />
