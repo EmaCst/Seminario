@@ -276,6 +276,82 @@ class EngineDomainCases(unittest.TestCase):
         self.assertEqual({("Ana (#1)", 2), ("Beto (#2)", 1), ("Ana (#3)", 2)},
                          {(r["dimension"], r["value"]) for r in rows})
 
+    def test_complete_table_explorer_pages_search_and_sorts_across_database(self):
+        definition = engine.VisualizationDefinition(
+            title="Full activity table", visualization="table", table="facts",
+            table_mode="detail",
+            detail_columns=[
+                {"column": "fecha"}, {"column": "estado"},
+                {"table": "owners", "column": "nombre"},
+                {"column": "total"},
+            ],
+        )
+        def execute(sql):
+            with self.database.connect() as conn:
+                return [dict(row) for row in conn.execute(text(sql)).mappings()]
+        with patch.object(engine, "inspect_database", return_value=self.layout):
+            with patch.object(engine.database_manager, "status",
+                              return_value={"provider": "excel"}):
+                with patch.object(engine, "execute_query", side_effect=execute):
+                    result = engine.explore_visualization(engine.VisualizationPageRequest(
+                        definition=definition, search="ok", page=1, page_size=2,
+                        sort_by="field_0", descending=False,
+                    ))
+                    second = engine.explore_visualization(engine.VisualizationPageRequest(
+                        definition=definition, search="ok", page=2, page_size=2,
+                        sort_by="field_0", descending=False,
+                    ))
+        self.assertEqual(3, result["total"])
+        self.assertEqual(2, len(result["data"]))
+        self.assertEqual(1, len(second["data"]))
+        self.assertEqual(["field_0","field_1","field_2","field_3"],
+                         [col["key"] for col in result["columns"]])
+        self.assertTrue(all(r["field_1"] == "ok" for r in result["data"]))
+
+    def test_explore_sqlserver_uses_safe_offset_and_valid_sort_column(self):
+        definition = engine.VisualizationDefinition(
+            title="Payroll rows", visualization="table", table="facts",
+            table_mode="detail", detail_columns=[{"column": "estado"}],
+        )
+        recorded = []
+        def fake_query(sql):
+            recorded.append(sql)
+            return [{"total": 3}] if sql.startswith("SELECT COUNT") else [{"field_0": "ok"}]
+        with patch.object(engine, "inspect_database", return_value=self.layout):
+            with patch.object(engine.database_manager, "status",
+                              return_value={"provider": "sqlserver"}):
+                with patch.object(engine, "execute_query", side_effect=fake_query):
+                    result = engine.explore_visualization(engine.VisualizationPageRequest(
+                        definition=definition, sort_by="unknown", page=2, page_size=1,
+                    ))
+        self.assertEqual(3, result["total"])
+        self.assertIn("ORDER BY [field_0] DESC OFFSET 1 ROWS", recorded[-1])
+        self.assertNotIn("SELECT TOP", recorded[-1])
+
+    def test_raw_dates_are_sorted_chronologically_not_by_sales_total(self):
+        definition = engine.VisualizationDefinition(
+            title="Daily sales", visualization="line", table="facts",
+            group_by="fecha", metric="total", aggregation="sum",
+        )
+        sql, rows = self.run_query(definition)
+        self.assertIn("ORDER BY dimension ASC", sql)
+        self.assertEqual(["2025-01-05", "2025-01-21"], [
+            row["dimension"] for row in rows[:2]
+        ])
+
+    def test_negative_donut_data_is_rejected_as_unrepresentable(self):
+        definition = engine.VisualizationDefinition(
+            title="Costs", visualization="donut", table="facts", group_by="estado",
+        )
+        with patch.object(engine, "inspect_database", return_value=self.layout):
+            with patch.object(engine.database_manager, "status",
+                              return_value={"provider": "excel"}):
+                with patch.object(engine, "execute_query", return_value=[
+                    {"dimension": "A", "value": -1},
+                ]):
+                    with self.assertRaisesRegex(ValueError, "valores negativos"):
+                        engine.preview_visualization(definition)
+
     def test_legacy_saved_definitions_continue_to_parse(self):
         for vis in ("bar", "line", "donut", "table", "kpi"):
             with self.subTest(vis=vis):
