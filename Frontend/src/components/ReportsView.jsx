@@ -38,6 +38,7 @@ export const ReportsView = () => {
   const [options, setOptions] = useState(null);
   const [reportType, setReportType] = useState('complete');
   const [title, setTitle] = useState('Informe empresarial');
+  const [authorName, setAuthorName] = useState('');
   const [startMonth, setStartMonth] = useState('');
   const [endMonth, setEndMonth] = useState('');
   const [sections, setSections] = useState(DEFAULT_SECTIONS.complete);
@@ -86,6 +87,7 @@ export const ReportsView = () => {
   const payload = () => ({
     report_type: reportType,
     title: title.trim(),
+    author_name: authorName.trim(),
     start_month: startMonth || null,
     end_month: endMonth || null,
     sections: sections,
@@ -208,6 +210,17 @@ export const ReportsView = () => {
                 onChange={(e) => { setTitle(e.target.value); invalidate(); }}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2"
                 style={controlStyle} />
+              <label htmlFor="report-author" className="mt-4 mb-2 block text-sm font-bold" style={{ color: colors.text }}>
+                {es ? 'Elaborado por (opcional)' : 'Prepared by (optional)'}
+              </label>
+              <input id="report-author" type="text" maxLength={120} value={authorName}
+                placeholder={es ? 'Nombre de la persona que elaboró el reporte' : 'Name of the report author'}
+                onChange={(e) => { setAuthorName(e.target.value); invalidate(); }}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2"
+                style={controlStyle} />
+              <p className="mt-1.5 text-xs leading-5" style={{ color: colors.muted }}>
+                {es ? 'Aparecerá en la portada y las propiedades del PDF.' : 'Shown on the cover and in PDF properties.'}
+              </p>
             </div>
 
             <div className="rounded-2xl border p-5" style={cardStyle}>
@@ -325,6 +338,11 @@ export const ReportsView = () => {
                 <div className="mt-5 max-h-[68vh] space-y-4 overflow-y-auto pr-1">
                   <div className="rounded-xl p-3" style={{ backgroundColor: colors.cardSoft }}>
                     <p className="font-extrabold" style={{ color: colors.text }}>{preview.title}</p>
+                    {preview.author_name && (
+                      <p className="mt-1 text-xs" style={{ color: colors.muted }}>
+                        {es ? 'Elaborado por: ' : 'Prepared by: '}{preview.author_name}
+                      </p>
+                    )}
                     <p className="mt-1 text-xs" style={{ color: colors.muted }}>
                       {preview.period ? `${preview.period.from} → ${preview.period.to}` : (es ? 'Historial completo' : 'Full history')}
                     </p>
