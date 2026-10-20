@@ -109,27 +109,58 @@ def get_visualization_catalog() -> dict:
 
 
 def _find_join_path(schema, start_table: str, target_table: str):
+    """Allow only unambiguous many-to-one paths from a fact to a dimension.
+
+    Walking a parent->child relationship multiplies fact rows and silently
+    corrupts SUM/COUNT/AVG for many domains. Even if two joins reach the same
+    table, never choose one arbitrarily.
+    """
     if start_table == target_table:
         return []
 
     graph = {name: [] for name in schema.tables}
     for rel in schema.relationships:
+        parent = schema.tables.get(rel.references_table)
+        child = schema.tables.get(rel.table)
+        if not parent or not child:
+            continue
+        if len(parent.primary_key) != 1 or rel.references_column != parent.primary_key[0]:
+            continue
         graph.setdefault(rel.table, []).append((rel.references_table, rel))
-        graph.setdefault(rel.references_table, []).append((rel.table, rel))
 
     queue = [(start_table, [])]
-    visited = {start_table}
+    seen_length = {start_table: 0}
+    shortest_paths = []
+    shortest = None
     while queue:
         current, path = queue.pop(0)
+        if shortest is not None and len(path) >= shortest:
+            continue
         for neighbor, rel in graph.get(current, []):
-            if neighbor in visited:
+            if any(step[1] == neighbor for step in path) or neighbor == start_table:
                 continue
-            next_path = path + [(current, neighbor, rel)]
+            following = path + [(current, neighbor, rel)]
             if neighbor == target_table:
-                return next_path
-            visited.add(neighbor)
-            queue.append((neighbor, next_path))
-    raise ValueError(f"No se encontró una relación segura entre '{start_table}' y '{target_table}'. Prueba con campos de la misma tabla o verifica que ambas tengan identificadores relacionados (por ejemplo, cliente_id y la clave primaria de Clientes).")
+                shortest = len(following)
+                shortest_paths.append(following)
+                continue
+            if len(following) >= 5:
+                continue
+            if len(following) <= seen_length.get(neighbor, 999):
+                seen_length[neighbor] = len(following)
+                queue.append((neighbor, following))
+    if not shortest_paths:
+        raise ValueError(
+            f"No hay una relación segura de muchos-a-uno desde '{start_table}' "
+            f"hacia '{target_table}'. Selecciona la tabla de hechos correcta "
+            "para evitar multiplicar registros al calcular indicadores."
+        )
+    if len(shortest_paths) != 1:
+        raise ValueError(
+            f"Existen varias rutas de relación entre '{start_table}' y "
+            f"'{target_table}'. Selecciona una relación inequívoca antes de calcular."
+        )
+    return shortest_paths[0]
 
 
 def _resolve_definition(definition: VisualizationDefinition):
