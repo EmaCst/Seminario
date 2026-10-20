@@ -49,6 +49,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_professional_reports.py" -v
       - name: Test conversational visualization drafts and date buckets
         run: python -m unittest discover -s tests -p "test_conversational_visualizations.py" -v
+      - name: Test critical inventory with related product thresholds
+        run: python -m unittest discover -s tests -p "test_inventory_critical_phase3.py" -v
       - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4
