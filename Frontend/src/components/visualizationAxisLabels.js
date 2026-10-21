@@ -16,7 +16,9 @@ export const visualizationAxisLabels = (definition, catalog, language = 'es') =>
     max: isSpanish ? 'Máximo' : 'Maximum',
   };
   return {
-    x: definition?.time_granularity === 'month'
+    x: definition?.time_granularity === 'day'
+      ? (isSpanish ? 'Día, mes y año' : 'Day, month and year')
+      : definition?.time_granularity === 'month'
       ? (isSpanish ? 'Mes y año' : 'Month and year')
       : definition?.time_granularity === 'quarter'
         ? (isSpanish ? 'Trimestre y año' : 'Quarter and year')
