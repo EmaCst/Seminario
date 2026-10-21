@@ -222,9 +222,9 @@ export const DashboardProvider = ({ children }) => {
         setEditMode(false);
       }
     };
-    const refresh = () => getDatabaseStatus().catch(() => {
-      if (active) setSourceReady(true);
-    });
+    const refresh = () => getDatabaseStatus()
+      .then((status) => { if (active) sourceChanged({ detail: status }); })
+      .catch(() => { if (active) setSourceReady(true); });
     window.addEventListener('kenneth-source-changed', sourceChanged);
     refresh();
     // Also catches source changes made by a second tab/process.
