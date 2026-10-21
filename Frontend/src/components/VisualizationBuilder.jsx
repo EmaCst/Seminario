@@ -87,6 +87,9 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const supportsDimension = !isDetailTable && (needsDimension || visualization === 'table');
   const selectedDimensionField = dimensionEntity?.dimensions?.find(field => field.key === dimension);
   const dimensionIsDate = selectedDimensionField?.kind === 'date' || selectedDimensionField?.semantic === 'date';
+  const dimensionIdentity = selectedDimensionField?.semantic === 'name'
+    && dimensionEntity?.primary_key?.length === 1
+    ? dimensionEntity.primary_key[0] : null;
   // A metric on a joined parent may be repeated for every fact row.
   // Only COUNT/COUNT DISTINCT are safe in this direction; never advertise
   // SUM or AVG for a related metric the SQL engine correctly refuses.
@@ -369,7 +372,26 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               setPreview(null);
             }} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           {!isDetailTable && metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>{setAggregation(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
-          {supportsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{setDimension(e.target.value);setTimeGranularity('raw');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          {supportsDimension && <Field label={language === 'es' ? '¿Cómo quieres agruparlo?' : 'How should it be grouped?'} colors={colors}><div className="space-y-2"><select value={dimensionEntity?.key || ''} onChange={(e)=>{setDimensionEntityKey(e.target.value);setDimension('');setGroupIdentity(null);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{relatedEntities.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select><select value={dimension} onChange={(e)=>{
+              const next=e.target.value;
+              const selected=dimensionEntity?.dimensions?.find(field=>field.key===next);
+              setDimension(next);
+              setTimeGranularity('raw');
+              setGroupIdentity(selected?.semantic==='name'&&dimensionEntity?.primary_key?.length===1
+                ? dimensionEntity.primary_key[0] : null);
+              setPreview(null);
+            }} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Selecciona una dimensión' : 'Select a dimension'}</option>{(dimensionEntity?.dimensions||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
+          {dimensionIdentity && supportsDimension && (
+            <label className="flex items-start gap-2 rounded-xl border p-3 text-xs"
+              style={{borderColor:colors.border,color:colors.text}}>
+              <input type="checkbox" className="mt-0.5 h-4 w-4"
+                checked={groupIdentity===dimensionIdentity}
+                onChange={e=>{setGroupIdentity(e.target.checked?dimensionIdentity:null);setPreview(null)}}/>
+              <span>{language==='es'
+                ? 'Distinguir registros con el mismo nombre utilizando su ID. Evita combinar personas, productos o entidades diferentes.'
+                : 'Keep different records with the same name separate by ID, avoiding merged customers or products.'}</span>
+            </label>
+          )}
           {dimensionIsDate && supportsDimension && (
             <Field label={language === 'es' ? 'Agrupación temporal' : 'Time grouping'} colors={colors}>
               <select value={timeGranularity} onChange={(e)=>{setTimeGranularity(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
