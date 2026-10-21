@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.database.database_manager import database_manager
 from app.database.inspector import inspect_database
 from app.database.query_executor import execute_query
+from app.visualizations.semantic_catalog import _humanize
 
 
 VisualizationType = Literal["kpi", "bar", "line", "area", "donut", "table"]
@@ -506,14 +507,27 @@ def _result_columns(definition: VisualizationDefinition) -> list[dict]:
             {
                 "key": f"field_{index}", "table": column.table or definition.table,
                 "column": column.column,
-                "label": column.column.replace("_", " ").capitalize(),
+                "label": (
+                    _humanize(column.column)
+                    + (f" · {_humanize(column.table)}"
+                       if column.table and column.table != definition.table else "")
+                ),
             }
             for index, column in enumerate(definition.detail_columns)
         ]
+    names = {
+        "count": "Cantidad de registros",
+        "distinct_count": "Valores únicos",
+        "sum": "Suma", "avg": "Promedio",
+        "min": "Mínimo", "max": "Máximo",
+    }
+    metric_label = names.get(definition.aggregation, definition.aggregation)
+    if definition.metric:
+        metric_label += f" · {_humanize(definition.metric)}"
     return (
-        ([{"key": "dimension", "label": definition.group_by.replace("_", " ").capitalize()}]
+        ([{"key": "dimension", "label": _humanize(definition.group_by)}]
          if definition.group_by else [])
-        + [{"key": "value", "label": definition.aggregation.replace("_", " ").capitalize()}]
+        + [{"key": "value", "label": metric_label}]
     )
 
 
