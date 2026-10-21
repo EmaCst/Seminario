@@ -1,22 +1,51 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
+import { ChatVisualizationDraft } from './ChatVisualizationDraft';
+import { VisualizationBuilder } from './VisualizationBuilder';
 import { askDatabase } from '../services/api';
 
+// A database activation always starts a new conversation; never restore
+// prompts or draft metadata from a previous physical source.
+const welcomeMessage = (language) => ({
+  from: 'bot',
+  text: language === 'es'
+    ? 'Hola. Soy Kenneth, el asistente del sistema. ¿En qué puedo ayudarte?'
+    : 'Hello. I am Kenneth, the system assistant. How can I help you?',
+});
+
 export const Chatbot = () => {
-  const { theme, colors, language } = useContext(DashboardContext);
+  const { theme, colors, language, setActiveTab } = useContext(DashboardContext);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      from: 'bot',
-      text: language === 'es'
-        ? 'Hola. Soy Kenneth, el asistente del sistema. ¿En qué puedo ayudarte?'
-        : 'Hello. I am Kenneth, the system assistant. How can I help you?',
-    },
-  ]);
+  const [builderDraft, setBuilderDraft] = useState(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [messages, setMessages] = useState(() => [welcomeMessage(language)]);
   const messagesEndRef = useRef(null);
+  const requestEpoch = useRef(0);
+  const currentLanguage = useRef(language);
+  currentLanguage.current = language;
+
+  useEffect(() => {
+    const clearConversation = () => {
+      // Invalidates in-flight answers, including a response delivered just
+      // after the connection changed. This also works if the component was
+      // not remounted by its parent for any reason.
+      requestEpoch.current += 1;
+      setMessages([welcomeMessage(currentLanguage.current)]);
+      setInput('');
+      setSending(false);
+      setBuilderDraft(null);
+      setBuilderOpen(false);
+      setOpen(false);
+    };
+    window.addEventListener('kenneth-source-changed', clearConversation);
+    return () => {
+      requestEpoch.current += 1;
+      window.removeEventListener('kenneth-source-changed', clearConversation);
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -27,6 +56,9 @@ export const Chatbot = () => {
     .map((message) => ({
       role: message.from === 'user' ? 'user' : 'assistant',
       content: message.text,
+      ...(message.pendingVisualizationRequest ? {
+        pending_visualization_request: message.pendingVisualizationRequest,
+      } : {}),
     }));
 
   const sendMessage = async () => {
@@ -34,6 +66,7 @@ export const Chatbot = () => {
     if (!text || sending) return;
 
     const history = buildHistory();
+    const requestId = requestEpoch.current;
 
     setMessages((prev) => [
       ...prev,
@@ -44,6 +77,7 @@ export const Chatbot = () => {
 
     try {
       const result = await askDatabase(text, history);
+      if (requestId !== requestEpoch.current) return;
 
       setMessages((prev) => [
         ...prev,
@@ -52,9 +86,12 @@ export const Chatbot = () => {
           text: result.answer,
           mode: result.mode,
           performance: result.performance,
+          visualizationDraft: result.visualization_draft || null,
+          pendingVisualizationRequest: result.pending_visualization_request || null,
         },
       ]);
     } catch (error) {
+      if (requestId !== requestEpoch.current) return;
       console.error('Error consultando el asistente:', error);
 
       const networkError = error?.message === 'Failed to fetch';
@@ -72,8 +109,37 @@ export const Chatbot = () => {
         },
       ]);
     } finally {
-      setSending(false);
+      if (requestId === requestEpoch.current) setSending(false);
     }
+  };
+
+  const openReview = (draft) => {
+    setBuilderDraft({
+      definition: draft.definition,
+      preview: draft.preview,
+      placement: draft.placement,
+      source: draft.source,
+    });
+    setBuilderOpen(true);
+    setOpen(false);
+  };
+
+  const onSaved = (saved) => {
+    window.dispatchEvent(new Event('kenneth-custom-visualizations-changed'));
+    const placement = saved?.placement || {};
+    setMessages((previous) => [...previous, {
+      from: 'bot',
+      text: language === 'es'
+        ? `Guardé «${saved?.definition?.title || 'la visualización'}» en ${[
+          placement.dashboard ? 'Dashboard' : null, placement.analytics ? 'Analítica' : null,
+        ].filter(Boolean).join(' y ') || 'la biblioteca'}. Puedes seguir editándola desde Mis visualizaciones.`
+        : `Saved «${saved?.definition?.title || 'the visualization'}». You can edit it in My Visualizations.`,
+    }]);
+    setBuilderOpen(false);
+    setBuilderDraft(null);
+    setOpen(true);
+    if (placement.dashboard) setActiveTab('dashboard');
+    else if (placement.analytics) setActiveTab('analytics');
   };
 
   const handleKeyDown = (event) => {
@@ -87,7 +153,7 @@ export const Chatbot = () => {
     <>
       {open && (
         <div
-          className="fixed z-50 bottom-24 right-5 sm:right-7 w-[calc(100vw-2.5rem)] sm:w-[380px] overflow-hidden rounded-2xl border shadow-2xl"
+          className="fixed z-50 bottom-24 right-5 sm:right-7 w-[calc(100vw-2.5rem)] sm:w-[460px] overflow-hidden rounded-2xl border shadow-2xl"
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
         >
           <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: theme.primary, color: '#fff' }}>
@@ -115,12 +181,19 @@ export const Chatbot = () => {
             {messages.map((message, index) => (
               <div key={`${message.from}-${index}`} className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className="max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-5"
+                  className={`${message.visualizationDraft ? 'w-full max-w-full' : 'max-w-[82%]'} min-w-0 rounded-2xl px-3.5 py-2.5 text-sm leading-5`}
                   style={message.from === 'user'
                     ? { backgroundColor: theme.primary, color: '#fff' }
                     : { backgroundColor: colors.cardSoft, color: colors.text, border: `1px solid ${colors.border}` }}
                 >
-                  {message.text}
+                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                  {message.visualizationDraft && (
+                    <ChatVisualizationDraft
+                      draft={message.visualizationDraft}
+                      colors={colors} theme={theme} language={language}
+                      onReview={() => openReview(message.visualizationDraft)}
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -175,6 +248,13 @@ export const Chatbot = () => {
         </div>
       )}
 
+      <VisualizationBuilder
+        open={builderOpen}
+        initialItem={builderDraft}
+        mode="create"
+        onClose={() => { setBuilderOpen(false); setBuilderDraft(null); setOpen(true); }}
+        onSaved={onSaved}
+      />
       <button
         onClick={() => setOpen((value) => !value)}
         className="fixed z-50 bottom-5 right-5 sm:right-7 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-xl transition-all hover:scale-105 focus:outline-none focus:ring-4"

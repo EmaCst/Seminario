@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useEffect, useMemo, useRef, useState } from 'react';
+import { getDatabaseStatus } from '../services/api';
 
 export const DashboardContext = createContext();
 
@@ -183,6 +184,11 @@ const detectTheme = () => {
 
 export const DashboardProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sourceRevision, setSourceRevision] = useState(null);
+  const [sourceIdentity, setSourceIdentity] = useState(null);
+  const [sourceStatus, setSourceStatus] = useState(null);
+  const [sourceReady, setSourceReady] = useState(false);
+  const revisionRef = useRef(undefined);
   const [themeId, setThemeId] = useState(detectTheme);
   const [isDarkMode, setIsDarkMode] = useState(detectDarkMode);
   const [language, setLanguage] = useState(detectLanguage);
@@ -198,6 +204,37 @@ export const DashboardProvider = ({ children }) => {
     salesPerMonth: true,
     topProducts: true,
   });
+
+  useEffect(() => {
+    let active = true;
+    const sourceChanged = (event) => {
+      if (!active) return;
+      const status = event.detail || {};
+      const next = status.revision || null;
+      setSourceStatus(status);
+      setSourceReady(true);
+      setSourceIdentity(status.source_identity || null);
+      if (revisionRef.current !== next) {
+        revisionRef.current = next;
+        setSourceRevision(next);
+        // Appearance settings belong to the user, not the database. Only
+        // database-specific UI state and edit sessions are reset.
+        setEditMode(false);
+      }
+    };
+    const refresh = () => getDatabaseStatus()
+      .then((status) => { if (active) sourceChanged({ detail: status }); })
+      .catch(() => { if (active) setSourceReady(true); });
+    window.addEventListener('kenneth-source-changed', sourceChanged);
+    refresh();
+    // Also catches source changes made by a second tab/process.
+    const interval = window.setInterval(refresh, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('kenneth-source-changed', sourceChanged);
+    };
+  }, []);
 
   const theme = THEMES[themeId];
   const t = translations[language];
@@ -248,6 +285,10 @@ export const DashboardProvider = ({ children }) => {
       value={{
         activeTab,
         setActiveTab,
+        sourceReady,
+        sourceRevision,
+        sourceIdentity,
+        sourceStatus,
         theme,
         themeId,
         setThemeId,

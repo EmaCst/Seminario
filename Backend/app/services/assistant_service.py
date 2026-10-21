@@ -9,6 +9,10 @@ from app.analysis.adaptive_dashboard_service import _monthly_count
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.query_executor import execute_query
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
+from app.visualizations.conversational_drafts import (
+    interpret_visualization_request, is_visualization_creation_request,
+)
+
 
 
 PREDICTION_TERMS = (
@@ -98,69 +102,137 @@ def _quality_from_r2(r2: float | None) -> str:
 def _format_forecast_answer(result: dict) -> str:
     from app.services.assistant_domain_analytics import ROLE_LABELS
     role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
-    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad de registros por mes"
+    metric = {
+        "amount": "importe mensual",
+        "quantity": "unidades producidas por mes",
+        "average": "promedio mensual de calificaciones",
+    }.get(result.get("metric"), "cantidad mensual de registros")
     forecast = result.get("forecast") or []
-    r2 = result.get("r2_score")
-    quality = _quality_from_r2(r2)
-
     if not forecast:
         return "No pude generar una predicción con los datos disponibles."
-
     values = ", ".join(
         f"{item['month']:02d}/{item['year']}: {item['predicted_total']}"
         for item in forecast
     )
-
-    if isinstance(r2, (int, float)):
-        explanation = (
-            f"La calidad de ajuste es {quality} (R²={r2:.4f}), "
-            "así que conviene tomarlo como una tendencia estimada, no como una certeza."
+    names = {
+        "seasonal_trend": "tendencia y estacionalidad",
+        "seasonal_naive": "referencia que repite exactamente el mismo mes del año anterior",
+        "seasonal_drift": "patrón anual ajustado según el cambio interanual histórico",
+        "linear_regression": "tendencia lineal",
+        "naive_last": "último valor observado",
+    }
+    validation = result.get("validation") or {}
+    score = validation.get("selected") or {}
+    if score:
+        evidence = (
+            f"Validación cronológica con {validation.get('months')} orígenes y "
+            f"{validation.get('samples')} predicciones: MAE={score.get('mae')}, "
+            f"RMSE={score.get('rmse')}; R² fuera del entrenamiento="
+            f"{score.get('r2') if score.get('r2') is not None else 'no disponible'}. "
         )
+        skill = validation.get("skill_vs_naive_pct")
+        if skill is not None:
+            evidence += f"Mejora de MAE frente al modelo ingenuo: {skill}%. "
     else:
-        explanation = "Tómalo como una estimación orientativa basada en el historial disponible."
-
-    return f"La proyección de {metric} de {role} es: {values}. {explanation}"
+        evidence = "No hay suficientes observaciones para validar el desempeño fuera del entrenamiento. "
+    patterns = result.get("seasonal_patterns") or []
+    summary = (
+        " Patrones anuales recurrentes: " +
+        ", ".join(f"mes {item['month']:02d} ({'aumento' if item['direction'] == 'increase' else 'descenso'})"
+                  for item in patterns) + "."
+        if patterns else ""
+    )
+    note = result.get("warning") or ""
+    basis = result.get("forecast_basis") or {}
+    last_actual = basis.get("last_observed") or {}
+    provenance = (
+        f"Último mes registrado: {int(last_actual['month']):02d}/{last_actual['year']}. "
+        if last_actual.get("month") and last_actual.get("year") else ""
+    )
+    if basis.get("all_periods_future") is False:
+        provenance += (
+            "IMPORTANTE: alguna de estas fechas ya transcurrió o corresponde al "
+            "mes actual; estas estimaciones empiezan después del último "
+            "registro, no después de la fecha actual. "
+        )
+    annual = [item for item in forecast if item.get("prior_year_total") is not None]
+    annual_comparison = (
+        " Comparación visible con el mismo mes del año anterior: " +
+        ", ".join(
+            f"{item['month']:02d}/{item['year']} estimado {item['predicted_total']} "
+            f"frente a registro previo {item['prior_year_total']}"
+            for item in annual[:4]
+        ) + "."
+        if annual else ""
+    )
+    return (
+        f"{provenance}Estimaciones de {metric} de {role}, "
+        f"modelo {names.get(result.get('model'), result.get('model'))}: {values}. "
+        f"{evidence}Confiabilidad: {result.get('confidence', 'sin evaluar')}."
+        f"{summary}{annual_comparison} {note}"
+    )
 
 
 def _format_anomaly_answer(result: dict) -> str:
     from app.services.assistant_domain_analytics import ROLE_LABELS
     role = ROLE_LABELS.get(result.get("role"), result.get("role", "serie"))
-    metric = "importe mensual" if result.get("metric") == "amount" else "cantidad mensual de registros"
+    metric = {
+        "amount": "importe mensual",
+        "quantity": "unidades producidas por mes",
+        "average": "promedio mensual de calificaciones",
+    }.get(result.get("metric"), "cantidad mensual de registros")
     anomalies = result.get("anomalies") or []
-
     if not anomalies:
-        return f"No encontré meses atípicos en {metric} de {role} según el modelo utilizado."
-
+        warning = result.get("warning") or ""
+        return (f"No detecté desviaciones significativas frente al patrón esperado "
+                f"en {metric} de {role}. {warning}")
+    investigations = {
+        (item["year"], item["month"]): item
+        for item in (result.get("diagnostics") or {}).get("investigations", [])
+    }
     descriptions = []
-    for item in anomalies:
-        month = f"{item['month']:02d}/{item['year']}"
-        total = item.get("total")
-        severity = item.get("severity") or "no determinada"
-        pct_average = item.get("pct_vs_average")
-        pct_previous = item.get("pct_vs_previous")
-        pct_neighbors = item.get("pct_vs_neighbors")
-
-        reasons = []
-        if isinstance(pct_average, (int, float)):
-            direction = "por encima" if pct_average >= 0 else "por debajo"
-            reasons.append(f"estuvo {abs(pct_average):.1f}% {direction} del promedio mensual")
-        if isinstance(pct_previous, (int, float)):
-            direction = "subió" if pct_previous >= 0 else "bajó"
-            reasons.append(f"{direction} {abs(pct_previous):.1f}% frente al mes anterior")
-        if isinstance(pct_neighbors, (int, float)):
-            direction = "por encima" if pct_neighbors >= 0 else "por debajo"
-            reasons.append(f"quedó {abs(pct_neighbors):.1f}% {direction} de sus meses vecinos")
-
-        reason_text = "; además, ".join(reasons) if reasons else "se alejó del patrón mensual habitual"
-        descriptions.append(
-            f"{month} registró {total} y tuvo severidad {severity}: {reason_text}."
+    for point in anomalies[:5]:
+        if point.get("explanation"):
+            label = point.get("period_label") or f"{point['month']:02d}/{point['year']}"
+            explanation = (
+                f"Anomalía de {label} (período mensual, severidad "
+                f"{point.get('severity') or 'no determinada'}). "
+                f"{point['explanation']} "
+                f"{point.get('diagnostic_explanation') or ''} "
+                f"{point.get('recommendation') or ''}"
+            )
+            descriptions.append(explanation.strip())
+            continue
+        month = f"{point['month']:02d}/{point['year']}"
+        description = (
+            f"{month}: observado {point['total']}, esperado {point.get('expected_total')}, "
+            f"desviación {point.get('pct_vs_expected')}%, severidad "
+            f"{point.get('severity', 'no determinada')}. "
         )
-
-    return (
-        f"Detecté {len(anomalies)} comportamiento(s) atípico(s) en {metric} de {role}. "
-        + " ".join(descriptions)
-        + " Vale la pena revisar qué ocurrió en esos periodos para entender el cambio."
-    )
+        investigation = investigations.get((point["year"], point["month"]))
+        if investigation:
+            ref = investigation.get("reference_period")
+            if ref:
+                description += f"Comparación descriptiva contra {ref['month']:02d}/{ref['year']}: "
+                contributions = investigation.get("contributors") or []
+                if contributions:
+                    description += "; ".join(
+                        f"{item['dimension']}={item['category']} cambió {item['change']:+g}"
+                        for item in contributions[:3]
+                    ) + ". "
+                else:
+                    description += "sin un desglose categórico verificable. "
+            related = investigation.get("related_indicators") or []
+            if related:
+                description += "Otros indicadores con cambios simultáneos: " + "; ".join(
+                    f"{item['role']} varió {item['change']:+g} registros"
+                    for item in related[:3]
+                ) + ". "
+        descriptions.append(description)
+    return (f"Se detectaron {len(anomalies)} comportamientos atípicos en {metric} de {role}. "
+            + " ".join(descriptions)
+            + " Las variaciones por segmento son asociaciones observadas, "
+              "no causas demostradas. No se infieren factores externos sin evidencia.")
 
 
 def _select_monthly_series(question: str) -> tuple[str, str, str, list[dict]]:
@@ -418,10 +490,82 @@ def _attribution_followup(question: str, history: list[dict]) -> str | None:
     return " ".join(previous + [question])
 
 
+def _pending_visualization_request(question: str, history: list[dict]) -> str | None:
+    """Continue a clarification only if the immediately preceding assistant reply
+    explicitly requested missing visualization details. No global mutable state."""
+    if len(question.strip()) > 100 or is_visualization_creation_request(question):
+        return None
+    if not history:
+        return None
+    latest = history[-1]
+    if (latest.get("role") or latest.get("from")) not in ("assistant", "bot"):
+        return None
+    answer = str(latest.get("content") or latest.get("text") or "")
+    if not (answer.startswith("Para continuar con la visualización:")
+            or answer.startswith("¿Cómo quieres agrupar los datos?")):
+        return None
+    explicit = str(latest.get("pending_visualization_request") or "").strip()
+    if explicit and is_visualization_creation_request(explicit):
+        return explicit
+    for item in reversed(history[:-1][-8:]):
+        if (item.get("role") or item.get("from")) not in ("user", "usuario"):
+            continue
+        original = str(item.get("content") or item.get("text") or "").strip()
+        if is_visualization_creation_request(original):
+            return original
+    return None
+
+
 def ask_database(question: str, history: list[dict] | None = None) -> dict:
     """Orquesta SQL, analítica determinista, ML, contexto conversacional y autocorrección."""
     started = perf_counter()
     history = history or []
+    # Visualization authoring is an explicit, read-only draft workflow.
+    # It must run before the generic LLM-to-SQL answering path.
+    pending_request = _pending_visualization_request(question, history)
+    if is_visualization_creation_request(question) or pending_request:
+        visualization_question = (pending_request + " " + question) if pending_request else question
+        try:
+            draft = interpret_visualization_request(visualization_question)
+        except ValueError as exc:
+            return {
+                "question": question, "mode": "visualization_clarification",
+                "sql": None, "data": [],
+                "answer": "Para continuar con la visualización: " + str(exc),
+                "pending_visualization_request": pending_request or question,
+                "visualization_draft": None,
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
+            }
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Visualization draft failed")
+            return {
+                "question": question, "mode": "error", "sql": None, "data": [],
+                "answer": (
+                    "No pude preparar una previsualización con los datos actuales. "
+                    "Verifica la conexión o utiliza el creador de visualizaciones."
+                ),
+                "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
+            }
+        if draft["status"] == "empty":
+            answer = (
+                "Preparé los campos y los filtros, pero la consulta no devolvió registros. "
+                "Puedes revisarla en el creador; todavía no se ha guardado nada."
+            )
+        else:
+            answer = (
+                f"Preparé una propuesta de «{draft['definition']['title']}» con "
+                f"{len(draft['preview']['data'])} resultado(s) verificados. "
+                "Revisa la gráfica y abre el creador para modificar filtros, "
+                "elegir su ubicación y confirmar si deseas guardarla."
+            )
+        return {
+            "question": question, "mode": "visualization_draft",
+            "sql": None, "data": [],
+            "answer": answer,
+            "visualization_draft": draft,
+            "performance": {"total_ms": round((perf_counter() - started) * 1000, 1)},
+        }
     intent = route_request(question, history)
     intent_text = question.lower()
 

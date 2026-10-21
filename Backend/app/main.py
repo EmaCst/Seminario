@@ -11,6 +11,7 @@ from app.analysis.semantic_mapper import inspect_semantic_map
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
+from app.database.source_guard import source_revision_middleware
 from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
 from app.database.postgresql_backup_loader import (
@@ -20,6 +21,8 @@ from app.database.postgresql_backup_loader import (
 from app.database.sqlserver_backup_loader import restore_sqlserver_backup
 from app.ml.predictive_service import detect_monthly_anomalies, forecast_next_months
 from app.reports.report_service import REPORT_TYPES, generate_report_pdf
+from app.reports.report_configuration import ReportConfiguration, get_report_options, preview_report
+from app.reports.configured_pdf import generate_configured_report
 from app.services.assistant_service import ask_database
 from app.visualizations.semantic_catalog import get_semantic_visualization_catalog
 from app.visualizations.visualization_store import (
@@ -41,11 +44,14 @@ from app.visualizations.visualization_service import (
 )
 
 app = FastAPI(title="AI Business Assistant", description="Asistente empresarial para análisis de datos", version="0.13.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Kenneth-Source-Revision", "Content-Disposition"])
+app.middleware("http")(source_revision_middleware)
 
 class ChatMessage(BaseModel):
     role: str
     content: str
+    # Server-issued draft-clarification context, carried only in chat history.
+    pending_visualization_request: str | None = Field(default=None, max_length=1000)
 
 class Question(BaseModel):
     question: str
@@ -210,6 +216,38 @@ def visualization_preview(definition: VisualizationDefinition):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No fue posible generar la visualización: {exc}") from exc
+
+@app.get("/api/reports/options")
+def report_configuration_options():
+    try:
+        return get_report_options()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/reports/preview")
+def report_preview(request: ReportConfiguration):
+    try:
+        return preview_report(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible previsualizar el informe: {exc}") from exc
+
+
+@app.post("/api/reports/generate")
+def report_generate(request: ReportConfiguration):
+    try:
+        content, filename = generate_configured_report(request)
+        return Response(
+            content=content, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No fue posible generar el informe: {exc}") from exc
+
 
 @app.get("/api/reports/pdf")
 def report_pdf(type: str = "executive"):

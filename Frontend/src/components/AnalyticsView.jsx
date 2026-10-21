@@ -23,6 +23,7 @@ import {
   YAxis,
 } from 'recharts';
 import { DashboardContext } from '../context/DashboardContext';
+import { ChartAxisHint } from './ChartAxisHint';
 import { getAdaptiveAnalytics, getSavedVisualizations } from '../services/api';
 import { CustomVisualizationWidget } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
@@ -230,6 +231,7 @@ export const AnalyticsView = () => {
             node: <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               <div><div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={TrendingUp} title={language === 'es' ? 'Evolución y promedio móvil' : 'Evolution and moving average'} subtitle={`${roleLabel(trend?.role)} · ${range === 0 ? 'histórico completo' : `últimos ${range} meses`}`} theme={theme} colors={colors} />
+              <ChartAxisHint className="mb-2" x={language === 'es' ? 'Mes y año' : 'Month and year'} y={language === 'es' ? 'Cantidad de registros' : 'Record count'} language={language} colors={colors} />
               <div className="h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={trendData}>
@@ -312,6 +314,7 @@ export const AnalyticsView = () => {
               id: `distribution-${distribution.role}-${distribution.column}`,
               node: <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                 <SectionTitle icon={Layers3} title={distribution.label} subtitle={roleLabel(distribution.role)} theme={theme} colors={colors} />
+                <ChartAxisHint className="mb-2" x={distribution.label || (language === 'es' ? 'Categoría' : 'Category')} y={language === 'es' ? 'Cantidad de registros' : 'Record count'} language={language} colors={colors} />
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={distribution.data}>
@@ -330,6 +333,7 @@ export const AnalyticsView = () => {
           <EditableDashboardGrid storageId="analytics-canvas" sharedCanvas="analytics-canvas" items={[{ id:'entity-volume', node:
             <div className="rounded-2xl border p-5 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <SectionTitle icon={BarChart3} title={language === 'es' ? 'Volumen por entidad' : 'Volume by entity'} subtitle={language === 'es' ? 'Entidades detectadas y mapeadas por el modelo semántico.' : 'Entities detected and mapped by the semantic model.'} theme={theme} colors={colors} />
+              <ChartAxisHint className="mb-2" horizontal x={language === 'es' ? 'Entidad' : 'Entity'} y={language === 'es' ? 'Cantidad de registros' : 'Record count'} language={language} colors={colors} />
               <div className="h-[330px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={entityData} layout="vertical" margin={{ left: 10 }}>

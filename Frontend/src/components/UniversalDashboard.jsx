@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 
 import { DashboardContext } from '../context/DashboardContext';
+import { ChartAxisHint } from './ChartAxisHint';
 import { getAdaptiveDashboard, getDatabaseStatus, getSemanticModel } from '../services/api';
 import { DashboardView } from './DashboardView';
 import { VisualizationBuilder } from './VisualizationBuilder';
@@ -164,6 +165,7 @@ const BusinessDashboard = ({ data }) => {
           <h3 className="font-bold mb-3" style={{ color: theme.primary }}>
             {data?.trend?.available ? `${roleLabel(data.trend.role, language)} ${language === 'es' ? 'por mes' : 'by month'}` : (language === 'es' ? 'Evolución mensual' : 'Monthly trend')}
           </h3>
+          <ChartAxisHint className="mb-1" x={language === 'es' ? 'Mes y año' : 'Month and year'} y={language === 'es' ? 'Cantidad de registros' : 'Record count'} language={language} colors={colors} />
           {data?.trend?.available && trendRows.length ? (
             <ResponsiveContainer width="100%" height="86%">
               <LineChart data={trendRows} margin={{ top: 5, right: 18, left: -15, bottom: 0 }}>
@@ -184,6 +186,7 @@ const BusinessDashboard = ({ data }) => {
           <h3 className="font-bold mb-3" style={{ color: theme.primary }}>
             {data?.status_distribution?.available ? `${roleLabel(data.status_distribution.role, language)} — ${language === 'es' ? 'distribución por estado' : 'status distribution'}` : (language === 'es' ? 'Distribución por estado' : 'Status distribution')}
           </h3>
+          <ChartAxisHint className="mb-1" x={language === 'es' ? 'Estado' : 'Status'} y={language === 'es' ? 'Cantidad de registros' : 'Record count'} language={language} colors={colors} />
           {data?.status_distribution?.available && statusRows.length ? (
             <ResponsiveContainer width="100%" height="86%">
               <BarChart data={statusRows} margin={{ top: 5, right: 18, left: -15, bottom: 0 }}>
