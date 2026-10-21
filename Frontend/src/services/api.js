@@ -3,13 +3,15 @@ const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replac
 const REVISION_HEADER = 'X-Kenneth-Source-Revision';
 let activeRevision = null;
 let activeIdentity = null;
+let hasObservedSource = false;
 
 export const SOURCE_CHANGED_MESSAGE = 'La fuente activa cambió. Se limpiaron los resultados anteriores; vuelve a intentar la consulta.';
 
 const observeSource = (status) => {
   const nextRevision = status?.revision || null;
   const nextIdentity = status?.source_identity || null;
-  if (nextRevision !== activeRevision || nextIdentity !== activeIdentity) {
+  if (!hasObservedSource || nextRevision !== activeRevision || nextIdentity !== activeIdentity) {
+    hasObservedSource = true;
     activeRevision = nextRevision;
     activeIdentity = nextIdentity;
     window.dispatchEvent(new CustomEvent('kenneth-source-changed', {
