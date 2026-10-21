@@ -37,7 +37,7 @@ La capa `services/api.js` centraliza las peticiones, la generación activa y la 
 
 En cada generación nueva se desmontan y reconstruyen los componentes vinculados a los datos:
 
-- conversación, aclaraciones pendientes y borradores de gráficas en Kenneth;
+- conversación, aclaraciones pendientes y borradores de gráficas en Kenneth: el chat vuelve al saludo inicial, borra los mensajes anteriores, el texto sin enviar, el indicador de respuesta en curso y cualquier editor de gráfica abierto. El chat también tiene un listener propio al cambio de fuente; incluso si la vista no llega a desmontarse, invalida mediante un contador local las respuestas que estaban pendientes;
 - indicadores de Dashboard/Analítica, previsualizaciones y exploraciones de tablas;
 - pronósticos y anomalías;
 - opciones y vista previa de reportes;
@@ -84,13 +84,13 @@ La CI también comprueba las pruebas de ML, informes, visualizaciones y compilac
 
 ## Checklist de validación manual
 
-1. Conecta SQL Server, pregunta algo a Kenneth y prepara una gráfica sin guardarla.
-2. Cambia a PostgreSQL: el chat debe comenzar de cero, las métricas se recalculan y las gráficas antiguas no se muestran.
+1. Conecta SQL Server, envía varias preguntas a Kenneth y deja escrito un mensaje sin enviar. Prepara también un borrador de gráfica sin guardarlo.
+2. Cambia a PostgreSQL: al abrir Kenneth debe verse solo «Hola. Soy Kenneth…». No deben permanecer preguntas/respuestas, texto sin enviar, aclaraciones ni propuestas anteriores. Las métricas se recalculan y las gráficas antiguas no se muestran.
 3. Importa un Excel: confirma que ni gráficos, ni análisis, ni borradores de las bases anteriores aparezcan.
 4. Abre dos pestañas: cambia la fuente en una y comprueba que la otra limpie el contexto.
 5. Repite la conexión con la misma base: debe reiniciar estado en memoria; los diseños guardados para **esa misma fuente física** pueden permanecer disponibles, sin mostrar los de otra.
 6. Comprueba bases con el mismo nombre en dos servidores y archivos Excel con el mismo nombre pero distinto contenido.
-7. Inicia una consulta larga antes de cambiar la conexión: debe terminar con conflicto en lugar de mostrar datos de otra fuente.
+7. Inicia una consulta larga antes de cambiar la conexión: el chat debe vaciarse y volver al saludo. Una respuesta antigua que llegue después no debe insertarse en la conversación nueva; el backend además debe devolver conflicto en lugar de mostrar datos de otra fuente.
 8. Confirma que cambiar el tema, idioma u otras preferencias personales no borre esas elecciones.
 9. Verifica que la UI comunica errores de conectividad y activaciones fallidas sin atribuirlos a una base recién cargada.
 
