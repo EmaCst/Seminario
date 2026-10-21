@@ -55,6 +55,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_visualization_builder_enhancements.py" -v
       - name: Test cross-domain visualization engine and detailed tables
         run: python -m unittest discover -s tests -p "test_visualization_engine_domains.py" -v
+      - name: Test physical source isolation and connection generation guards
+        run: python -m unittest discover -s tests -p "test_source_isolation_phase4.py" -v
       - name: Test conversational groupings across business domains
         run: python -m unittest discover -s tests -p "test_conversational_related_domains.py" -v
       - name: Upload quality reports
