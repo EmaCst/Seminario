@@ -41,7 +41,7 @@ class VisualizationDefinition(BaseModel):
     group_by_identity: str | None = None
     sort_direction: Literal["asc", "desc"] = "desc"
     time_direction: Literal["asc", "desc"] = "asc"
-    time_granularity: Literal["raw", "month", "quarter", "year"] = "raw"
+    time_granularity: Literal["raw", "day", "month", "quarter", "year"] = "raw"
     filters: list[VisualizationFilter] = Field(default_factory=list, max_length=20)
     table_mode: Literal["aggregate", "detail"] = "aggregate"
     detail_columns: list[VisualizationColumn] = Field(default_factory=list, max_length=8)
@@ -49,12 +49,12 @@ class VisualizationDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_shape(self):
-        if self.aggregation != "count" and not self.metric:
+        if self.aggregation != "count" and not self.metric and self.table_mode != "detail":
             raise ValueError("Selecciona una métrica para esta agregación.")
         if self.visualization in {"bar", "line", "area", "donut"} and not self.group_by:
             raise ValueError("Esta visualización necesita una dimensión para agrupar.")
         if self.time_granularity != "raw" and not self.group_by:
-            raise ValueError("Selecciona una fecha para agrupar por mes o año.")
+            raise ValueError("Selecciona una fecha para agrupar por día, mes, trimestre o año.")
         if self.group_by_identity and (not self.group_by or self.time_granularity != "raw"):
             raise ValueError("La identidad solo se aplica a dimensiones no temporales.")
         if self.table_mode == "detail":
@@ -353,12 +353,16 @@ def _time_bucket(expression: str, granularity: str) -> str:
         return expression
     provider = database_manager.status().get("provider")
     if provider == "postgresql":
+        if granularity == "day":
+            return f"TO_CHAR({expression}, 'YYYY-MM-DD')"
         if granularity == "quarter":
             return (f"TO_CHAR({expression}, 'YYYY') || '-Q' || "
                     f"CAST(EXTRACT(QUARTER FROM {expression}) AS TEXT)")
         fmt = "YYYY-MM" if granularity == "month" else "YYYY"
         return f"TO_CHAR({expression}, '{fmt}')"
     if provider == "sqlserver":
+        if granularity == "day":
+            return f"CONVERT(VARCHAR(10), {expression}, 120)"
         if granularity == "month":
             return f"CONVERT(VARCHAR(7), {expression}, 120)"
         if granularity == "quarter":
@@ -368,7 +372,9 @@ def _time_bucket(expression: str, granularity: str) -> str:
     if granularity == "quarter":
         return (f"strftime('%Y', {expression}) || '-Q' || "
                 f"CAST(((CAST(strftime('%m', {expression}) AS INTEGER) - 1) / 3 + 1) AS INTEGER)")
-    fmt = "%Y-%m" if granularity == "month" else "%Y"
+    fmt = {"day": "%Y-%m-%d", "month": "%Y-%m", "year": "%Y"}.get(granularity)
+    if fmt is None:
+        raise ValueError("La agrupación temporal solicitada no está disponible.")
     return f"strftime('{fmt}', {expression})"
 
 
