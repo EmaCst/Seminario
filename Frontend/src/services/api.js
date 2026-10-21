@@ -55,10 +55,13 @@ async function guardedFetch(url, options = {}) {
 }
 
 async function activationRequest(url, options = {}) {
-  // A successfully activated source must invalidate all mounted data even
-  // if its optional semantic analysis fails after the engine was replaced.
+  // The connection response already includes its new revision for direct
+  // SQL Server/PostgreSQL/Excel activations. Invalidate the chat immediately;
+  // status refresh also covers backups and partial semantic-analysis failures.
   try {
-    return await parseResponse(await fetch(url, { ...options, cache: 'no-store' }));
+    const result = await parseResponse(await fetch(url, { ...options, cache: 'no-store' }));
+    if (result?.connection?.revision) observeSource(result.connection);
+    return result;
   } finally {
     await getDatabaseStatus().catch(() => {});
   }
