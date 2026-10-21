@@ -159,6 +159,22 @@ class BuilderDomainEnhancementTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "columna de fecha"):
                     engine.build_visualization_query(definition)
 
+    def test_textual_min_max_remain_tables_not_numeric_charts(self):
+        unsafe = engine.VisualizationDefinition(
+            title="Estados en un gráfico", visualization="bar",
+            table="registros", group_by="estado",
+            metric="estado", aggregation="min",
+        )
+        with patch.object(engine, "inspect_database", return_value=database_schema()):
+            with self.assertRaisesRegex(ValueError, "métrica numérica"):
+                engine.build_visualization_query(unsafe)
+        safe = unsafe.model_copy(update={"visualization": "table"})
+        with patch.object(engine, "inspect_database", return_value=database_schema()):
+            with patch.object(engine.database_manager, "status",
+                              return_value={"provider": "excel"}):
+                sql = engine.build_visualization_query(safe)
+        self.assertIn("MIN(", sql)
+
     def test_nullable_filters_and_two_bound_dates_are_supported(self):
         definitions = [
             engine.VisualizationDefinition(
