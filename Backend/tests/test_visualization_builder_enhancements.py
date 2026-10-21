@@ -154,8 +154,10 @@ class BuilderDomainEnhancementTests(unittest.TestCase):
             group_by="estado", time_granularity="day",
         )
         with patch.object(engine, "inspect_database", return_value=database_schema()):
-            with self.assertRaisesRegex(ValueError, "columna de fecha"):
-                engine.build_visualization_query(definition)
+            with patch("app.analysis.semantic_mapper_v2.inspect_semantic_model",
+                       return_value={"semantic_model": {"entities": {}}}):
+                with self.assertRaisesRegex(ValueError, "columna de fecha"):
+                    engine.build_visualization_query(definition)
 
     def test_nullable_filters_and_two_bound_dates_are_supported(self):
         definitions = [
