@@ -47,6 +47,16 @@ jobs:
           python -m unittest discover -s tests -p "test_assistant_prediction_domains.py" -v
       - name: Test professional configurable PDF reports
         run: python -m unittest discover -s tests -p "test_professional_reports.py" -v
+      - name: Test conversational visualization drafts and date buckets
+        run: python -m unittest discover -s tests -p "test_conversational_visualizations.py" -v
+      - name: Test critical inventory with related product thresholds
+        run: python -m unittest discover -s tests -p "test_inventory_critical_phase3.py" -v
+      - name: Test cross-domain visual builder enhancements
+        run: python -m unittest discover -s tests -p "test_visualization_builder_enhancements.py" -v
+      - name: Test cross-domain visualization engine and detailed tables
+        run: python -m unittest discover -s tests -p "test_visualization_engine_domains.py" -v
+      - name: Test conversational groupings across business domains
+        run: python -m unittest discover -s tests -p "test_conversational_related_domains.py" -v
       - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4

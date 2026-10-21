@@ -9,13 +9,22 @@ export const visualizationAxisLabels = (definition, catalog, language = 'es') =>
   const aggregation = definition?.aggregation || 'count';
   const aggregationNames = {
     count: isSpanish ? 'Cantidad de registros' : 'Record count',
+    distinct_count: isSpanish ? 'Valores únicos de' : 'Unique values of',
     sum: isSpanish ? 'Suma' : 'Sum',
     avg: isSpanish ? 'Promedio' : 'Average',
     min: isSpanish ? 'Mínimo' : 'Minimum',
     max: isSpanish ? 'Máximo' : 'Maximum',
   };
   return {
-    x: dimension?.label || definition?.group_by || (isSpanish ? 'Categoría' : 'Category'),
+    x: definition?.time_granularity === 'day'
+      ? (isSpanish ? 'Día, mes y año' : 'Day, month and year')
+      : definition?.time_granularity === 'month'
+      ? (isSpanish ? 'Mes y año' : 'Month and year')
+      : definition?.time_granularity === 'quarter'
+        ? (isSpanish ? 'Trimestre y año' : 'Quarter and year')
+        : definition?.time_granularity === 'year'
+          ? (isSpanish ? 'Año' : 'Year')
+        : dimension?.label || definition?.group_by || (isSpanish ? 'Categoría' : 'Category'),
     y: aggregation === 'count'
       ? aggregationNames.count
       : `${aggregationNames[aggregation] || aggregation} · ${metric?.label || definition?.metric || (isSpanish ? 'valor' : 'value')}`,

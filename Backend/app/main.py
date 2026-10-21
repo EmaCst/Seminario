@@ -48,6 +48,8 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http
 class ChatMessage(BaseModel):
     role: str
     content: str
+    # Server-issued draft-clarification context, carried only in chat history.
+    pending_visualization_request: str | None = Field(default=None, max_length=1000)
 
 class Question(BaseModel):
     question: str

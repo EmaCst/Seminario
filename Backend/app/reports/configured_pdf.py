@@ -115,17 +115,39 @@ def _add_visualizations(story, styles, items: list[dict]):
         if chart_type == "kpi":
             _paragraph(story, styles, f"Resultado: {_fmt(rows[0].get('value')) if rows else '-'}")
         elif chart_type == "table":
-            headings = ["Dimensión", "Valor"] if "dimension" in rows[0] else ["Valor"]
-            cells = [headings]
-            for row in rows[:30]:
-                if "dimension" in row:
-                    cells.append([str(row.get("dimension", "-"))[:65], _fmt(row.get("value"))])
-                else:
-                    cells.append([_fmt(row.get("value"))])
-            story.append(_table(cells, widths=[110 * mm, 55 * mm] if len(headings) == 2 else [165 * mm]))
+            if definition.get("table_mode") == "detail":
+                detail = definition.get("detail_columns") or []
+                columns = [
+                    (f"field_{index}", str(field.get("column", "-"))[:22])
+                    for index, field in enumerate(detail)
+                ]
+                cells = [[label for _, label in columns]]
+                for row in rows[:30]:
+                    cells.append([str(row.get(key, "-"))[:30] for key, _ in columns])
+                if columns:
+                    story.append(_table(
+                        cells, widths=[165 * mm / len(columns)] * len(columns),
+                    ))
+            else:
+                headings = ["Dimensión", "Valor"] if "dimension" in rows[0] else ["Valor"]
+                cells = [headings]
+                for row in rows[:30]:
+                    if "dimension" in row:
+                        cells.append([str(row.get("dimension", "-"))[:65], _fmt(row.get("value"))])
+                    else:
+                        cells.append([_fmt(row.get("value"))])
+                story.append(_table(
+                    cells, widths=[110 * mm, 55 * mm] if len(headings) == 2 else [165 * mm],
+                ))
+            if len(rows) > 30:
+                _paragraph(
+                    story, styles,
+                    f"Se incluyen 30 de {len(rows)} filas consultadas.",
+                    "NoteText",
+                )
         else:
             chart = None
-            if chart_type == "line":
+            if chart_type in {"line", "area"}:
                 chart = _saved_line(rows, title)
             elif chart_type == "bar":
                 chart = _ranking_chart({
@@ -154,8 +176,12 @@ def _add_visualizations(story, styles, items: list[dict]):
                 _paragraph(story, styles,
                            f"La gráfica muestra las primeras 5 de {len(rows)} categorías consultadas.",
                            "NoteText")
-        elif chart_type == "line":
+        elif chart_type in {"line", "area"}:
             _paragraph(story, styles, f"Eje X: {x_label}  |  Eje Y: {y_label}", "NoteText")
+            if chart_type == "area":
+                _paragraph(story, styles,
+                           "La gráfica de área se representa como línea en esta versión del PDF.",
+                           "NoteText")
             if len(rows) > 12:
                 _paragraph(story, styles,
                            f"La gráfica muestra los primeros 12 de {len(rows)} puntos consultados.",

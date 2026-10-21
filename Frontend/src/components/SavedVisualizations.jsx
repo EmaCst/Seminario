@@ -1,10 +1,11 @@
 import { useContext, useEffect, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Expand, GripVertical, LayoutDashboard, Minimize2, RefreshCw } from 'lucide-react';
 import { DashboardContext } from '../context/DashboardContext';
 import { getSavedVisualizations, previewVisualization, getVisualizationSemanticCatalog } from '../services/api';
 import { ChartAxisHint } from './ChartAxisHint';
 import { visualizationAxisLabels } from './visualizationAxisLabels';
+import { VisualizationResultTable } from './VisualizationResultTable';
 
 const formatValue = (value) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
@@ -30,10 +31,10 @@ export const CustomVisualizationWidget = ({ item, catalog, draggable, dragging, 
       <div><p className="text-[11px] font-bold uppercase tracking-wider" style={{color:theme.primary}}>{language==='es'?'Personalizada':'Custom'}</p><h3 className="font-extrabold" style={{color:colors.text}}>{item.definition.title}</h3></div>
       {item.placement?.dashboard && <LayoutDashboard size={17} style={{color:theme.primary}}/>}
     </div>
-    {error ? <p className="text-sm text-red-500">{error}</p> : !preview ? <div className="flex h-44 items-center justify-center" style={{color:colors.muted}}><RefreshCw className="animate-spin" size={18}/></div> :
+    {error ? <p className="text-sm text-red-500">{error}</p> : !preview ? <div className="flex h-44 items-center justify-center" style={{color:colors.muted}}><RefreshCw className="animate-spin" size={18}/></div> : !data.length ? <div className="flex min-h-36 items-center justify-center rounded-xl border border-dashed p-4 text-center text-sm" style={{borderColor:colors.border,color:colors.muted}}>{language==='es'?'No hay registros para los filtros guardados. Edita la visualización para corregirlos.':'No matching records for the saved filters. Edit the visualization to adjust them.'}</div> :
       type === 'kpi' ? <div className="flex h-40 items-center justify-center text-5xl font-black" style={{color:theme.primary}}>{formatValue(data[0]?.value)}</div> :
-      type === 'table' ? <div className="max-h-48 overflow-auto"><table className="w-full text-sm"><tbody>{data.map((row,i)=><tr key={i} className="border-b" style={{borderColor:colors.border}}>{Object.values(row).map((v,j)=><td key={j} className="px-2 py-2" style={{color:colors.text}}>{String(v)}</td>)}</tr>)}</tbody></table></div> :
-      <div><ChartAxisHint className="mb-2" x={axes.x} y={axes.y} language={language} colors={colors} /><div className="h-48"><ResponsiveContainer width="100%" height="100%">{type === 'line' ? <LineChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension" tick={{fill:colors.muted,fontSize:11}}/><YAxis tick={{fill:colors.muted,fontSize:11}}/><Tooltip/><Line dataKey="value" stroke={theme.primary} strokeWidth={3}/></LineChart> : <BarChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension" tick={{fill:colors.muted,fontSize:11}}/><YAxis tick={{fill:colors.muted,fontSize:11}}/><Tooltip/><Bar dataKey="value" fill={theme.primary} radius={[6,6,0,0]}/></BarChart>}</ResponsiveContainer></div></div>}
+      type === 'table' ? <VisualizationResultTable key={item.updated_at||item.id} preview={preview} colors={colors} language={language} compact pageSize={5}/> :
+      <div>{type==='donut'?<p className="mb-2 text-xs" style={{color:colors.muted}}>{language==='es'?'Categoría':'Category'}: {axes.x} · {language==='es'?'Valor':'Value'}: {axes.y}</p>:<ChartAxisHint className="mb-2" x={axes.x} y={axes.y} language={language} colors={colors} />}<div className="h-48"><ResponsiveContainer width="100%" height="100%">{type === 'donut' ? <PieChart><Pie data={data} dataKey="value" nameKey="dimension" cx="50%" cy="50%" innerRadius="42%" outerRadius="73%" paddingAngle={2}>{data.map((row,i)=><Cell key={`${row.dimension}-${i}`} fill={['#2563eb','#0891b2','#16a34a','#d97706','#9333ea','#db2777'][i%6]}/>)}</Pie><Tooltip/></PieChart> : type === 'line' ? <LineChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension" tick={{fill:colors.muted,fontSize:11}}/><YAxis tick={{fill:colors.muted,fontSize:11}}/><Tooltip/><Line dataKey="value" stroke={theme.primary} strokeWidth={3}/></LineChart> : type === 'area' ? <AreaChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension" tick={{fill:colors.muted,fontSize:11}}/><YAxis tick={{fill:colors.muted,fontSize:11}}/><Tooltip/><Area type="monotone" dataKey="value" stroke={theme.primary} fill={theme.primary} fillOpacity={0.22}/></AreaChart> : <BarChart data={data}><CartesianGrid stroke={colors.grid} strokeOpacity={0.15}/><XAxis dataKey="dimension" tick={{fill:colors.muted,fontSize:11}}/><YAxis tick={{fill:colors.muted,fontSize:11}}/><Tooltip/><Bar dataKey="value" fill={theme.primary} radius={[6,6,0,0]}/></BarChart>}</ResponsiveContainer></div></div>}
   </section>;
 };
 
@@ -55,7 +56,7 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
 
   useEffect(() => {
     let active = true;
-    getSavedVisualizations(destination).then((result)=>{
+    const reload = () => getSavedVisualizations(destination).then((result)=>{
       if (!active) return;
       const incoming = result.items || [];
       const order = (() => {
@@ -65,7 +66,12 @@ export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
       const rank = new Map(order.map((id, index) => [id, index]));
       setItems([...incoming].sort((a,b)=>(rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999)));
     }).catch((err)=>active&&setError(err.message));
-    return ()=>{active=false};
+    reload();
+    window.addEventListener('kenneth-custom-visualizations-changed', reload);
+    return ()=>{
+      active=false;
+      window.removeEventListener('kenneth-custom-visualizations-changed', reload);
+    };
   }, [destination, refreshKey, storageKey]);
 
   const persistOrder = (next) => {
