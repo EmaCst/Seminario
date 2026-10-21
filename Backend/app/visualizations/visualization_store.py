@@ -31,7 +31,12 @@ def _source_key() -> str:
     status = database_manager.status()
     provider = status.get("provider") or "unknown"
     database = status.get("database") or "unknown"
-    raw = f"{provider}:{database}".lower()
+    # Physical source identity prevents records from two servers (or two
+    # unrelated Excel uploads with the same filename) from being mixed.
+    # Legacy name-only entries are deliberately not auto-migrated: their
+    # original physical server cannot be proven.
+    identity = status.get("source_identity") or "unverified"
+    raw = f"{provider}:{database}:{identity}".lower()
     return re.sub(r"[^a-z0-9_.:-]+", "_", raw)
 
 
