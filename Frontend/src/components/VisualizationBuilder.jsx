@@ -87,8 +87,19 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   const supportsDimension = !isDetailTable && (needsDimension || visualization === 'table');
   const selectedDimensionField = dimensionEntity?.dimensions?.find(field => field.key === dimension);
   const dimensionIsDate = selectedDimensionField?.kind === 'date' || selectedDimensionField?.semantic === 'date';
-  const metricOptions = metricEntity?.metrics?.find(field => field.key === metric)?.aggregations || [];
-  const effectiveAggregation = metric ? (metricOptions.includes(aggregation) ? aggregation : (metricOptions.includes('sum') ? 'sum' : metricOptions[0] || 'count')) : 'count';
+  // A metric on a joined parent may be repeated for every fact row.
+  // Only COUNT/COUNT DISTINCT are safe in this direction; never advertise
+  // SUM or AVG for a related metric the SQL engine correctly refuses.
+  const metricOptions = (metricEntity?.metrics?.find(field => field.key === metric)?.aggregations || [])
+    .filter(key => metricEntity?.table === entity?.table || !['sum', 'avg'].includes(key));
+  const effectiveAggregation = metric
+    ? (metricOptions.includes(aggregation)
+      ? aggregation
+      : (metricOptions.includes('sum') ? 'sum' : (metricOptions.includes('distinct_count')
+        ? 'distinct_count' : metricOptions[0] || 'count')))
+    : 'count';
+  const dateFields = (entity?.filters || []).filter(field =>
+    field.kind === 'date' || field.semantic === 'date');
 
   useEffect(() => {
     if (!open || !catalog) return;
@@ -216,7 +227,10 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           effectiveAggregation === 'count' || Boolean(metric)
         )
   ) && filters.every(f =>
-    f.column && (['is_null', 'not_null'].includes(f.operator) || String(f.value ?? '').trim())
+    f.column && (['is_null', 'not_null'].includes(f.operator)
+      || (f.operator === 'between'
+        ? String(f.value ?? '').split(',').filter(Boolean).length === 2
+        : String(f.value ?? '').trim()))
   );
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -282,8 +296,10 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
               const next=e.target.value;
               const field=metricEntity?.metrics?.find(item=>item.key===next);
               setMetric(next);
-              setAggregation(field?.aggregations?.includes('sum')?'sum'
-                :field?.aggregations?.includes('distinct_count')?'distinct_count':'count');
+              const allowed=(field?.aggregations||[]).filter(key =>
+                metricEntity?.table === entity?.table || !['sum','avg'].includes(key));
+              setAggregation(allowed.includes('sum')?'sum'
+                :allowed.includes('distinct_count')?'distinct_count':'count');
               setPreview(null);
             }} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}><option value="">{language === 'es' ? 'Cantidad de registros' : 'Record count'}</option>{(metricEntity?.metrics||[]).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div></Field>}
           {!isDetailTable && metric && <Field label={language === 'es' ? 'Cálculo' : 'Calculation'} colors={colors}><select value={effectiveAggregation} onChange={(e)=>{setAggregation(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{metricOptions.map(key=><option key={key} value={key}>{catalog?.builder?.aggregations?.[key]||key}</option>)}</select></Field>}
@@ -291,7 +307,8 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
           {dimensionIsDate && supportsDimension && (
             <Field label={language === 'es' ? 'Agrupación temporal' : 'Time grouping'} colors={colors}>
               <select value={timeGranularity} onChange={(e)=>{setTimeGranularity(e.target.value);setPreview(null)}} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>
-                <option value="raw">{language === 'es' ? 'Cada fecha' : 'Each date'}</option>
+                <option value="raw">{language === 'es' ? 'Fecha y hora originales' : 'Original date/time'}</option>
+                <option value="day">{language === 'es' ? 'Por día (AAAA-MM-DD)' : 'By day (YYYY-MM-DD)'}</option>
                 <option value="month">{language === 'es' ? 'Por mes (AAAA-MM)' : 'By month (YYYY-MM)'}</option>
                 <option value="quarter">{language === 'es' ? 'Por trimestre (AAAA-Qn)' : 'By quarter (YYYY-Qn)'}</option>
                 <option value="year">{language === 'es' ? 'Por año' : 'By year'}</option>
@@ -332,6 +349,20 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
                 </div>;
               })}
               <button type="button" onClick={()=>{setFilters(old=>[...old,{table:entity?.table||'',column:entity?.filters?.[0]?.key||'',operator:'eq',value:''}]);setPreview(null)}} className="w-full rounded-lg border px-3 py-2 text-sm font-semibold" style={{borderColor:theme.primary,color:theme.primary}}>{language==='es'?'+ Agregar filtro':'+ Add filter'}</button>
+              {dateFields.length === 1 && (
+                <button type="button" onClick={()=>{
+                  const dateField=dateFields[0];
+                  setFilters(old=>[...old,
+                    {table:entity.table,column:dateField.key,operator:'gte',value:''},
+                    {table:entity.table,column:dateField.key,operator:'lte',value:''},
+                  ]);
+                  setPreview(null);
+                }}
+                className="w-full rounded-lg border px-3 py-2 text-sm font-semibold"
+                style={{borderColor:colors.border,color:colors.text}}>
+                  {language==='es'?'+ Agregar rango de fechas':'+ Add date range'}
+                </button>
+              )}
               {filters.length>1&&<p className="text-xs" style={{color:colors.muted}}>{language==='es'?'Se deben cumplir todas las condiciones (Y).':'All conditions must match (AND).'}</p>}
             </div>}
           </div>
