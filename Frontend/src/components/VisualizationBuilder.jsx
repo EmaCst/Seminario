@@ -100,6 +100,36 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     : 'count';
   const dateFields = (entity?.filters || []).filter(field =>
     field.kind === 'date' || field.semantic === 'date');
+  const initialSuggestions = useMemo(() => {
+    if (!entity) return [];
+    const suggestions = [];
+    const dateCandidates = (entity.dimensions || []).filter(
+      field => field.kind === 'date' || field.semantic === 'date');
+    const stateCandidates = (entity.dimensions || []).filter(
+      field => field.semantic === 'status' || ['estado', 'status'].includes(field.key.toLowerCase()));
+    const measures = (entity.metrics || []).filter(
+      field => field.kind === 'number' && !field.is_identifier
+        && ['total', 'amount', 'quantity', 'value', 'balance'].includes(field.semantic));
+    const onlyMeasure = measures.length === 1 ? measures[0] : null;
+    suggestions.push({
+      id: 'volume', es: 'Volumen total', en: 'Total volume',
+      visualization: 'kpi', metric: '', aggregation: 'count', groupBy: '',
+      granularity: 'raw',
+    });
+    if (dateCandidates.length === 1) suggestions.push({
+      id: 'timeline', es: 'Evolución mensual', en: 'Monthly trend',
+      visualization: 'line',
+      metric: onlyMeasure?.key || '',
+      aggregation: onlyMeasure ? 'sum' : 'count',
+      groupBy: dateCandidates[0].key, granularity: 'month',
+    });
+    if (stateCandidates.length === 1) suggestions.push({
+      id: 'status', es: 'Distribución por estado', en: 'Status distribution',
+      visualization: 'bar', metric: '', aggregation: 'count',
+      groupBy: stateCandidates[0].key, granularity: 'raw',
+    });
+    return suggestions;
+  }, [entity]);
 
   useEffect(() => {
     if (!open || !catalog) return;
@@ -156,6 +186,23 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
   }, [visualization]);
 
   if (!open) return null;
+
+  const applySuggestion = (suggestion) => {
+    setVisualization(suggestion.visualization);
+    setMetricEntityKey(entity.key);
+    setDimensionEntityKey(entity.key);
+    setMetric(suggestion.metric);
+    setAggregation(suggestion.aggregation);
+    setDimension(suggestion.groupBy);
+    setTimeGranularity(suggestion.granularity);
+    setTableMode('aggregate');
+    setDetailColumns([]);
+    setGroupIdentity(null);
+    setTimeDirection('asc');
+    setSortDirection('desc');
+    setPreview(null);
+    setError('');
+  };
 
   const definition = () => ({
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
@@ -242,6 +289,25 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
       <div className="grid max-h-[calc(92vh-104px)] overflow-y-auto lg:grid-cols-[380px_1fr]">
         <div className="space-y-5 border-r p-6" style={{ borderColor: colors.border }}>
           <Field label={language === 'es' ? '¿Qué quieres analizar?' : 'What do you want to analyze?'} colors={colors}><select value={entityKey} onChange={(e)=>setEntityKey(e.target.value)} className="w-full rounded-xl border px-3 py-3" style={inputStyle(colors)}>{(catalog?.entities||[]).map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>
+          <div className="rounded-xl border p-3" style={{borderColor:colors.border,backgroundColor:colors.cardSoft}}>
+            <p className="mb-2 text-xs font-bold" style={{color:colors.text}}>
+              {language==='es'?'Puntos de partida sugeridos':'Suggested starting points'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {initialSuggestions.map(suggestion=>(
+                <button key={suggestion.id} type="button" onClick={()=>applySuggestion(suggestion)}
+                  className="rounded-lg border px-2.5 py-2 text-xs font-semibold transition hover:opacity-80"
+                  style={{borderColor:theme.primary,color:theme.primary,backgroundColor:colors.card}}>
+                  {language==='es'?suggestion.es:suggestion.en}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] leading-4" style={{color:colors.muted}}>
+              {language==='es'
+                ? 'Solo utiliza campos verificados y no guarda nada. Puedes ajustar las métricas, filtros y destino antes de confirmar.'
+                : 'Uses verified fields only. Nothing is saved; edit metrics, filters and placement before confirming.'}
+            </p>
+          </div>
           <div><span className="mb-2 block text-sm font-bold" style={{color:colors.text}}>{language === 'es' ? 'Visualización' : 'Visualization'}</span><div className="grid grid-cols-6 gap-2">{(catalog?.builder?.visualizations||[]).map(item=>{const Icon=ICONS[item.key]||BarChart3; const selected=visualization===item.key; return <button key={item.key} title={item.label} onClick={()=>{setVisualization(item.key);setPreview(null)}} className="flex aspect-square items-center justify-center rounded-xl border transition hover:scale-105" style={{borderColor:selected?theme.primary:colors.border,backgroundColor:selected?colors.accentSoft:colors.card,color:selected?theme.primary:colors.muted}}><Icon size={20}/></button>})}</div></div>
           {visualization === 'table' && (
             <Field label={language === 'es' ? 'Tipo de tabla' : 'Table mode'} colors={colors}>
