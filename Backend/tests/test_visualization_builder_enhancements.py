@@ -159,6 +159,26 @@ class BuilderDomainEnhancementTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "columna de fecha"):
                     engine.build_visualization_query(definition)
 
+    def test_result_table_headers_explain_metric_and_source(self):
+        detail = engine.VisualizationDefinition(
+            title="Detalle", visualization="table", table="registros",
+            table_mode="detail", detail_columns=[
+                engine.VisualizationColumn(column="fecha"),
+                engine.VisualizationColumn(table="personas", column="nombre"),
+            ],
+        )
+        columns = engine._result_columns(detail)
+        self.assertEqual(["Fecha", "Nombre · Personas"],
+                         [column["label"] for column in columns])
+        grouped = engine.VisualizationDefinition(
+            title="Recaudación", visualization="table", table="registros",
+            group_by="estado", metric="importe", aggregation="sum",
+        )
+        labels = [column["label"] for column in engine._result_columns(grouped)]
+        self.assertEqual("Estado", labels[0])
+        self.assertIn("Suma", labels[1])
+        self.assertIn("Importe", labels[1])
+
     def test_contains_filter_treats_wildcards_as_literal_characters(self):
         sql_engine = create_engine("sqlite+pysqlite:///:memory:")
         try:
