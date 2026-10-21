@@ -352,7 +352,13 @@ def _filter_sql(item: VisualizationFilter, base_table: str) -> str:
             raise ValueError("El filtro IN necesita una lista con valores.")
         return f"{column} IN ({', '.join(_literal(value) for value in item.value)})"
     if item.operator == "contains":
-        return f"{column} LIKE {_literal('%' + str(item.value) + '%')}"
+        # Wildcards typed by a user must be matched literally. Otherwise a
+        # search for "10%" would also match "100" or "10X".
+        escaped = (str(item.value).replace(chr(92), chr(92) * 2)
+                   .replace("%", chr(92) + "%")
+                   .replace("_", chr(92) + "_"))
+        return (f"{column} LIKE {_literal('%' + escaped + '%')} "
+                f"ESCAPE {_literal(chr(92))}")
     operators = {"eq": "=", "neq": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
     return f"{column} {operators[item.operator]} {_literal(item.value)}"
 
