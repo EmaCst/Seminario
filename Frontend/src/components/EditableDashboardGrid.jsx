@@ -8,8 +8,8 @@ const readJson = (key, fallback) => {
 };
 
 export const EditableDashboardGrid = ({ storageId, items, columns = 'xl:grid-cols-2', sharedCanvas = null }) => {
-  const { editMode, colors, theme, language } = useContext(DashboardContext);
-  const canvasId = sharedCanvas || storageId;
+  const { editMode, colors, theme, language, sourceIdentity } = useContext(DashboardContext);
+  const canvasId = `${sourceIdentity || 'none'}-${sharedCanvas || storageId}`;
   const orderKey = `kenneth-dashboard-order-${canvasId}`;
   const sizeKey = `kenneth-dashboard-size-${canvasId}`;
   const registryKey = `kenneth-dashboard-registry-${canvasId}`;

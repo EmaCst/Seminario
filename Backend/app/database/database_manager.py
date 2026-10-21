@@ -1,4 +1,6 @@
 import os
+import hashlib
+from uuid import uuid4
 from threading import RLock
 
 from dotenv import load_dotenv
@@ -16,6 +18,10 @@ class DatabaseManager:
         self._lock = RLock()
         self._engine: Engine | None = None
         self._config: dict | None = None
+        # Rotate on every successful activation, including the same filename.
+        # Stable identity scopes saved views; revision invalidates live state.
+        self._revision = None
+        self._source_identity = None
 
         env_config = {
             "server": os.getenv("DB_SERVER"),
@@ -65,11 +71,32 @@ class DatabaseManager:
         finally:
             temp_engine.dispose()
 
+    @staticmethod
+    def _identity(config: dict) -> str:
+        """Stable, nonsecret physical source identity for separating saved data."""
+        provider = (config.get("provider") or "").lower()
+        if provider == "excel":
+            parts = (provider, config.get("database_path") or "")
+        else:
+            parts = (
+                provider, config.get("server") or config.get("host") or "",
+                str(config.get("port") or ""), config.get("database") or "",
+                config.get("username") or "",
+            )
+        return hashlib.sha256(
+            "\x1f".join(str(part).strip().lower() for part in parts)
+            .encode("utf-8")
+        ).hexdigest()[:24]
+
     def _activate(self, engine: Engine, config: dict) -> dict:
         with self._lock:
             old_engine = self._engine
             self._engine = engine
             self._config = config
+            self._source_identity = self._identity(config)
+            self._revision = uuid4().hex
+            # Dispose pooled old connections after the pointer swap. Existing
+            # requests are also protected by the API's revision checks.
             if old_engine is not None and old_engine is not engine:
                 old_engine.dispose()
         return self.status()
@@ -124,11 +151,13 @@ class DatabaseManager:
     def status(self) -> dict:
         with self._lock:
             if self._engine is None or self._config is None:
-                return {"connected": False, "provider": None, "database": None, "server": None, "host": None, "port": None, "driver": None, "auth": None}
+                return {"connected": False, "provider": None, "database": None, "server": None, "host": None, "port": None, "driver": None, "auth": None, "revision": None, "source_identity": None}
             provider = self._config.get("provider", "sqlserver")
             return {
                 "connected": True,
                 "provider": provider,
+                "revision": self._revision,
+                "source_identity": self._source_identity,
                 "database": self._config["database"],
                 "server": self._config.get("server"),
                 "host": self._config.get("host"),

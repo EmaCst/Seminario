@@ -5,6 +5,15 @@ import { ChatVisualizationDraft } from './ChatVisualizationDraft';
 import { VisualizationBuilder } from './VisualizationBuilder';
 import { askDatabase } from '../services/api';
 
+// A database activation always starts a new conversation; never restore
+// prompts or draft metadata from a previous physical source.
+const welcomeMessage = (language) => ({
+  from: 'bot',
+  text: language === 'es'
+    ? 'Hola. Soy Kenneth, el asistente del sistema. ¿En qué puedo ayudarte?'
+    : 'Hello. I am Kenneth, the system assistant. How can I help you?',
+});
+
 export const Chatbot = () => {
   const { theme, colors, language, setActiveTab } = useContext(DashboardContext);
   const [open, setOpen] = useState(false);
@@ -12,15 +21,31 @@ export const Chatbot = () => {
   const [sending, setSending] = useState(false);
   const [builderDraft, setBuilderDraft] = useState(null);
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      from: 'bot',
-      text: language === 'es'
-        ? 'Hola. Soy Kenneth, el asistente del sistema. ¿En qué puedo ayudarte?'
-        : 'Hello. I am Kenneth, the system assistant. How can I help you?',
-    },
-  ]);
+  const [messages, setMessages] = useState(() => [welcomeMessage(language)]);
   const messagesEndRef = useRef(null);
+  const requestEpoch = useRef(0);
+  const currentLanguage = useRef(language);
+  currentLanguage.current = language;
+
+  useEffect(() => {
+    const clearConversation = () => {
+      // Invalidates in-flight answers, including a response delivered just
+      // after the connection changed. This also works if the component was
+      // not remounted by its parent for any reason.
+      requestEpoch.current += 1;
+      setMessages([welcomeMessage(currentLanguage.current)]);
+      setInput('');
+      setSending(false);
+      setBuilderDraft(null);
+      setBuilderOpen(false);
+      setOpen(false);
+    };
+    window.addEventListener('kenneth-source-changed', clearConversation);
+    return () => {
+      requestEpoch.current += 1;
+      window.removeEventListener('kenneth-source-changed', clearConversation);
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -41,6 +66,7 @@ export const Chatbot = () => {
     if (!text || sending) return;
 
     const history = buildHistory();
+    const requestId = requestEpoch.current;
 
     setMessages((prev) => [
       ...prev,
@@ -51,6 +77,7 @@ export const Chatbot = () => {
 
     try {
       const result = await askDatabase(text, history);
+      if (requestId !== requestEpoch.current) return;
 
       setMessages((prev) => [
         ...prev,
@@ -64,6 +91,7 @@ export const Chatbot = () => {
         },
       ]);
     } catch (error) {
+      if (requestId !== requestEpoch.current) return;
       console.error('Error consultando el asistente:', error);
 
       const networkError = error?.message === 'Failed to fetch';
@@ -81,7 +109,7 @@ export const Chatbot = () => {
         },
       ]);
     } finally {
-      setSending(false);
+      if (requestId === requestEpoch.current) setSending(false);
     }
   };
 

@@ -11,6 +11,7 @@ from app.analysis.semantic_mapper import inspect_semantic_map
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.ai.gemma import ask_gemma
 from app.database.database_manager import database_manager
+from app.database.source_guard import source_revision_middleware
 from app.database.excel_loader import activate_excel_upload, inspect_excel_upload
 from app.database.inspector import inspect_database
 from app.database.postgresql_backup_loader import (
@@ -43,7 +44,8 @@ from app.visualizations.visualization_service import (
 )
 
 app = FastAPI(title="AI Business Assistant", description="Asistente empresarial para análisis de datos", version="0.13.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Kenneth-Source-Revision", "Content-Disposition"])
+app.middleware("http")(source_revision_middleware)
 
 class ChatMessage(BaseModel):
     role: str

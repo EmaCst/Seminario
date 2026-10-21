@@ -20,8 +20,8 @@ const DataSourceSwitcher = ({ source, setSource, theme, colors, language }) => {
 };
 
 export const SettingsView = () => {
-  const { theme,themeId,themes,setThemeId,colors,visibleCharts,toggleChart,isDarkMode,setIsDarkMode,language,setLanguage,t }=useContext(DashboardContext);
-  const [dataSource,setDataSource]=useState('sqlserver');
+  const { theme,themeId,themes,setThemeId,colors,visibleCharts,toggleChart,isDarkMode,setIsDarkMode,language,setLanguage,t,sourceStatus }=useContext(DashboardContext);
+  const [dataSource,setDataSource]=useState(()=>sourceStatus?.provider || 'sqlserver');
   const cardStyle={backgroundColor:colors.card,borderColor:colors.border};
   const settings=[{key:'monthSales',label:t.showMonthSales},{key:'salesPerMonth',label:t.showSalesPerMonth},{key:'topProducts',label:t.showTopProducts}];
   return <div className="space-y-6 max-w-5xl">
@@ -32,6 +32,12 @@ export const SettingsView = () => {
       <section className="p-5 sm:p-6 rounded-2xl border shadow-sm" style={cardStyle}><div className="flex items-start gap-3 mb-5"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{backgroundColor:colors.accentSoft,color:theme.primary}}><Languages size={20}/></div><div><h3 className="text-lg font-bold" style={{color:colors.text}}>{t.language}</h3><p className="text-sm" style={{color:colors.muted}}>{t.languageText}</p></div></div><div className="grid grid-cols-2 gap-3">{[['es',t.spanish],['en',t.english]].map(([id,label])=><button key={id} onClick={()=>setLanguage(id)} className="rounded-xl border p-4 font-bold" style={language===id?{backgroundColor:theme.primary,color:'#fff',borderColor:theme.primary}:{color:colors.text,borderColor:colors.border,backgroundColor:colors.cardSoft}}>{label}</button>)}</div></section>
     </div>
     <DataSourceSwitcher source={dataSource} setSource={setDataSource} theme={theme} colors={colors} language={language}/>
+    <p className="rounded-xl border px-4 py-3 text-sm" style={{backgroundColor:colors.cardSoft,borderColor:colors.border,color:colors.text}}>
+      {sourceStatus?.connected
+        ? (language==='es'?'Fuente activa: ':'Active source: ') + (sourceStatus.database || '-')
+          + ' · ' + (sourceStatus.provider || '-')
+        : (language==='es'?'No hay una base conectada.':'No database connected.')}
+    </p>
     {dataSource==='sqlserver'&&<><DatabaseUpload/><DatabaseConfig/></>}
     {dataSource==='postgresql'&&<><PostgreSQLConfig/><PostgreSQLUpload/></>}
     {dataSource==='excel'&&<ExcelImport theme={theme} colors={colors} language={language}/>} 

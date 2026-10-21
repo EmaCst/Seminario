@@ -39,13 +39,13 @@ export const CustomVisualizationWidget = ({ item, catalog, draggable, dragging, 
 };
 
 export const SavedVisualizations = ({ destination, refreshKey = 0 }) => {
-  const { colors, editMode } = useContext(DashboardContext);
+  const { colors, editMode, sourceIdentity } = useContext(DashboardContext);
   const [items, setItems] = useState([]);
   const [catalog, setCatalog] = useState(null);
   const [error, setError] = useState('');
   const [draggingId, setDraggingId] = useState(null);
-  const storageKey = `kenneth-layout-${destination}`;
-  const sizeKey = `kenneth-layout-sizes-${destination}`;
+  const storageKey = `kenneth-layout-${sourceIdentity || 'none'}-${destination}`;
+  const sizeKey = `kenneth-layout-sizes-${sourceIdentity || 'none'}-${destination}`;
   const [sizes, setSizes] = useState(()=>{ try { return JSON.parse(localStorage.getItem(sizeKey) || '{}'); } catch { return {}; } });
 
   useEffect(() => {
