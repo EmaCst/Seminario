@@ -24,6 +24,8 @@ export const Chatbot = () => {
   const [messages, setMessages] = useState(() => [welcomeMessage(language)]);
   const messagesEndRef = useRef(null);
   const requestEpoch = useRef(0);
+  const currentLanguage = useRef(language);
+  currentLanguage.current = language;
 
   useEffect(() => {
     const clearConversation = () => {
@@ -31,7 +33,7 @@ export const Chatbot = () => {
       // after the connection changed. This also works if the component was
       // not remounted by its parent for any reason.
       requestEpoch.current += 1;
-      setMessages([welcomeMessage(language)]);
+      setMessages([welcomeMessage(currentLanguage.current)]);
       setInput('');
       setSending(false);
       setBuilderDraft(null);
@@ -43,7 +45,7 @@ export const Chatbot = () => {
       requestEpoch.current += 1;
       window.removeEventListener('kenneth-source-changed', clearConversation);
     };
-  }, [language]);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
