@@ -159,6 +159,34 @@ class BuilderDomainEnhancementTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "columna de fecha"):
                     engine.build_visualization_query(definition)
 
+    def test_contains_filter_treats_wildcards_as_literal_characters(self):
+        sql_engine = create_engine("sqlite+pysqlite:///:memory:")
+        try:
+            with sql_engine.begin() as conn:
+                conn.execute(text("CREATE TABLE registros(id INT,estado TEXT,importe NUMERIC,fecha TEXT)"))
+                for idx, name in enumerate(("Promoción 10%", "Promoción 100", "A_1", "Ax1"), 1):
+                    conn.execute(text(
+                        "INSERT INTO registros(id,estado,importe,fecha) VALUES(:id,:estado,1,'2026-01-01')"
+                    ), {"id": idx, "estado": name})
+            for needle, expected in (("10%", "Promoción 10%"), ("A_1", "A_1")):
+                definition = engine.VisualizationDefinition(
+                    title="Coincidencia literal", visualization="table", table="registros",
+                    group_by="estado",
+                    filters=[engine.VisualizationFilter(
+                        column="estado", operator="contains", value=needle,
+                    )],
+                )
+                with patch.object(engine, "inspect_database",
+                                  return_value=database_schema()):
+                    with patch.object(engine.database_manager, "status",
+                                      return_value={"provider": "excel"}):
+                        sql = engine.build_visualization_query(definition)
+                with sql_engine.connect() as conn:
+                    rows = list(conn.execute(text(sql)).mappings())
+                self.assertEqual([expected], [row["dimension"] for row in rows])
+        finally:
+            sql_engine.dispose()
+
     def test_textual_min_max_remain_tables_not_numeric_charts(self):
         unsafe = engine.VisualizationDefinition(
             title="Estados en un gráfico", visualization="bar",
