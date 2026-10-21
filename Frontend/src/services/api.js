@@ -4,6 +4,9 @@ const REVISION_HEADER = 'X-Kenneth-Source-Revision';
 let activeRevision = null;
 let activeIdentity = null;
 let hasObservedSource = false;
+const sourceChannel = typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('kenneth-active-source')
+  : null;
 
 export const SOURCE_CHANGED_MESSAGE = 'La fuente activa cambió. Se limpiaron los resultados anteriores; vuelve a intentar la consulta.';
 
@@ -17,9 +20,18 @@ const observeSource = (status) => {
     window.dispatchEvent(new CustomEvent('kenneth-source-changed', {
       detail: { ...status, revision: nextRevision, source_identity: nextIdentity },
     }));
+    sourceChannel?.postMessage({ type: 'refresh-source' });
   }
   return status;
 };
+
+// Switches made in a different tab should invalidate this tab immediately;
+// the five-second poll in the provider remains a fallback.
+sourceChannel?.addEventListener('message', (event) => {
+  if (event.data?.type === 'refresh-source') {
+    getDatabaseStatus().catch(() => {});
+  }
+});
 
 export async function getDatabaseStatus() {
   return observeSource(await parseResponse(await fetch(`${API_URL}/api/database/status`, {
