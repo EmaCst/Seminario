@@ -273,10 +273,19 @@ def _resolve_definition(definition: VisualizationDefinition):
             "por cada fila de la tabla principal: se podrían duplicar valores. "
             "Selecciona como origen la entidad que contiene esa métrica."
         )
-    if definition.aggregation in {"sum", "avg"} and definition.metric:
+    if definition.metric and (
+        definition.aggregation in {"sum", "avg"}
+        or (definition.visualization in {"bar", "line", "area", "donut", "kpi"}
+            and definition.aggregation in {"min", "max"})
+    ):
         metric_columns = {column.name: column for column in schema.tables[metric_table].columns}
         if _column_kind(metric_columns[definition.metric].type) != "number":
-            raise ValueError(f"No se puede calcular {definition.aggregation} sobre '{definition.metric}' porque no es una columna numérica. Utiliza Cantidad de registros o selecciona una métrica numérica.")
+            raise ValueError(
+                "Esta visualización necesita una métrica numérica para "
+                f"{definition.aggregation}. Usa Conteo, Valores únicos o "
+                "selecciona una columna numérica. "
+                "El mínimo/máximo de texto puede consultarse como tabla."
+            )
 
     target_tables = {table for table, _ in requested}
     paths = {target: _find_join_path(schema, definition.table, target) for target in target_tables if target != definition.table}
