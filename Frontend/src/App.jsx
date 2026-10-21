@@ -36,7 +36,7 @@ const MainLayout = () => {
             {sourceReady && activeTab === 'analytics' && <AnalyticsView key={workspaceKey} />}
             {sourceReady && activeTab === 'predictions' && <PredictionsView key={workspaceKey} />}
             {sourceReady && activeTab === 'reports' && <ReportsView key={workspaceKey} />}
-            {sourceReady && activeTab === 'settings' && <SettingsView />}
+            {sourceReady && activeTab === 'settings' && <SettingsView key={workspaceKey} />}
           </main>
         </div>
       </div>
