@@ -16,6 +16,11 @@ from app.visualizations import semantic_catalog as catalog_service
 from app.visualizations import visualization_service as engine
 
 BUSINESS_DOMAINS = {
+    "insurance": "policies",
+    "pharmacy": "dispensations",
+    "saas": "subscriptions",
+    "events": "events",
+    "fitness": "memberships",
     "real_estate": "leases",
     "construction": "projects",
     "agriculture": "harvests",
