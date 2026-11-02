@@ -1,4 +1,4 @@
-"""Schema-grounded, domain-aware analytics for Kenneth's ten business domains.
+"""Schema-grounded, domain-aware analytics for Kenneth's business domains.
 
 This module deliberately supports only metrics that can be verified in a single
 mapped entity. More complex joins remain for the general SQL planner.
@@ -19,6 +19,13 @@ from app.services.assistant_router import MONTH_LABELS, months_in, normalize
 # Business words must be scoped by detected domain; "citas" can belong to
 # healthcare or professional services, and "productos" to retail or industry.
 ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
+    "logistics": {
+        "shipments": ("envio", "envios", "entrega", "entregas", "despacho", "despachos", "shipment", "shipments"),
+        "orders": ("pedido", "pedidos", "orden de compra", "ordenes de compra"),
+        "packages": ("paquete", "paquetes", "bulto", "bultos"),
+        "carriers": ("transportista", "transportistas", "repartidor", "repartidores", "mensajero", "mensajeros"),
+        "warehouses": ("bodega", "bodegas", "almacen", "almacenes"),
+    },
     "vehicle_rental": {
         "rentals": ("renta", "rentas", "alquiler", "alquileres", "reserva", "reservas", "contrato", "contratos"),
         "vehicles": ("vehiculo", "vehiculos", "flota", "auto", "autos"),
@@ -28,6 +35,7 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "retail": {
         "sales": ("venta", "ventas", "factura", "facturas"),
+        "orders": ("pedido", "pedidos", "ordenes de compra", "orden de compra"),
         "products": ("producto", "productos"),
         "customers": ("cliente", "clientes"),
         "inventory": ("inventario", "existencias"),
@@ -104,6 +112,8 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
 # Human-friendly labels are for display only; SQL always uses schema-mapped names.
 ROLE_LABELS = {
     "rentals": "rentas y reservas", "maintenance": "mantenimientos",
+    "shipments": "envíos y entregas", "packages": "paquetes",
+    "carriers": "transportistas", "warehouses": "almacenes",
     "sales": "ventas", "products": "productos", "customers": "clientes",
     "inventory": "registros de inventario", "payments": "pagos",
     "students": "estudiantes", "teachers": "docentes", "courses": "cursos",
@@ -134,6 +144,8 @@ MONETARY_ROLES = {
     ("vehicle_rental", "rentals"): ("total",),
     ("vehicle_rental", "payments"): ("amount",),
     ("retail", "sales"): ("total",),
+    ("retail", "orders"): ("total",),
+    ("logistics", "shipments"): ("total",),
     ("retail", "payments"): ("amount",),
     ("restaurant", "orders"): ("total",),
     ("hospitality", "reservations"): ("total",),

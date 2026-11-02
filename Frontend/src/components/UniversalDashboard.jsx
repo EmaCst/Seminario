@@ -25,6 +25,7 @@ import {
   Wrench,
   Plus,
   FileSpreadsheet,
+  Truck,
 } from 'lucide-react';
 
 import { DashboardContext } from '../context/DashboardContext';
@@ -37,6 +38,8 @@ import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const DOMAIN_META = {
   vehicle_rental: { es: 'Alquiler de vehículos', en: 'Vehicle rental', Icon: CarFront },
+  logistics: { es: 'Logística y entregas', en: 'Logistics and deliveries', Icon: Truck },
+  general: { es: 'Datos generales (sector sin identificar)', en: 'General data (unclassified sector)', Icon: Database },
   retail: { es: 'Comercio / Retail', en: 'Retail / Commerce', Icon: PackageSearch },
   education: { es: 'Educación', en: 'Education', Icon: GraduationCap },
   healthcare: { es: 'Salud / Hospital', en: 'Healthcare / Hospital', Icon: HeartPulse },
@@ -50,6 +53,11 @@ const DOMAIN_META = {
 };
 
 const ROLE_LABELS = {
+  shipments: ['Envíos y entregas', 'Shipments and deliveries'],
+  packages: ['Paquetes', 'Parcels'],
+  carriers: ['Transportistas', 'Carriers'],
+  warehouses: ['Bodegas y almacenes', 'Warehouses'],
+  orders: ['Pedidos / Órdenes', 'Orders'],
   rentals: ['Rentas y reservas', 'Rentals and reservations'],
   maintenance: ['Mantenimientos', 'Maintenance'],
   patients: ['Pacientes', 'Patients'],
@@ -75,7 +83,6 @@ const ROLE_LABELS = {
   stays: ['Estadías', 'Stays'],
   menu_items: ['Platos / Menú', 'Menu items'],
   tables: ['Mesas', 'Tables'],
-  orders: ['Órdenes', 'Orders'],
   ingredients: ['Ingredientes', 'Ingredients'],
   services: ['Servicios', 'Services'],
   clients: ['Clientes', 'Clients'],
@@ -98,6 +105,7 @@ const ROLE_LABELS = {
 
 const roleLabel = (role, language) => {
   const pair = ROLE_LABELS[role];
+  if (!pair && role?.startsWith('tabla_')) return role.slice(6).replaceAll('_', ' ');
   if (!pair) return role?.replaceAll('_', ' ') || '-';
   return language === 'es' ? pair[0] : pair[1];
 };
