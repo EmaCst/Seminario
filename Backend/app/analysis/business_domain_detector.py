@@ -228,6 +228,28 @@ def detect_business_domains(schema: DatabaseSchema) -> dict:
 
         score = round(min(raw_score / max_score, 1.0) * 100, 1) if max_score else 0.0
 
+        # A dataset containing only a shipment register is a valid logistics
+        # source, even if it does not have all optional carriers/warehouses.
+        # Require explicit table/column evidence to avoid using a lone
+        # "delivery date" in unrelated business sectors as proof.
+        if domain == "logistics" and score >= 30 and len(evidence) >= 2:
+            has_shipping_entity = any(
+                tokenize(table_name) & {
+                    "envio", "envios", "entrega", "entregas",
+                    "shipment", "shipments", "delivery", "deliveries",
+                    "despacho", "despachos", "dispatch"
+                } for table_name in schema.tables
+            )
+            if not has_shipping_entity:
+                has_shipping_entity = any(
+                    len({"id_envio", "fecha_envio", "estado_envio",
+                         "shipment_id", "shipping_date", "shipment_status"}
+                        & {normalize_name(col.name) for col in table.columns}) >= 2
+                    for table in schema.tables.values()
+                )
+            if has_shipping_entity:
+                score = max(score, 42.0)
+
         if score >= 65:
             confidence = "high"
         elif score >= 40:
