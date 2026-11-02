@@ -118,6 +118,30 @@ def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
         headers.append(name)
 
     source_rows = non_empty[1:] if has_header else non_empty
+    # A common Excel layout ends a structured table with a grand-total
+    # footer. It is not a customer/reservation/maintenance record.
+    id_columns = [i for i, h in enumerate(headers)
+                  if _semantic_name(h) == "id" or _semantic_name(h).startswith("id_")
+                  or _semantic_name(h).endswith("_id")]
+    if has_header and id_columns:
+        retained = []
+        removed = 0
+        for row in source_rows:
+            has_identifier = any(i < len(row) and row[i] not in (None, "") for i in id_columns)
+            total_footer = any(
+                isinstance(v, str) and
+                re.match(r"^(?:gran\\s+total|total|gasto\\s+total)\\b", v.strip(), re.I)
+                for v in row
+            )
+            if not has_identifier and total_footer:
+                removed += 1
+            else:
+                retained.append(row)
+        source_rows = retained
+        if removed:
+            warnings.append(
+                f"Se excluyeron {removed} fila(s) de totales para evitar contarlas como registros."
+            )
     data_rows = [list(row) + [None] * (width - len(row)) for row in source_rows]
     schema = []
     for index, header in enumerate(headers):
