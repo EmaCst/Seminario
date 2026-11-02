@@ -6,6 +6,7 @@ import operator
 import re
 from datetime import date, datetime
 from openpyxl.formula import Tokenizer
+from openpyxl.formula.tokenizer import TokenizerError
 from openpyxl.utils.cell import range_boundaries, get_column_letter
 from openpyxl.utils.datetime import to_excel, from_excel
 
@@ -179,7 +180,13 @@ class FormulaEvaluator:
             return current.value
         self.visiting.add(key)
         try:
-            result = self.evaluate(Parser(current.value).parse(), sheet)
+            try:
+                if len(current.value) > 10000:
+                    raise FormulaError("Fórmula demasiado extensa")
+                expression = Parser(current.value).parse()
+            except TokenizerError as exc:
+                raise FormulaError("Sintaxis de fórmula inválida") from exc
+            result = self.evaluate(expression, sheet)
             if isinstance(result, list):
                 raise UnsupportedFormula("No se admiten rangos como resultado")
             if isinstance(result, float) and not math.isfinite(result):
