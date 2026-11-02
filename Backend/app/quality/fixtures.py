@@ -30,6 +30,8 @@ class DomainFixture:
 
 
 DOMAINS: tuple[DomainFixture, ...] = (
+    DomainFixture("vehicle_rental", "rentals", "rentas", "rentas",
+                  ("rentas", "flota_vehiculos", "clientes", "mantenimiento"), "total"),
     DomainFixture("retail", "sales", "ventas", "ventas",
                   ("ventas", "productos", "detalle_ventas", "clientes", "inventario"),
                   "total"),
