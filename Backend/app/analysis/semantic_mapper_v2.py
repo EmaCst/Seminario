@@ -409,6 +409,23 @@ def score_table_for_role(
 ) -> tuple[float, list[str]]:
     table = schema.tables[table_name]
     table_tokens = tokens(table_name)
+    # Do not confuse an order record with an actual sale just because both
+    # have a date, status and monetary total. They are different business
+    # events and must remain separate roles.
+    if role is ROLE_PROFILES["retail"]["sales"] and (
+        table_tokens & {"pedido", "pedidos", "order", "orders", "orden", "ordenes"}
+    ) and not (
+        table_tokens & {"venta", "ventas", "sale", "sales", "factura",
+                        "facturas", "invoice", "invoices"}
+    ):
+        return 0.0, []
+    if role is ROLE_PROFILES["retail"]["orders"] and (
+        table_tokens & {"venta", "ventas", "sale", "sales", "factura",
+                        "facturas", "invoice", "invoices"}
+    ) and not (
+        table_tokens & {"pedido", "pedidos", "order", "orders", "orden", "ordenes"}
+    ):
+        return 0.0, []
     column_tokens = table_column_tokens(table)
     evidence: list[str] = []
     score = 0.0
