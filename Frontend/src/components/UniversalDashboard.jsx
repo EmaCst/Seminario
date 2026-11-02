@@ -145,7 +145,7 @@ const BusinessDashboard = ({ data }) => {
             <div>
               <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'Tipo de negocio detectado' : 'Detected business domain'}</p>
               <h3 className="text-2xl font-extrabold" style={{ color: colors.text }}>{language === 'es' ? meta.es : meta.en}</h3>
-              <p className="text-xs mt-1" style={{ color: colors.muted }}>{data?.provider === 'postgresql' ? 'PostgreSQL' : 'SQL Server'}</p>
+              <p className="text-xs mt-1" style={{ color: colors.muted }}>{({ postgresql: 'PostgreSQL', sqlserver: 'SQL Server', sqlite: 'Excel / SQLite', excel: 'Excel', excel_sqlite: 'Excel / SQLite' })[data?.provider] || data?.provider || 'Fuente de datos'}</p>
             </div>
           </div>
           <div className="rounded-xl border px-4 py-2 text-sm" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft, color: colors.text }}>
@@ -279,7 +279,7 @@ export const UniversalDashboard = () => {
         if (active) setError(null);
       } catch (err) {
         console.error('Error cargando dashboard universal:', err);
-        if (active) setError(err.message);
+        if (active) setError(language === 'es' ? 'No fue posible cargar el dashboard. Verifica la conexión con el servidor o la fuente de datos en Configuración.' : 'The dashboard could not be loaded. Check the server or data source connection in Settings.');
       } finally {
         if (active) setLoading(false);
       }
