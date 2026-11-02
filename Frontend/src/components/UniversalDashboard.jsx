@@ -13,6 +13,7 @@ import {
 import {
   Building2,
   Bus,
+  CarFront,
   Database,
   GraduationCap,
   HeartPulse,
@@ -34,6 +35,7 @@ import { SavedVisualizations } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const DOMAIN_META = {
+  vehicle_rental: { es: 'Alquiler de vehículos', en: 'Vehicle rental', Icon: CarFront },
   retail: { es: 'Comercio / Retail', en: 'Retail / Commerce', Icon: PackageSearch },
   education: { es: 'Educación', en: 'Education', Icon: GraduationCap },
   healthcare: { es: 'Salud / Hospital', en: 'Healthcare / Hospital', Icon: HeartPulse },
@@ -47,6 +49,8 @@ const DOMAIN_META = {
 };
 
 const ROLE_LABELS = {
+  rentals: ['Rentas y reservas', 'Rentals and reservations'],
+  maintenance: ['Mantenimientos', 'Maintenance'],
   patients: ['Pacientes', 'Patients'],
   doctors: ['Médicos', 'Doctors'],
   appointments: ['Citas / Consultas', 'Appointments / Visits'],
