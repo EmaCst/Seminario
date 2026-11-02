@@ -104,7 +104,6 @@ const ROLE_LABELS = {
   services: ['Servicios', 'Services'],
   clients: ['Clientes', 'Clients'],
   customers: ['Clientes', 'Customers'],
-  projects: ['Proyectos', 'Projects'],
   invoices: ['Facturas', 'Invoices'],
   payments: ['Pagos', 'Payments'],
   sales: ['Ventas', 'Sales'],
