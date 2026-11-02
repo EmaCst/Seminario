@@ -19,6 +19,41 @@ from app.services.assistant_router import MONTH_LABELS, months_in, normalize
 # Business words must be scoped by detected domain; "citas" can belong to
 # healthcare or professional services, and "productos" to retail or industry.
 ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
+    "insurance": {
+        "policies": ("poliza", "polizas", "contrato de seguro"),
+        "claims": ("siniestro", "siniestros", "reclamacion", "reclamaciones"),
+        "coverages": ("cobertura", "coberturas"),
+        "insured": ("asegurado", "asegurados"),
+        "payments": ("pago de prima", "pagos de primas"),
+    },
+    "pharmacy": {
+        "medicines": ("medicamento", "medicamentos", "farmaco", "farmacos"),
+        "batches": ("lote", "lotes", "caducidad", "vencimiento"),
+        "dispensations": ("dispensacion", "dispensaciones"),
+        "prescriptions": ("receta", "recetas", "prescripciones"),
+        "suppliers": ("proveedor", "proveedores"),
+    },
+    "saas": {
+        "subscriptions": ("suscripcion", "suscripciones", "renovaciones"),
+        "plans": ("plan", "planes"),
+        "organizations": ("organizacion", "organizaciones", "empresa", "empresas"),
+        "support_tickets": ("ticket", "tickets", "incidencias", "soporte"),
+        "invoices": ("factura", "facturas", "facturacion"),
+    },
+    "events": {
+        "events": ("evento", "eventos", "concierto", "conciertos"),
+        "tickets": ("entrada", "entradas", "boleto", "boletos"),
+        "attendees": ("asistente", "asistentes", "participante", "participantes"),
+        "venues": ("recinto", "recintos", "sede", "sedes"),
+        "reservations": ("reserva", "reservas"),
+    },
+    "fitness": {
+        "members": ("miembro", "miembros", "socio", "socios"),
+        "memberships": ("membresia", "membresias", "abonado", "abonados"),
+        "trainers": ("entrenador", "entrenadores"),
+        "classes": ("clase", "clases"),
+        "attendance": ("asistencia", "asistencias", "accesos"),
+    },
     "real_estate": {
         "properties": ("inmueble", "inmuebles", "propiedad", "propiedades"),
         "leases": ("arrendamiento", "arrendamientos", "arriendo", "arriendos", "alquiler inmobiliario"),
@@ -38,6 +73,9 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "livestock": ("ganado", "ganaderia", "rebanos", "animales de granja"),
     },
     "logistics": {
+        "stock_movements": ("movimiento de inventario", "movimientos de inventario", "movimiento de almacen"),
+        "purchase_orders": ("orden de compra", "ordenes de compra"),
+        "transfers": ("transferencia", "transferencias"),
         "shipments": ("envio", "envios", "entrega", "entregas", "despacho", "despachos", "shipment", "shipments"),
         "orders": ("pedido", "pedidos", "orden de compra", "ordenes de compra"),
         "packages": ("paquete", "paquetes", "bulto", "bultos"),
@@ -52,6 +90,8 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "payments": ("pago", "pagos", "cobro", "cobros"),
     },
     "retail": {
+        "carts": ("carrito", "carritos"),
+        "returns": ("devolucion", "devoluciones", "reembolso", "reembolsos"),
         "sales": ("venta", "ventas", "factura", "facturas"),
         "orders": ("pedido", "pedidos", "ordenes de compra", "orden de compra"),
         "products": ("producto", "productos"),
@@ -106,6 +146,9 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
         "payments": ("pago", "pagos", "cobro", "cobros"),
     },
     "finance_accounting": {
+        "loans": ("prestamo", "prestamos", "credito bancario"),
+        "cards": ("tarjeta", "tarjetas bancarias"),
+        "branches": ("sucursal", "sucursales"),
         "accounts": ("cuenta", "cuentas"),
         "transactions": ("transaccion", "transacciones", "movimiento", "movimientos"),
         "journal_entries": ("asiento", "asientos", "apunte", "apuntes"),
@@ -129,6 +172,33 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
 
 # Human-friendly labels are for display only; SQL always uses schema-mapped names.
 ROLE_LABELS = {
+    "policies": "pólizas",
+    "claims": "siniestros",
+    "coverages": "coberturas",
+    "insured": "asegurados",
+    "medicines": "medicamentos",
+    "batches": "lotes",
+    "dispensations": "dispensaciones",
+    "prescriptions": "recetas",
+    "subscriptions": "suscripciones",
+    "plans": "planes",
+    "organizations": "organizaciones",
+    "support_tickets": "tickets de soporte",
+    "events": "eventos",
+    "attendees": "asistentes",
+    "venues": "recintos",
+    "members": "socios",
+    "memberships": "membresías",
+    "trainers": "entrenadores",
+    "classes": "clases",
+    "carts": "carritos",
+    "returns": "devoluciones",
+    "stock_movements": "movimientos de inventario",
+    "purchase_orders": "órdenes de compra",
+    "transfers": "transferencias",
+    "loans": "préstamos",
+    "cards": "tarjetas bancarias",
+    "branches": "sucursales",
     "properties": "inmuebles", "leases": "arrendamientos",
     "tenants": "inquilinos", "agents": "agentes inmobiliarios",
     "budgets": "presupuestos de obra", "contractors": "contratistas",
@@ -164,6 +234,15 @@ ROLE_LABELS = {
 # In particular: current stock, account balances, grades and list prices MUST
 # NOT be treated as sums of sales/income.
 MONETARY_ROLES = {
+    ("insurance", "claims"): ("amount",),
+    ("insurance", "payments"): ("amount",),
+    ("pharmacy", "dispensations"): ("total",),
+    ("saas", "invoices"): ("total",),
+    ("events", "tickets"): ("total",),
+    ("fitness", "memberships"): ("amount",),
+    ("retail", "returns"): ("amount",),
+    ("logistics", "purchase_orders"): ("total",),
+    ("finance_accounting", "loans"): ("amount",),
     ("real_estate", "leases"): ("total",),
     ("vehicle_rental", "rentals"): ("total",),
     ("vehicle_rental", "payments"): ("amount",),
