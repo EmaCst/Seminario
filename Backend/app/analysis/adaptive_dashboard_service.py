@@ -1,7 +1,10 @@
-from sqlalchemy import text
+import math
+
+from sqlalchemy import inspect, text
+from sqlalchemy.sql.sqltypes import Float, Integer, Numeric
 
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
-from app.database.connection import get_connection
+from app.database.connection import get_connection, get_engine
 from app.database.database_manager import database_manager
 
 DOMAIN_KPI_ROLES={"vehicle_rental":["rentals","vehicles","customers","maintenance","payments"],"retail":["products","customers","sales","payments"],"education":["students","teachers","courses","enrollments"],"healthcare":["patients","doctors","appointments","admissions"],"transportation":["vehicles","drivers","routes","trips"],"hospitality":["rooms","guests","reservations","stays"],"restaurant":["menu_items","tables","orders","ingredients"],"professional_services":["clients","services","projects","invoices"],"finance_accounting":["accounts","transactions","journal_entries"],"manufacturing":["products","materials","machines","production_orders"],"human_resources":["employees","departments","attendance","payroll"]}
@@ -89,6 +92,71 @@ def _select_status(domain,entities):
         except Exception: continue
     return {"available":False,"role":None,"data":[]}
 
+# Calculated Excel cells are materialized into numeric SQLite columns by the
+# importer. The previous dashboard counted records only; it never queried
+# financial/quantity values, so even a correctly evaluated workbook showed no
+# revenues, expenses, or rental durations.
+METRIC_FIELDS = (
+    ("total", "sum", "money"),
+    ("amount", "sum", "money"),
+    ("balance", "sum", "money"),
+    ("quantity", "sum", "number"),
+    ("value", "avg", "number"),
+)
+
+
+def _value_metrics(entities, source_status, limit=8):
+    """
+    Aggregate semantic numeric columns for all recognized domains, regardless
+    of source (SQL Server, PostgreSQL, or imported Excel/SQLite). Only SQL
+    identifiers from inspected schemas are used; values aren't interpolated.
+    """
+    metrics = []
+    calculated_columns = source_status.get("calculated_columns") or {}
+    engine = get_engine()
+    inspector = inspect(engine)
+    for role, entity in entities.items():
+        table = entity.get("table")
+        if not table:
+            continue
+        try:
+            types = {col["name"]: col["type"] for col in inspector.get_columns(table)}
+        except Exception:
+            continue
+        for field, aggregation, unit in METRIC_FIELDS:
+            column = (entity.get("columns") or {}).get(field)
+            column_type = types.get(column)
+            if not column or not isinstance(column_type, (Numeric, Integer, Float)):
+                continue
+            fn = "AVG" if aggregation == "avg" else "SUM"
+            query = text(
+                f"SELECT {fn}({_quote(column)}) AS result, "
+                f"COUNT({_quote(column)}) AS observed FROM {_quote(table)}"
+            )
+            try:
+                with get_connection() as connection:
+                    row = connection.execute(query).mappings().first()
+                if not row or not row["observed"] or row["result"] is None:
+                    continue
+                value = float(row["result"])
+                if not math.isfinite(value):
+                    continue
+                metrics.append({
+                    "id": f"{role}-{field}-{aggregation}",
+                    "role": role, "field": field,
+                    "aggregation": aggregation,
+                    "unit": unit, "value": round(value, 4),
+                    "table": table, "column": column,
+                    "from_formulas": column in calculated_columns.get(table, []),
+                })
+            except Exception:
+                # One unmapped/nonnumeric column must not hide other metrics.
+                continue
+            if len(metrics) >= limit:
+                return metrics
+    return metrics
+
+
 def get_adaptive_dashboard_summary():
-    analysis=inspect_semantic_model(); semantic=analysis.get("semantic_model") or {}; domain=semantic.get("domain"); entities=semantic.get("entities") or {}; counts=_entity_counts(entities)
-    return {"database":analysis.get("database"),"provider":_provider(),"domain":domain,"domain_confidence":semantic.get("domain_confidence"),"ambiguous_domain":semantic.get("ambiguous_domain",False),"kpis":_select_kpis(domain,entities,counts),"trend":_select_trend(domain,entities),"status_distribution":_select_status(domain,entities),"entity_counts":[{"role":r,"value":counts.get(r,0),"table":e.get("table"),"confidence":e.get("confidence")} for r,e in entities.items()],"relations_detected":len(semantic.get("relations") or []),"unmapped_tables":semantic.get("unmapped_tables") or []}
+    analysis=inspect_semantic_model(); semantic=analysis.get("semantic_model") or {}; domain=semantic.get("domain"); entities=semantic.get("entities") or {}; counts=_entity_counts(entities); status=database_manager.status()
+    return {"database":analysis.get("database"),"provider":_provider(),"domain":domain,"domain_confidence":semantic.get("domain_confidence"),"ambiguous_domain":semantic.get("ambiguous_domain",False),"kpis":_select_kpis(domain,entities,counts),"value_metrics":_value_metrics(entities,status),"formula_diagnostics":status.get("formula_diagnostics"),"trend":_select_trend(domain,entities),"status_distribution":_select_status(domain,entities),"entity_counts":[{"role":r,"value":counts.get(r,0),"table":e.get("table"),"confidence":e.get("confidence")} for r,e in entities.items()],"relations_detected":len(semantic.get("relations") or []),"unmapped_tables":semantic.get("unmapped_tables") or []}
