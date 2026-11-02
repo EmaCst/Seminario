@@ -569,6 +569,32 @@ def score_table_for_role(
 ) -> tuple[float, list[str]]:
     table = schema.tables[table_name]
     table_tokens = tokens(table_name)
+    # Newly added roles must carry sector-specific evidence; shared fields
+    # such as 'fecha', 'estado', 'nombre' never prove an entity type.
+    guarded_roles = {
+        "insurance", "pharmacy", "saas", "events", "fitness"
+    }
+    guarded_extensions = {
+        ("retail", "carts"), ("retail", "returns"),
+        ("logistics", "stock_movements"), ("logistics", "purchase_orders"),
+        ("logistics", "transfers"),
+        ("finance_accounting", "loans"), ("finance_accounting", "cards"),
+        ("finance_accounting", "branches"),
+    }
+    guarded = any(
+        role is item for domain in guarded_roles
+        for item in ROLE_PROFILES[domain].values()
+    ) or any(
+        role is ROLE_PROFILES[domain][role_name]
+        for domain, role_name in guarded_extensions
+    )
+    if guarded and not (tokens(table_name) & role.table_terms):
+        specific_columns = role.column_terms - {
+            "fecha", "date", "estado", "status", "nombre", "name",
+            "precio", "monto", "total", "cantidad", "cliente", "id",
+        }
+        if not (specific_columns & table_column_tokens(table)):
+            return 0.0, []
     # Do not confuse an order record with an actual sale just because both
     # have a date, status and monetary total. They are different business
     # events and must remain separate roles.
@@ -700,6 +726,10 @@ def map_role_columns(table: TableSchema, role: RoleProfile) -> dict:
         column = find_column(table, aliases)
         if column:
             mapped[semantic_name] = column
+    if "date" in role.preferred_columns and "date" not in mapped:
+        date_column = find_column(table, COMMON_DATE)
+        if date_column:
+            mapped["date"] = date_column
     return mapped
 
 
