@@ -25,6 +25,9 @@ import {
   Wrench,
   Plus,
   FileSpreadsheet,
+  House,
+  HardHat,
+  Sprout,
   Truck,
 } from 'lucide-react';
 
@@ -37,6 +40,9 @@ import { SavedVisualizations } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const DOMAIN_META = {
+  real_estate: { es: 'Inmobiliario', en: 'Real estate', Icon: House },
+  construction: { es: 'Construcción', en: 'Construction', Icon: HardHat },
+  agriculture: { es: 'Agricultura y ganadería', en: 'Agriculture and livestock', Icon: Sprout },
   vehicle_rental: { es: 'Alquiler de vehículos', en: 'Vehicle rental', Icon: CarFront },
   logistics: { es: 'Logística y entregas', en: 'Logistics and deliveries', Icon: Truck },
   general: { es: 'Datos generales (sector sin identificar)', en: 'General data (unclassified sector)', Icon: Database },
@@ -53,6 +59,17 @@ const DOMAIN_META = {
 };
 
 const ROLE_LABELS = {
+  properties: ['Inmuebles / Propiedades', 'Properties'],
+  leases: ['Arrendamientos', 'Leases'],
+  tenants: ['Inquilinos', 'Tenants'],
+  agents: ['Agentes inmobiliarios', 'Real estate agents'],
+  projects: ['Obras / Proyectos', 'Construction projects'],
+  budgets: ['Presupuestos de obra', 'Construction budgets'],
+  contractors: ['Contratistas', 'Contractors'],
+  fields: ['Parcelas / Fincas', 'Fields / farms'],
+  crops: ['Cultivos', 'Crops'],
+  harvests: ['Cosechas', 'Harvests'],
+  livestock: ['Ganado', 'Livestock'],
   shipments: ['Envíos y entregas', 'Shipments and deliveries'],
   packages: ['Paquetes', 'Parcels'],
   carriers: ['Transportistas', 'Carriers'],
