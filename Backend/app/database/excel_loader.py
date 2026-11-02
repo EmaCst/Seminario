@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, MetaData, String, Table, create_engine, insert
 
 from app.database.database_manager import database_manager
+from app.database.formula_engine import FormulaEvaluator, FormulaError
 
 
 MAX_FILE_SIZE = 25 * 1024 * 1024
@@ -61,8 +62,19 @@ def _looks_like_header(row: list[Any]) -> bool:
     return len(filled) >= 2 and all(isinstance(v, str) and bool(v.strip()) for v in filled)
 
 
-def _normalize_sheet(sheet) -> dict:
-    rows = list(sheet.iter_rows(values_only=True))
+def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
+    rows = []
+    for cell_row in sheet.iter_rows():
+        values = []
+        for cell in cell_row:
+            if cell.data_type == "f" and evaluator is not None:
+                try:
+                    values.append(evaluator.value(sheet.title, cell.coordinate))
+                except (FormulaError, ValueError, TypeError, ArithmeticError):
+                    values.append(None)
+            else:
+                values.append(cell.value)
+        rows.append(tuple(values))
     non_empty = [row for row in rows if any(value not in (None, "") for value in row)]
     if not non_empty:
         return {"name": sheet.title, "table_name": _slug(sheet.title, "sheet"), "headers": [], "data_rows": [], "schema": [], "warnings": ["La hoja está vacía."]}
@@ -193,7 +205,7 @@ def _public_profile(sheet: dict) -> dict:
     return {"name": sheet["name"], "table_name": sheet["table_name"], "rows": len(sheet["data_rows"]), "columns": len(sheet["headers"]), "headers": sheet["headers"], "schema": sheet["schema"], "preview": preview, "warnings": sheet["warnings"], "semantic": _semantic_profile(sheet)}
 
 
-async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict]]:
+async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict], dict]:
     filename = file.filename or "workbook.xlsx"
     if Path(filename).suffix.lower() not in ALLOWED_EXTENSIONS:
         raise ValueError("Formato no compatible. Usa un archivo .xlsx o .xlsm.")
@@ -203,16 +215,26 @@ async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict]]:
     if len(content) > MAX_FILE_SIZE:
         raise ValueError("El archivo Excel supera el límite de 25 MB.")
     try:
-        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
-        sheets = [_normalize_sheet(sheet) for sheet in workbook.worksheets]
+        # data_only=True only reads saved caches; it NEVER calculates Excel
+        # formulas. Instead read the formula AST and evaluate a safe subset.
+        workbook = load_workbook(BytesIO(content), read_only=False, data_only=False, keep_links=False)
+        evaluator = FormulaEvaluator(workbook)
+        diagnostics = evaluator.calculate()
+        sheets = [_normalize_sheet(sheet, evaluator) for sheet in workbook.worksheets]
+        for sheet in sheets:
+            issues = [issue for issue in diagnostics["errors"] if issue["sheet"] == sheet["name"]]
+            if issues:
+                sheet["warnings"].append(
+                    f'{len(issues)} fórmula(s) no pudieron resolverse; sus celdas se importarán como NULL.'
+                )
         workbook.close()
     except Exception as exc:
         raise ValueError(f"No se pudo leer el libro de Excel: {exc}") from exc
-    return filename, content, sheets
+    return filename, content, sheets, diagnostics
 
 
 async def inspect_excel_upload(file: UploadFile) -> dict:
-    filename, content, sheets = await _read_workbook(file)
+    filename, content, sheets, formulas = await _read_workbook(file)
     profiles = [_public_profile(sheet) for sheet in sheets]
     populated = [sheet for sheet in profiles if sheet["rows"] > 0]
     total_rows = sum(sheet["rows"] for sheet in populated)
@@ -221,6 +243,7 @@ async def inspect_excel_upload(file: UploadFile) -> dict:
         "sheet_count": len(profiles), "populated_sheets": len(populated), "total_data_rows": total_rows,
         "total_columns": sum(sheet["columns"] for sheet in populated), "sheets": profiles,
         "suggested_relations": _suggest_relations(sheets),
+        "formula_diagnostics": formulas,
         "interpretation": {"summary": f"Se detectaron {len(populated)} hojas con datos y {total_rows} filas.", "ready_to_import": bool(populated)},
     }
 
@@ -301,5 +324,6 @@ async def activate_excel_upload(file: UploadFile) -> dict:
         "size_bytes": len(content),
         "tables": [_public_profile(sheet) for sheet in populated],
         "suggested_relations": _suggest_relations(populated),
+        "formula_diagnostics": formulas,
         "total_data_rows": total_rows,
     }
