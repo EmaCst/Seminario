@@ -55,7 +55,7 @@ def _infer_type(values: list[Any]) -> str:
     # Business workbooks frequently store ISO dates as strings. Only
     # promote a column when EVERY nonblank value is an unambiguous ISO date.
     if all(isinstance(value, str) and
-           re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", value.strip()) and
+           re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value.strip()) and
            _is_iso_date(value.strip()) for value in clean):
         return "date"
     return "text"
