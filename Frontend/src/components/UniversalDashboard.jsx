@@ -24,6 +24,7 @@ import {
   WalletCards,
   Wrench,
   Plus,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 import { DashboardContext } from '../context/DashboardContext';
@@ -122,6 +123,26 @@ const BusinessDashboard = ({ data }) => {
   const meta = DOMAIN_META[data?.domain] || { es: data?.domain || 'Desconocido', en: data?.domain || 'Unknown', Icon: Database };
   const DomainIcon = meta.Icon;
   const statusRows = data?.status_distribution?.data || [];
+  const valueMetrics = data?.value_metrics || [];
+  const formulaDiagnostics = data?.formula_diagnostics;
+  const metricFieldLabel = (item) => {
+    if (item.role === 'rentals' && item.field === 'total') return language === 'es' ? 'Ingresos de rentas' : 'Rental revenue';
+    if (item.role === 'maintenance' && item.field === 'amount') return language === 'es' ? 'Gastos de mantenimiento' : 'Maintenance expenses';
+    if (item.role === 'rentals' && item.field === 'quantity') return language === 'es' ? 'Días de renta acumulados' : 'Total rental days';
+    const names = {
+      total: language === 'es' ? 'Total' : 'Total',
+      amount: language === 'es' ? 'Importe' : 'Amount',
+      balance: language === 'es' ? 'Saldo' : 'Balance',
+      quantity: language === 'es' ? 'Cantidad acumulada' : 'Total quantity',
+      value: language === 'es' ? 'Promedio' : 'Average',
+    };
+    return `${roleLabel(item.role, language)} — ${names[item.field] || item.field}`;
+  };
+  const formatMetric = (item) => Number(item.value || 0).toLocaleString(
+    language === 'es' ? 'es-GT' : 'en-US',
+    { minimumFractionDigits: item.unit === 'money' ? 2 : 0, maximumFractionDigits: 2 },
+  );
+
   const cardStyle = { backgroundColor: colors.card, borderColor: colors.border };
 
   const trendRows = useMemo(
@@ -154,6 +175,21 @@ const BusinessDashboard = ({ data }) => {
         </div>
       </section>
 
+      {data?.provider === 'excel' && formulaDiagnostics && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-sm"
+          style={{ borderColor: colors.border, backgroundColor: colors.cardSoft, color: colors.text }}>
+          <FileSpreadsheet size={19} style={{ color: theme.primary }} />
+          <strong>{language === 'es' ? 'Cálculo de Excel:' : 'Excel calculation:'}</strong>
+          <span>{formulaDiagnostics.formulas_calculated ?? 0} / {formulaDiagnostics.formulas_detected ?? 0}
+            {' '}{language === 'es' ? 'fórmulas resueltas' : 'formulas calculated'}</span>
+          {formulaDiagnostics.formulas_unresolved > 0 && (
+            <span className="font-semibold text-amber-600">
+              {language === 'es' ? 'Algunas fórmulas no pudieron calcularse; revisa la importación.' : 'Some formulas could not be calculated; review the import.'}
+            </span>
+          )}
+        </div>
+      )}
+
       <EditableDashboardGrid storageId="adaptive-kpis" columns="sm:grid-cols-2 xl:grid-cols-4" items={(data?.kpis || []).map((kpi) => ({
         id: `kpi-${kpi.role}`,
         resizable: false,
@@ -163,6 +199,40 @@ const BusinessDashboard = ({ data }) => {
           <div className="mt-1 text-xs" style={{ color: colors.muted }}>{language === 'es' ? 'Registros detectados' : 'Detected records'}</div>
         </section>,
       }))} />
+
+      {valueMetrics.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-lg font-bold" style={{ color: theme.primary }}>
+              {language === 'es' ? 'Indicadores numéricos' : 'Numeric indicators'}
+            </h3>
+            <p className="text-xs" style={{ color: colors.muted }}>
+              {language === 'es'
+                ? 'Sumas y promedios de columnas numéricas reales; incluye los resultados calculados de las fórmulas Excel.'
+                : 'Sums and averages of actual numeric columns, including computed Excel formula results.'}
+            </p>
+          </div>
+          <EditableDashboardGrid storageId="adaptive-value-metrics" columns="sm:grid-cols-2 xl:grid-cols-4"
+            items={valueMetrics.map((item) => ({
+              id: `metric-${item.id}`,
+              resizable: false,
+              node: <section className="h-full rounded-2xl border p-5 shadow-sm" style={cardStyle}>
+                <div className="text-sm font-semibold" style={{ color: colors.muted }}>{metricFieldLabel(item)}</div>
+                <div className="mt-1 text-2xl font-extrabold" style={{ color: theme.primary }}>{formatMetric(item)}</div>
+                <div className="mt-1 text-xs" style={{ color: colors.muted }}>
+                  {item.unit === 'money'
+                    ? (language === 'es' ? 'Valor monetario · moneda de origen' : 'Monetary amount · source currency')
+                    : (item.aggregation === 'avg' ? (language === 'es' ? 'Promedio' : 'Average') : (language === 'es' ? 'Suma' : 'Sum'))}
+                </div>
+                {item.from_formulas && (
+                  <div className="mt-2 text-xs font-semibold" style={{ color: theme.primary }}>
+                    {language === 'es' ? 'Incluye fórmulas calculadas' : 'Includes calculated formulas'}
+                  </div>
+                )}
+              </section>,
+            }))} />
+        </section>
+      )}
 
       <EditableDashboardGrid storageId="adaptive-charts" items={[
         { id: 'monthly-trend', node: <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>

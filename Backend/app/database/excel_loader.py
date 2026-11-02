@@ -130,7 +130,7 @@ def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
             has_identifier = any(i < len(row) and row[i] not in (None, "") for i in id_columns)
             total_footer = any(
                 isinstance(v, str) and
-                re.match(r"^(?:gran\\s+total|total|gasto\\s+total)\\b", v.strip(), re.I)
+                re.match(r"^(?:gran\s+total|total|gasto\s+total)\b", v.strip(), re.I)
                 for v in row
             )
             if not has_identifier and total_footer:
@@ -143,6 +143,15 @@ def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
                 f"Se excluyeron {removed} fila(s) de totales para evitar contarlas como registros."
             )
     data_rows = [list(row) + [None] * (width - len(row)) for row in source_rows]
+    # Track formula-derived columns. Formulas have already been evaluated to
+    # their actual numeric values before SQL type inference.
+    formula_counts = [sum(
+        cell.data_type == "f"
+        for column_cells in sheet.iter_cols(
+            min_col=index + 1, max_col=index + 1,
+            min_row=2 if has_header else 1,
+        ) for cell in column_cells
+    ) for index in range(width)]
     schema = []
     for index, header in enumerate(headers):
         values = [row[index] for row in data_rows]
@@ -155,6 +164,7 @@ def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
             "nulls": len(values) - non_null,
             "unique_values": len({str(value) for value in values if value not in (None, "")}),
             "mixed_types": len({type(value).__name__ for value in values if value not in (None, "")}) > 1,
+            "formula_cells": formula_counts[index],
         })
     if any(col["mixed_types"] and col["type"] == "text" for col in schema):
         warnings.append("Hay columnas con tipos mezclados; se conservarán como texto para evitar pérdida de información.")
@@ -378,7 +388,17 @@ async def activate_excel_upload(file: UploadFile) -> dict:
         raise
 
     total_rows = sum(len(sheet["data_rows"]) for sheet in populated)
-    status = database_manager.configure_excel(engine=engine, filename=filename, tables=list(tables), rows=total_rows, database_path=str(db_path))
+    calculated_columns = {
+        sheet["table_name"]: [
+            item["name"] for item in sheet["schema"]
+            if item.get("formula_cells") and item["type"] in ("integer", "number")
+        ] for sheet in populated
+    }
+    status = database_manager.configure_excel(
+        engine=engine, filename=filename, tables=list(tables),
+        rows=total_rows, database_path=str(db_path),
+        formula_diagnostics=formulas, calculated_columns=calculated_columns,
+    )
     return {
         "uploaded": True,
         "activated": True,
