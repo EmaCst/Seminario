@@ -266,6 +266,26 @@ def _sql_type(kind: str):
     return {"boolean": Boolean, "integer": Integer, "number": Float, "date": DateTime}.get(kind, String)
 
 
+def _trusted_primary_key(sheet: dict) -> str | None:
+    """Infer PK only from complete, unique, ID-shaped business keys.
+
+    Do not invent surrogate IDs: original identifiers must remain joinable.
+    """
+    total = len(sheet["data_rows"])
+    if not total:
+        return None
+    for index, header in enumerate(sheet["headers"]):
+        key = _semantic_name(header)
+        if not (key == "id" or key.startswith("id_") or key.endswith("_id")):
+            continue
+        values = [row[index] for row in sheet["data_rows"]]
+        if any(value in (None, "") for value in values):
+            continue
+        if len({str(v) for v in values}) == total:
+            return header
+    return None
+
+
 def _db_value(value: Any, kind: str) -> Any:
     if value in (None, ""):
         return None
@@ -308,7 +328,11 @@ async def activate_excel_upload(file: UploadFile) -> dict:
             suffix += 1
         used_tables.add(table_name)
         sheet["table_name"] = table_name
-        columns = [Column(item["name"], _sql_type(item["type"]), nullable=True) for item in sheet["schema"]]
+        primary = _trusted_primary_key(sheet)
+        columns = [Column(item["name"], _sql_type(item["type"]),
+                          primary_key=item["name"] == primary,
+                          nullable=item["name"] != primary)
+                   for item in sheet["schema"]]
         tables[table_name] = Table(table_name, metadata, *columns)
 
     metadata.create_all(engine)
