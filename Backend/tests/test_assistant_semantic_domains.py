@@ -7,6 +7,11 @@ from app.database.schema import ColumnSchema, DatabaseSchema, TableSchema
 
 
 CASES = {
+    "insurance": (("polizas", "siniestros", "coberturas", "asegurados"), "policies"),
+    "pharmacy": (("dispensaciones", "medicamentos", "lotes_medicamentos", "farmacias"), "dispensations"),
+    "saas": (("suscripciones", "planes_saas", "organizaciones", "tickets_soporte"), "subscriptions"),
+    "events": (("eventos", "entradas_evento", "asistentes", "recintos"), "events"),
+    "fitness": (("membresias", "gimnasios", "entrenadores", "clases_fitness"), "memberships"),
     "real_estate": (("arrendamientos", "inmuebles", "inquilinos", "agentes_inmobiliarios"), "leases"),
     "construction": (("obras", "presupuestos_obra", "contratistas", "materiales_obra"), "projects"),
     "agriculture": (("cosechas", "cultivos", "parcelas", "ganado"), "harvests"),
