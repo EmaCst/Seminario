@@ -328,7 +328,7 @@ def _db_value(value: Any, kind: str) -> Any:
 
 async def activate_excel_upload(file: UploadFile) -> dict:
     """Convierte un Excel en SQLite local y lo activa como la fuente SQL del sistema."""
-    filename, content, sheets = await _read_workbook(file)
+    filename, content, sheets, formulas = await _read_workbook(file)
     populated = [sheet for sheet in sheets if sheet["data_rows"] and sheet["headers"]]
     if not populated:
         raise ValueError("El libro no contiene hojas con filas de datos utilizables.")
