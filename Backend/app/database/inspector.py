@@ -28,12 +28,18 @@ def _normalized_name(value: str) -> str:
 def _table_aliases(name: str) -> set[str]:
     value = _normalized_name(name)
     aliases = {value}
-    if value.endswith("ies"):
-        aliases.add(value[:-3] + "y")
-    if value.endswith("es"):
-        aliases.add(value[:-2])
-    if value.endswith("s"):
-        aliases.add(value[:-1])
+    # A business table named flota_vehiculos still represents vehicles.
+    # Use its final semantic noun, but only if it is not a generic suffix.
+    parts = [part for part in re.split(r"[^a-zA-Z0-9À-ÿ]+", name) if part]
+    if len(parts) > 1 and len(parts[-1]) >= 4:
+        aliases.add(_normalized_name(parts[-1]))
+    for alias in tuple(aliases):
+        if alias.endswith("ies"):
+            aliases.add(alias[:-3] + "y")
+        if alias.endswith("es"):
+            aliases.add(alias[:-2])
+        if alias.endswith("s"):
+            aliases.add(alias[:-1])
     return aliases
 
 
