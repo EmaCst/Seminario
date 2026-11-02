@@ -21,6 +21,17 @@ CATEGORICAL_COLUMN_TERMS = (
 DISPLAY_COLUMN_TERMS = ("nombre", "name", "descripcion", "description", "titulo", "title", "codigo", "code")
 
 DOMAIN_RANKING_SPECS = {
+    "real_estate": [
+        ("properties", "leases", "count", None, "Inmuebles por número de arrendamientos"),
+        ("tenants", "leases", "sum", "total", "Inquilinos por valor registrado de contratos"),
+    ],
+    "construction": [
+        ("contractors", "projects", "count", None, "Contratistas por obras"),
+    ],
+    "agriculture": [
+        ("crops", "harvests", "sum", "quantity", "Cultivos por volumen cosechado"),
+        ("fields", "harvests", "count", None, "Parcelas por número de cosechas"),
+    ],
     "logistics": [
         ("carriers", "shipments", "count", None, "Transportistas por envíos"),
         ("orders", "shipments", "count", None, "Pedidos por número de envíos"),
