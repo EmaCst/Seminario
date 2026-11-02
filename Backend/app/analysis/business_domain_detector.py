@@ -17,6 +17,46 @@ class DomainSignal:
 # Los términos se buscan tanto en tablas como en columnas y soportan
 # español/inglés, snake_case, camelCase y separadores variados.
 DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
+    "insurance": [
+        DomainSignal(frozenset({"poliza","polizas","policy","policies","policy_number","numero_poliza"}), 3.4, "pólizas"),
+        DomainSignal(frozenset({"siniestro","siniestros","claim","claims","reclamacion","reclamaciones"}), 3.1, "siniestros y reclamaciones"),
+        DomainSignal(frozenset({"asegurado","asegurados","insured","insureds","beneficiario_poliza"}), 2.5, "asegurados"),
+        DomainSignal(frozenset({"cobertura","coberturas","coverage","coverages","deducible","deductible"}), 2.2, "coberturas"),
+        DomainSignal(frozenset({"prima","primas","premium","premiums","renovacion_poliza"}), 2, "primas"),
+        DomainSignal(frozenset({"aseguradora","aseguradoras","insurer","insurers","corredor_seguros"}), 1.8, "aseguradoras"),
+    ],
+    "pharmacy": [
+        DomainSignal(frozenset({"medicamento","medicamentos","farmaco","farmacos","drug","drugs","medicine","medicines","pharmaceutical"}), 3.4, "medicamentos"),
+        DomainSignal(frozenset({"lote_medicamento","lotes_medicamentos","batch_number","numero_lote","fecha_caducidad","fecha_vencimiento","expiration_date"}), 3.2, "lotes y caducidad"),
+        DomainSignal(frozenset({"dispensacion","dispensaciones","dispensing","dispensation","venta_farmacia"}), 3, "dispensaciones"),
+        DomainSignal(frozenset({"receta_medica","recetas_medicas","prescription","prescriptions","prescriptor"}), 2, "prescripciones"),
+        DomainSignal(frozenset({"farmacia","farmacias","pharmacy","pharmacies","botica","boticas"}), 2.7, "farmacias"),
+        DomainSignal(frozenset({"principio_activo","active_ingredient","dosis","dosage","presentacion_farmaceutica"}), 1.8, "composición farmacéutica"),
+    ],
+    "saas": [
+        DomainSignal(frozenset({"suscripcion","suscripciones","subscription","subscriptions","subscription_id"}), 3.5, "suscripciones"),
+        DomainSignal(frozenset({"plan_saas","planes_saas","pricing_plan","subscription_plan","plan_id"}), 2.2, "planes"),
+        DomainSignal(frozenset({"tenant_id","organization_id","organizacion","organizaciones","workspace","workspaces"}), 2.2, "organizaciones"),
+        DomainSignal(frozenset({"ticket_soporte","tickets_soporte","support_ticket","support_tickets","incident_ticket"}), 2.4, "soporte"),
+        DomainSignal(frozenset({"facturacion_recurrente","recurring_invoice","billing_cycle","mrr","arr","renovacion_suscripcion"}), 2.5, "facturación recurrente"),
+        DomainSignal(frozenset({"software","saas","licencia_software","software_license","licencias_software"}), 2, "software"),
+    ],
+    "events": [
+        DomainSignal(frozenset({"evento","eventos","event","events","festival","concierto","conciertos"}), 3.5, "eventos"),
+        DomainSignal(frozenset({"entrada_evento","entradas_evento","ticket_event","event_tickets","boleto_evento"}), 3.1, "entradas"),
+        DomainSignal(frozenset({"asistente","asistentes","attendee","attendees","registro_evento"}), 2.8, "asistentes"),
+        DomainSignal(frozenset({"recinto","recintos","venue","venues","escenario","auditorio"}), 1.8, "recintos"),
+        DomainSignal(frozenset({"aforo","capacity_event","localidad","localidades","seat_number","numero_asiento"}), 1.7, "aforo y asientos"),
+        DomainSignal(frozenset({"organizador_evento","event_organizer","promotor_evento","event_booking"}), 1.8, "organización"),
+    ],
+    "fitness": [
+        DomainSignal(frozenset({"gimnasio","gimnasios","gym","gyms","fitness_center"}), 3.3, "gimnasios"),
+        DomainSignal(frozenset({"membresia","membresias","membership","memberships","member_id"}), 3.3, "membresías"),
+        DomainSignal(frozenset({"entrenador","entrenadores","trainer","trainers","coach","coaches"}), 2.3, "entrenadores"),
+        DomainSignal(frozenset({"clase_fitness","clases_fitness","fitness_class","fitness_classes","class_booking"}), 2.4, "clases"),
+        DomainSignal(frozenset({"control_acceso","check_in_gym","asistencia_gimnasio","gym_attendance"}), 2.2, "asistencia"),
+        DomainSignal(frozenset({"rutina","rutinas","workout","workouts","plan_entrenamiento"}), 1.7, "entrenamientos"),
+    ],
     # Distinct economic sectors (ISIC Rev.5 A, F, M). Avoid generic
     # "project", "client", or "payment" as primary evidence.
     "real_estate": [
@@ -72,6 +112,9 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
     # Logistics is distinct from passenger transportation and from retail sales.
     # One generic "pedido" is intentionally insufficient to classify it.
     "logistics": [
+        DomainSignal(frozenset({"movimiento_inventario", "stock_movement", "transferencia_almacen", "stock_transfer", "entrada_almacen"}), 2.5, "movimientos de inventario"),
+        DomainSignal(frozenset({"orden_compra", "ordenes_compra", "purchase_order", "purchase_orders", "recepcion_mercancia"}), 1.8, "abastecimiento"),
+
         DomainSignal(frozenset({"envio", "envios", "shipment", "shipments", "shipping",
                                 "entrega", "entregas", "delivery", "deliveries",
                                 "despacho", "despachos", "dispatch", "fulfillment"}), 4.0, "envíos y entregas"),
@@ -104,6 +147,9 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
         DomainSignal(frozenset({"cliente", "clientes", "customer", "customers"}), 0.8, "clientes"),
     ],
     "retail": [
+        DomainSignal(frozenset({"carrito", "carritos", "shopping_cart", "shopping_carts", "cart_items", "checkout"}), 2.2, "carritos electrónicos"),
+        DomainSignal(frozenset({"devolucion", "devoluciones", "return", "returns", "refund", "refunds", "reembolso"}), 1.6, "devoluciones y reembolsos"),
+
         DomainSignal(frozenset({"producto", "productos", "product", "products", "item", "items", "articulo", "articulos", "sku", "catalogo", "catalog"}), 2.0, "catálogo de productos"),
         DomainSignal(frozenset({"venta", "ventas", "sale", "sales", "order", "orders", "pedido", "pedidos", "factura", "facturas", "invoice", "invoices"}), 2.0, "ventas/pedidos"),
         DomainSignal(frozenset({"id_pedido", "pedido_id", "order_id", "fecha_pedido",
@@ -159,6 +205,10 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
         DomainSignal(frozenset({"factura", "facturas", "invoice", "invoices", "pago", "pagos", "payment", "payments"}), 1.2, "facturación"),
     ],
     "finance_accounting": [
+        DomainSignal(frozenset({"prestamo", "prestamos", "loan", "loans", "credito_bancario", "amortizacion", "loan_payment"}), 2.6, "préstamos"),
+        DomainSignal(frozenset({"tarjeta_bancaria", "tarjetas_bancarias", "credit_card", "bank_card", "card_transactions"}), 2.0, "tarjetas bancarias"),
+        DomainSignal(frozenset({"sucursal_bancaria", "bank_branch", "iban", "cuenta_bancaria", "bank_account"}), 2.2, "operación bancaria"),
+
         DomainSignal(frozenset({"cuenta", "cuentas", "account", "accounts", "ledger", "mayor"}), 2.2, "cuentas contables"),
         DomainSignal(frozenset({"transaccion", "transacciones", "transaction", "transactions", "movimiento", "movimientos"}), 2.0, "transacciones"),
         DomainSignal(frozenset({"asiento", "asientos", "journal", "entry", "entries"}), 1.8, "asientos contables"),
