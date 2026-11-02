@@ -34,6 +34,7 @@ export const ExcelImport = ({ theme, colors, language }) => {
   const reset = () => { setFile(null); setPreview(null); setResult(null); setError(''); if (inputRef.current) inputRef.current.value=''; };
   const sheets = preview?.sheets || preview?.worksheets || preview?.tables || [];
   const domain = result?.business_domain?.primary || result?.business_domain || result?.domain;
+  const formulas = result?.formula_diagnostics || preview?.formula_diagnostics;
 
   return <section className="p-5 sm:p-6 rounded-2xl border shadow-sm" style={{backgroundColor:colors.card,borderColor:colors.border}}>
     <div className="flex items-start gap-3 mb-5">
@@ -50,6 +51,30 @@ export const ExcelImport = ({ theme, colors, language }) => {
       <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><FileSpreadsheet style={{color:theme.primary}}/><div className="min-w-0"><div className="font-bold truncate" style={{color:colors.text}}>{file.name}</div><div className="text-xs" style={{color:colors.muted}}>{(file.size/1024).toFixed(1)} KB</div></div></div><button onClick={reset} className="p-2 rounded-lg"><X size={18}/></button></div>
       {loading && <div className="mt-4 flex items-center gap-2 text-sm font-semibold" style={{color:theme.primary}}><LoaderCircle className="animate-spin" size={18}/>{language==='es'?'Interpretando archivo...':'Interpreting workbook...'}</div>}
       {preview && !result && <div className="mt-4"><div className="text-sm font-bold mb-2" style={{color:colors.text}}>{language==='es'?'Archivo interpretado correctamente':'Workbook interpreted successfully'}</div><div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm"><div className="rounded-xl border p-3" style={{borderColor:colors.border}}><span style={{color:colors.muted}}>{language==='es'?'Hojas detectadas':'Detected sheets'}</span><div className="text-xl font-extrabold" style={{color:theme.primary}}>{preview.sheet_count ?? sheets.length ?? '—'}</div></div><div className="rounded-xl border p-3 col-span-1 sm:col-span-2" style={{borderColor:colors.border}}><span style={{color:colors.muted}}>{language==='es'?'Listo para':'Ready for'}</span><div className="font-bold" style={{color:colors.text}}>{language==='es'?'Activación + análisis semántico':'Activation + semantic analysis'}</div></div></div><button disabled={loading} onClick={activate} className="w-full mt-4 rounded-xl py-3 font-extrabold text-white" style={{backgroundColor:theme.primary}}>{language==='es'?'Usar este Excel y analizar':'Use this Excel and analyze'}</button></div>}
+      {formulas?.formulas_detected > 0 && (
+        <div className="mt-4 rounded-xl border p-4 text-sm" style={{ borderColor: colors.border, color: colors.text }}>
+          <div className="flex items-center gap-2 font-bold">
+            <FileSpreadsheet size={18} style={{ color: theme.primary }} />
+            {language === 'es' ? 'Resultados de fórmulas Excel' : 'Excel formula results'}
+          </div>
+          <p className="mt-2" style={{ color: colors.muted }}>
+            {formulas.formulas_calculated} / {formulas.formulas_detected}
+            {' '}{language === 'es' ? 'fórmulas evaluadas correctamente.' : 'formulas evaluated successfully.'}
+            {' '}{language === 'es'
+              ? 'Los resultados calculados se almacenarán como valores consultables en SQLite.'
+              : 'Computed results will be stored as queryable SQLite values.'}
+          </p>
+          {formulas.formulas_unresolved > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+              <strong>{formulas.formulas_unresolved} {language === 'es' ? 'fórmulas no resueltas.' : 'unresolved formulas.'}</strong>
+              <p>{language === 'es' ? 'Sus celdas quedarán sin valor; comprueba las funciones no compatibles.' : 'Their cells will have no value; check for unsupported functions.'}</p>
+              {(formulas.errors || []).slice(0, 3).map((e) => (
+                <p key={`${e.sheet}-${e.cell}`} className="mt-1 text-xs">{e.sheet}!{e.cell}: {e.reason}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {result && <div className="mt-4 rounded-xl border p-4" style={{borderColor:'#86efac',backgroundColor:'#f0fdf4'}}><div className="flex items-center gap-2 font-extrabold text-green-700"><CheckCircle2 size={20}/>{language==='es'?'Excel activado correctamente':'Excel activated successfully'}</div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 text-sm"><div><span className="text-gray-500">{language==='es'?'Base activa':'Active source'}</span><div className="font-bold text-gray-900">{result.database || file.name}</div></div><div><span className="text-gray-500">{language==='es'?'Dominio':'Domain'}</span><div className="font-bold text-gray-900">{domain || '—'}</div></div><div><span className="text-gray-500">{language==='es'?'Tablas':'Tables'}</span><div className="font-bold text-gray-900">{result.tables?.length ?? result.table_count ?? '—'}</div></div></div><p className="text-xs text-green-800 mt-3">{language==='es'?'Dashboard, Analítica y Kenneth ya pueden trabajar con esta fuente activa.':'Dashboard, Analytics and Kenneth can now use this active source.'}</p></div>}
     </div>}
     {error && <div className="mt-4 rounded-xl border border-red-300 bg-red-50 text-red-700 p-3 flex gap-2 text-sm"><AlertCircle size={18} className="shrink-0"/><span>{error}</span></div>}

@@ -24,15 +24,248 @@ COMMON_QUANTITY = ("cantidad", "quantity", "qty", "stock", "existencia")
 
 
 ROLE_PROFILES: dict[str, dict[str, RoleProfile]] = {
+    "real_estate": {
+        "properties": RoleProfile(
+            frozenset({"inmuebles", "inmueble", "propiedades", "propiedad", "properties",
+                        "property", "unidades_inmobiliarias", "real_estate_properties"}),
+            frozenset({"inmueble", "propiedad", "direccion", "superficie", "area",
+                        "precio", "tipo", "disponibilidad"}),
+            (), {"id": ("id_inmueble", "inmueble_id", "property_id", "id_propiedad", "id"),
+                 "name": ("direccion", "address", "nombre", "name", "codigo"),
+                 "status": ("estado", "disponibilidad", "status", "property_status"),
+                 "price": ("precio_venta", "valor_propiedad", "precio", "asking_price"),
+                 "category": ("tipo_inmueble", "property_type", "tipo")}),
+        "leases": RoleProfile(
+            frozenset({"arrendamientos", "arrendamiento", "arriendos", "arriendo",
+                        "contratos_alquiler", "leases", "lease", "tenancies"}),
+            frozenset({"arrendamiento", "alquiler", "canon", "renta_mensual",
+                        "inquilino", "contrato", "inicio", "vencimiento"}),
+            (), {"id": ("id_arrendamiento", "lease_id", "id_contrato", "id"),
+                 "date": ("fecha_inicio", "fecha_contrato", "start_date", "lease_start", "fecha"),
+                 "end_date": ("fecha_fin", "fecha_vencimiento", "end_date", "lease_end"),
+                 "status": ("estado_contrato", "lease_status", "estado", "status"),
+                 "total": ("total_cobrado", "importe_total", "total", "total_renta"),
+                 "amount": ("renta_mensual", "canon_mensual", "monthly_rent", "monto"),
+                 "property_id": ("id_inmueble", "property_id", "id_propiedad"),
+                 "tenant_id": ("id_inquilino", "tenant_id", "id_arrendatario")}),
+        "tenants": RoleProfile(
+            frozenset({"inquilinos", "inquilino", "arrendatarios", "arrendatario",
+                        "tenants", "tenant"}),
+            frozenset({"inquilino", "tenant", "nombre", "contacto", "telefono"}),
+            (), {"id": ("id_inquilino", "tenant_id", "id_arrendatario", "id"),
+                 "name": ("nombre_completo", "nombre", "name"),
+                 "date": ("fecha_registro", "created_at", "registration_date")}),
+        "agents": RoleProfile(
+            frozenset({"agentes_inmobiliarios", "agente_inmobiliario", "corredores",
+                        "agentes", "realtors", "real_estate_agents", "brokers"}),
+            frozenset({"agente", "corredor", "broker", "comision", "inmueble"}),
+            (), {"id": ("id_agente", "agent_id", "broker_id", "id"),
+                 "name": ("nombre", "name", "agente", "broker")}),
+    },
+    "construction": {
+        "projects": RoleProfile(
+            frozenset({"obras", "obra", "proyectos_construccion", "proyectos_obra",
+                        "construction_projects", "construction_sites", "construcciones"}),
+            frozenset({"obra", "construccion", "presupuesto", "avance",
+                        "fecha_inicio", "fecha_fin", "contratista"}),
+            (), {"id": ("id_obra", "obra_id", "construction_project_id", "id"),
+                 "name": ("nombre_obra", "nombre_proyecto", "nombre", "project_name"),
+                 "date": ("fecha_inicio", "start_date", "fecha"),
+                 "end_date": ("fecha_fin", "end_date", "fecha_entrega"),
+                 "status": ("estado_obra", "project_status", "estado", "status"),
+                 "amount": ("costo_real", "actual_cost", "gasto_obra"),
+                 "value": ("porcentaje_avance", "avance_fisico", "progress_pct"),
+                 "total": ("total_ejecutado", "total", "costo_total")}),
+        "budgets": RoleProfile(
+            frozenset({"presupuestos_obra", "presupuesto_obra", "presupuestos_construccion",
+                        "construction_budgets", "cost_estimates", "estimaciones_obra"}),
+            frozenset({"presupuesto", "obra", "estimado", "partida", "costo"}),
+            (), {"id": ("id_presupuesto", "budget_id", "id"),
+                 "date": ("fecha", "fecha_presupuesto", "created_at"),
+                 "amount": ("monto_presupuestado", "presupuesto", "budget", "estimated_cost"),
+                 "total": ("total_presupuesto", "total"),
+                 "status": ("estado", "status")}),
+        "contractors": RoleProfile(
+            frozenset({"contratistas", "contratista", "subcontratistas", "subcontratista",
+                        "contractors", "contractor", "subcontractors"}),
+            frozenset({"contratista", "empresa", "especialidad", "contrato"}),
+            (), {"id": ("id_contratista", "contractor_id", "id"),
+                 "name": ("razon_social", "empresa", "nombre", "name"),
+                 "status": ("estado", "status")}),
+        "materials": RoleProfile(
+            frozenset({"materiales_obra", "insumos_obra", "material_construccion",
+                        "building_materials", "construction_materials"}),
+            frozenset({"material", "cantidad", "costo", "unidad", "obra"}),
+            (), {"id": ("id_material", "material_id", "id"),
+                 "name": ("nombre", "material", "name"),
+                 "quantity": ("cantidad_consumida", "cantidad", "quantity"),
+                 "amount": ("costo_total", "total_costo", "total"),
+                 "date": ("fecha_consumo", "fecha", "date")}),
+    },
+    "agriculture": {
+        "fields": RoleProfile(
+            frozenset({"parcelas", "parcela", "fincas", "finca", "lotes_agricolas",
+                        "fields", "farmland", "farms"}),
+            frozenset({"parcela", "hectareas", "superficie", "finca", "ubicacion"}),
+            (), {"id": ("id_parcela", "field_id", "farm_id", "id"),
+                 "name": ("nombre", "name", "ubicacion", "location"),
+                 "quantity": ("hectareas", "area_hectareas", "area")}),
+        "crops": RoleProfile(
+            frozenset({"cultivos", "cultivo", "siembras", "siembra",
+                        "crops", "crop", "plantaciones", "plantations"}),
+            frozenset({"cultivo", "siembra", "semilla", "parcela", "especie"}),
+            (), {"id": ("id_cultivo", "crop_id", "id_siembra", "id"),
+                 "name": ("tipo_cultivo", "nombre", "crop_name", "name"),
+                 "date": ("fecha_siembra", "planting_date", "fecha"),
+                 "status": ("estado", "status"),
+                 "quantity": ("area_sembrada", "hectareas", "cantidad")}),
+        "harvests": RoleProfile(
+            frozenset({"cosechas", "cosecha", "recolecciones", "harvests", "harvest"}),
+            frozenset({"cosecha", "recoleccion", "toneladas", "rendimiento",
+                        "kilogramos", "fecha", "cultivo"}),
+            (), {"id": ("id_cosecha", "harvest_id", "id"),
+                 "date": ("fecha_cosecha", "harvest_date", "fecha"),
+                 "quantity": ("kilos_cosechados", "kilogramos", "toneladas",
+                              "cantidad_cosechada", "yield_kg", "quantity"),
+                 "status": ("estado", "status"),
+                 "total": ("valor_cosecha", "valor_total", "total")}),
+        "livestock": RoleProfile(
+            frozenset({"ganado", "ganaderia", "animales_granja", "rebanos",
+                        "livestock", "herds", "farm_animals"}),
+            frozenset({"ganado", "animal", "raza", "peso", "especie", "edad"}),
+            (), {"id": ("id_animal", "animal_id", "livestock_id", "id"),
+                 "name": ("especie", "raza", "nombre", "name"),
+                 "status": ("estado", "status"),
+                 "quantity": ("peso", "weight", "cantidad")}),
+    },
+    "logistics": {
+        "shipments": RoleProfile(
+            frozenset({"envios", "envio", "entregas", "entrega", "despachos", "despacho",
+                        "shipments", "shipment", "shipping", "deliveries", "delivery",
+                        "dispatch", "guia_envio", "guias_envio", "tracking_envios"}),
+            frozenset({"envio", "entrega", "despacho", "guia", "tracking",
+                        "destinatario", "direccion", "estado", "fecha", "pedido"}),
+            (frozenset({"envio", "entrega", "despacho", "shipment", "shipping",
+                        "delivery", "guia", "tracking"}),),
+            {"id": ("id_envio", "envio_id", "shipment_id", "delivery_id", "id_entrega", "id"),
+             "date": ("fecha_envio", "fecha_despacho", "shipping_date", "shipped_at",
+                      "fecha_entrega", "delivery_date", "created_at", "fecha"),
+             "end_date": ("fecha_entrega", "delivered_at", "delivered_date", "delivery_date"),
+             "status": ("estado_envio", "shipment_status", "estado_entrega",
+                        "delivery_status", "estado", "status"),
+             "total": ("costo_envio", "shipping_cost", "tarifa_envio", "shipping_fee",
+                       "valor_envio", "total", "amount"),
+             "quantity": ("cantidad_paquetes", "packages_count", "numero_bultos"),
+             "order_id": ("id_pedido", "pedido_id", "order_id"),
+             "carrier_id": ("id_transportista", "carrier_id"),
+             "tracking": ("numero_guia", "tracking_number", "codigo_guia", "guia", "tracking")}),
+        "orders": RoleProfile(
+            frozenset({"pedidos", "pedido", "ordenes", "ordenes_pedido",
+                        "ordenes_compra", "orders", "order", "sales_orders"}),
+            frozenset({"pedido", "order", "cliente", "customer", "fecha", "estado", "total"}),
+            (frozenset({"pedido", "order"}),),
+            {"id": ("id_pedido", "pedido_id", "order_id", "id"),
+             "date": ("fecha_pedido", "order_date", "created_at", "fecha"),
+             "status": ("estado_pedido", "order_status", "estado", "status"),
+             "total": ("total_pedido", "order_total", "monto_pedido", "total"),
+             "customer_id": ("id_cliente", "cliente_id", "customer_id")}),
+        "packages": RoleProfile(
+            frozenset({"paquetes", "paquete", "bultos", "bulto", "parcels",
+                        "parcel", "packages", "package"}),
+            frozenset({"paquete", "bulto", "peso", "weight", "volumen", "volume"}),
+            (frozenset({"paquete", "bulto", "parcel", "package", "peso", "weight"}),),
+            {"id": ("id_paquete", "package_id", "parcel_id", "id"),
+             "status": ("estado_paquete", "package_status", "estado", "status"),
+             "quantity": ("cantidad", "quantity", "bultos"),
+             "shipment_id": ("id_envio", "envio_id", "shipment_id")}),
+        "carriers": RoleProfile(
+            frozenset({"transportistas", "transportista", "mensajeros", "mensajero",
+                        "repartidores", "repartidor", "couriers", "courier",
+                        "carriers", "carrier"}),
+            frozenset({"transportista", "repartidor", "mensajero", "carrier",
+                        "courier", "empresa", "nombre"}),
+            (frozenset({"transportista", "repartidor", "mensajero", "carrier", "courier"}),),
+            {"id": ("id_transportista", "carrier_id", "courier_id", "id"),
+             "name": ("nombre", "name", "empresa", "carrier_name"),
+             "status": ("estado", "status")}),
+        "warehouses": RoleProfile(
+            frozenset({"bodegas", "bodega", "almacenes", "almacen",
+                        "warehouses", "warehouse", "centros_distribucion"}),
+            frozenset({"bodega", "almacen", "warehouse", "ubicacion", "location"}),
+            (frozenset({"bodega", "almacen", "warehouse"}),),
+            {"id": ("id_bodega", "warehouse_id", "id_almacen", "id"),
+             "name": ("nombre", "name", "ubicacion", "location")}),
+    },
+    "vehicle_rental": {
+        "rentals": RoleProfile(
+            frozenset({"reservas_y_rentas", "reservas_rentas", "rentas", "renta", "alquileres", "alquiler", "rentals", "rental_agreements", "reservas_vehiculos", "car_rentals"}),
+            frozenset({"reserva", "renta", "alquiler", "inicio", "fin", "tarifa", "subtotal", "seguro", "descuento", "total"}),
+            (frozenset({"reserva", "renta", "rental", "alquiler"}),),
+            {"id": ("id_reserva", "id_renta", "rental_id", "reservation_id", "id"),
+             "date": ("fecha_inicio", "fecha_reserva", "rental_date", "start_date", "fecha"),
+             "end_date": ("fecha_fin", "end_date", "fecha_devolucion"),
+             "total": ("total_general", "total", "importe_total", "monto_total", "total_renta", "amount"),
+             "status": ("estado_reserva", "estado_renta", "rental_status", "status", "estado"),
+             "quantity": ("dias_renta", "dias_alquiler", "rental_days", "days"),
+             "price": ("tarifa_dia", "tarifa_diaria", "daily_rate", "precio_dia"),
+             "customer_id": ("id_cliente", "cliente_id", "customer_id"),
+             "vehicle_id": ("id_vehiculo", "vehiculo_id", "vehicle_id")}),
+        "vehicles": RoleProfile(
+            frozenset({"flota_vehiculos", "flota", "vehiculos", "vehiculo", "vehicles", "fleet", "cars", "autos"}),
+            frozenset({"placa", "marca", "modelo", "kilometraje", "combustible", "categoria", "tarifa"}),
+            (frozenset({"vehiculo", "vehiculos", "placa", "modelo"}),),
+            {"id": ("id_vehiculo", "vehiculo_id", "vehicle_id", "id"),
+             "name": ("placa", "modelo", "nombre", "name"),
+             "status": ("estado", "status", "disponibilidad"),
+             "price": ("tarifa_diaria", "tarifa", "daily_rate"),
+             "category": ("categoria", "category", "tipo_vehiculo")}),
+        "customers": RoleProfile(
+            frozenset({"clientes", "cliente", "customers", "customer", "clients", "client"}),
+            frozenset({"nombre", "apellido", "correo", "telefono", "licencia", "documento"}),
+            (frozenset({"cliente", "clientes", "nombre", "correo"}),),
+            {"id": ("id_cliente", "cliente_id", "customer_id", "id"),
+             "name": ("nombre_completo", "nombre", "name", "full_name"),
+             "date": ("fecha_registro", "registration_date", "created_at")}),
+        "maintenance": RoleProfile(
+            frozenset({"mantenimiento", "mantenimientos", "maintenance", "vehicle_maintenance", "servicios_flota"}),
+            frozenset({"mantenimiento", "servicio", "taller", "costo", "ingreso", "entrega"}),
+            (frozenset({"mantenimiento", "servicio", "taller"}),),
+            {"id": ("id_mantenimiento", "maintenance_id", "id"),
+             "date": ("fecha_ingreso", "service_date", "fecha_servicio", "fecha"),
+             "end_date": ("fecha_entrega", "end_date"),
+             "status": ("estado", "status", "estado_servicio"),
+             "amount": ("costo", "costo_total", "total_costo", "cost", "amount"),
+             "vehicle_id": ("id_vehiculo", "vehiculo_id", "vehicle_id")}),
+        "payments": RoleProfile(
+            frozenset({"pagos", "pago", "payments", "payment", "cobros"}),
+            frozenset({"monto", "metodo", "pago", "fecha"}),
+            (frozenset({"pago", "monto", "amount"}),),
+            {"id": COMMON_ID, "amount": COMMON_TOTAL,
+             "date": COMMON_DATE, "status": COMMON_STATUS}),
+    },
     "retail": {
         "sales": RoleProfile(
-            frozenset({"venta", "ventas", "sale", "sales", "order", "orders", "pedido", "pedidos", "factura", "facturas", "invoice", "invoices"}),
+            frozenset({"venta", "ventas", "sale", "sales", "factura", "facturas", "invoice", "invoices"}),
             frozenset({"total", "subtotal", "fecha", "date", "cliente", "customer", "payment", "pago"}),
             (frozenset({"total", "amount", "monto", "subtotal"}),),
             {"id": COMMON_ID, "date": COMMON_DATE, "total": COMMON_TOTAL, "status": COMMON_STATUS},
         ),
+        "orders": RoleProfile(
+            frozenset({"pedidos", "pedido", "ordenes_venta", "ordenes_compra",
+                        "ordenes_pedido", "ordenes", "orders", "order",
+                        "purchase_orders", "sales_orders"}),
+            frozenset({"pedido", "order", "cliente", "customer", "fecha",
+                        "date", "estado", "status", "total", "subtotal"}),
+            (frozenset({"pedido", "order"}),),
+            {"id": ("id_pedido", "pedido_id", "order_id", "numero_pedido", "id"),
+             "date": ("fecha_pedido", "order_date", "fecha_orden", "created_at", "fecha"),
+             "status": ("estado_pedido", "order_status", "estado_orden", "estado", "status"),
+             "total": ("total_pedido", "order_total", "monto_pedido",
+                       "total_orden", "total", "subtotal"),
+             "customer_id": ("id_cliente", "cliente_id", "customer_id"),
+             "quantity": ("cantidad", "quantity", "items_count")}),
         "sales_details": RoleProfile(
-            frozenset({"detalle_ventas", "detalleventa", "sales_detail", "sale_detail", "order_detail", "order_details", "invoice_detail", "invoice_details", "line_items", "lines"}),
+            frozenset({"detalle_ventas", "detalleventa", "detalle_pedidos", "detalles_pedido", "detalle_orden", "order_items", "sales_detail", "sale_detail", "order_detail", "order_details", "invoice_detail", "invoice_details", "line_items", "lines"}),
             frozenset({"cantidad", "quantity", "producto", "product", "precio", "price", "subtotal"}),
             (frozenset({"cantidad", "quantity", "qty"}),),
             {"id": COMMON_ID, "quantity": COMMON_QUANTITY, "total": ("total", "subtotal", "importe", "amount"), "price": ("precio_unitario", "unit_price", "precio", "price")},
@@ -290,6 +523,23 @@ def score_table_for_role(
 ) -> tuple[float, list[str]]:
     table = schema.tables[table_name]
     table_tokens = tokens(table_name)
+    # Do not confuse an order record with an actual sale just because both
+    # have a date, status and monetary total. They are different business
+    # events and must remain separate roles.
+    if role is ROLE_PROFILES["retail"]["sales"] and (
+        table_tokens & {"pedido", "pedidos", "order", "orders", "orden", "ordenes"}
+    ) and not (
+        table_tokens & {"venta", "ventas", "sale", "sales", "factura",
+                        "facturas", "invoice", "invoices"}
+    ):
+        return 0.0, []
+    if role is ROLE_PROFILES["retail"]["orders"] and (
+        table_tokens & {"venta", "ventas", "sale", "sales", "factura",
+                        "facturas", "invoice", "invoices"}
+    ) and not (
+        table_tokens & {"pedido", "pedidos", "order", "orders", "orden", "ordenes"}
+    ):
+        return 0.0, []
     column_tokens = table_column_tokens(table)
     evidence: list[str] = []
     score = 0.0
@@ -442,15 +692,38 @@ def build_semantic_model(
     domain = domain_result.get("primary_domain")
 
     if not domain or domain not in ROLE_PROFILES:
+        # Expose actual tables with truthful, generic labels rather than
+        # inventing a business sector or returning an empty dashboard.
+        # Keep ambiguous/unsupported domains explicitly unclassified.
+        generic_profile = RoleProfile(
+            frozenset(), frozenset(), (),
+            {"id": COMMON_ID, "date": COMMON_DATE + ("fecha_pedido", "fecha_envio", "fecha_entrega"),
+             "status": COMMON_STATUS, "total": COMMON_TOTAL,
+             "amount": ("costo", "cost", "monto", "amount"),
+             "quantity": COMMON_QUANTITY},
+        )
+        entities = {}
+        for table_name in sorted(schema.tables)[:12]:
+            role = "tabla_" + normalize_name(table_name)
+            table = schema.tables[table_name]
+            entities[role] = {
+                "table": table_name, "confidence": "low", "ambiguous": False,
+                "score": 0, "columns": map_role_columns(table, generic_profile),
+                "evidence": ["tabla real sin clasificación sectorial"],
+                "alternatives": [],
+            }
         return {
-            "domain": domain,
-            "domain_confidence": domain_result.get("primary_confidence", "insufficient"),
-            "ambiguous_domain": domain_result.get("ambiguous", False),
-            "entities": {},
+            "domain": "general",
+            "domain_confidence": "insufficient",
+            "ambiguous_domain": True,
+            "entities": entities,
             "uncertain_entities": {},
-            "relations": [],
-            "unmapped_tables": sorted(schema.tables.keys()),
+            "relations": map_relations(schema, entities),
+            "unmapped_tables": sorted(set(schema.tables) -
+                                      {e["table"] for e in entities.values()}),
         }
+
+    # Existing, positively identified domains keep their original role mapping.
 
     entities: dict[str, dict] = {}
 

@@ -21,8 +21,29 @@ CATEGORICAL_COLUMN_TERMS = (
 DISPLAY_COLUMN_TERMS = ("nombre", "name", "descripcion", "description", "titulo", "title", "codigo", "code")
 
 DOMAIN_RANKING_SPECS = {
+    "real_estate": [
+        ("properties", "leases", "count", None, "Inmuebles por número de arrendamientos"),
+        ("tenants", "leases", "sum", "total", "Inquilinos por valor registrado de contratos"),
+    ],
+    "construction": [
+        ("contractors", "projects", "count", None, "Contratistas por obras"),
+    ],
+    "agriculture": [
+        ("crops", "harvests", "sum", "quantity", "Cultivos por volumen cosechado"),
+        ("fields", "harvests", "count", None, "Parcelas por número de cosechas"),
+    ],
+    "logistics": [
+        ("carriers", "shipments", "count", None, "Transportistas por envíos"),
+        ("orders", "shipments", "count", None, "Pedidos por número de envíos"),
+    ],
+    "vehicle_rental": [
+        ("customers", "rentals", "sum", "total", "Clientes por ingresos de rentas"),
+        ("vehicles", "rentals", "count", None, "Vehículos por número de rentas"),
+        ("vehicles", "maintenance", "sum", "amount", "Vehículos por costo de mantenimiento"),
+    ],
     "retail": [
         ("customers", "sales", "sum", "total", "Clientes por gasto"),
+        ("customers", "orders", "sum", "total", "Clientes por importe de pedidos"),
         ("products", "sales_details", "sum", "quantity", "Productos por unidades"),
     ],
     "education": [
@@ -182,9 +203,9 @@ def _collect_numeric_metrics(entities: dict) -> list[dict]:
 def _categorical_distribution(table: str, column: str, limit: int = 8) -> list[dict]:
     qtable = _quote(table)
     qcolumn = _quote(column)
-    cast_type = "VARCHAR(255)" if _provider() == "postgresql" else "NVARCHAR(255)"
-    limit_clause = f"LIMIT {limit}" if _provider() == "postgresql" else ""
-    top_clause = "" if _provider() == "postgresql" else f"TOP {limit} "
+    cast_type = "VARCHAR(255)" if _provider() in ("postgresql", "excel") else "NVARCHAR(255)"
+    limit_clause = f"LIMIT {limit}" if _provider() in ("postgresql", "excel") else ""
+    top_clause = "" if _provider() in ("postgresql", "excel") else f"TOP {limit} "
     sql = text(
         f"SELECT {top_clause}CAST({qcolumn} AS {cast_type}) AS label, COUNT(*) AS total "
         f"FROM {qtable} WHERE {qcolumn} IS NOT NULL "
@@ -237,8 +258,8 @@ def _related_distribution(table_name: str, column_name: str, entities: dict, lim
     qsource_fk = _quote(relation.column)
     qtarget_pk = _quote(relation.references_column)
     qdisplay = _quote(display_column)
-    top_clause = "" if _provider() == "postgresql" else f"TOP {limit} "
-    limit_clause = f"LIMIT {limit}" if _provider() == "postgresql" else ""
+    top_clause = "" if _provider() in ("postgresql", "excel") else f"TOP {limit} "
+    limit_clause = f"LIMIT {limit}" if _provider() in ("postgresql", "excel") else ""
 
     sql = text(
         f"SELECT {top_clause}CAST(t.{qdisplay} AS VARCHAR(255)) AS label, COUNT(*) AS total "
@@ -383,8 +404,8 @@ def _ranking_query(target: dict, metric: dict, aggregate: str, metric_key: str |
             return None
         metric_expr = f"{aggregate.upper()}(m.{_quote(metric_column)})"
 
-    top_clause = "TOP 5 " if _provider() != "postgresql" else ""
-    limit_clause = "LIMIT 5" if _provider() == "postgresql" else ""
+    top_clause = "TOP 5 " if _provider() not in ("postgresql", "excel") else ""
+    limit_clause = "LIMIT 5" if _provider() in ("postgresql", "excel") else ""
     sql = text(
         f"SELECT {top_clause}t.{qname} AS label, {metric_expr} AS value "
         f"FROM {qmetric} m JOIN {qtarget} t ON m.{left_fk} = t.{right_pk} "

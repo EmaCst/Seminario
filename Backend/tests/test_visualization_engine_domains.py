@@ -16,6 +16,11 @@ from app.visualizations import semantic_catalog as catalog_service
 from app.visualizations import visualization_service as engine
 
 BUSINESS_DOMAINS = {
+    "real_estate": "leases",
+    "construction": "projects",
+    "agriculture": "harvests",
+    "logistics": "shipments",
+    "vehicle_rental": "rentals",
     "retail": "sales", "education": "enrollments",
     "healthcare": "appointments", "transportation": "trips",
     "hospitality": "reservations", "restaurant": "orders",
@@ -122,7 +127,7 @@ class EngineDomainCases(unittest.TestCase):
         with self.database.connect() as conn:
             return sql, [dict(r) for r in conn.execute(text(sql)).mappings().all()]
 
-    def test_all_ten_domains_have_schema_grounded_numeric_and_unique_metrics(self):
+    def test_all_domains_have_schema_grounded_numeric_and_unique_metrics(self):
         for domain, role in BUSINESS_DOMAINS.items():
             with self.subTest(domain=domain, role=role):
                 semantic = {"semantic_model": {

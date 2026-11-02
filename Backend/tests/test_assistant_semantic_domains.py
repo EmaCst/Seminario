@@ -7,6 +7,11 @@ from app.database.schema import ColumnSchema, DatabaseSchema, TableSchema
 
 
 CASES = {
+    "real_estate": (("arrendamientos", "inmuebles", "inquilinos", "agentes_inmobiliarios"), "leases"),
+    "construction": (("obras", "presupuestos_obra", "contratistas", "materiales_obra"), "projects"),
+    "agriculture": (("cosechas", "cultivos", "parcelas", "ganado"), "harvests"),
+    "logistics": (("envios", "guias", "paquetes", "transportistas", "pedidos"), "shipments"),
+    "vehicle_rental": (("rentas", "flota_vehiculos", "clientes", "mantenimiento"), "rentals"),
     "retail": (("ventas", "productos", "inventario", "clientes"), "sales"),
     "education": (("estudiantes", "docentes", "cursos", "inscripciones"), "enrollments"),
     "healthcare": (("pacientes", "medicos", "citas", "diagnosticos"), "appointments"),
@@ -33,10 +38,10 @@ def schema_from_tables(table_names: tuple[str, ...]) -> DatabaseSchema:
 
 
 class SemanticDomainsTests(unittest.TestCase):
-    def test_ten_domain_profiles_exist(self):
+    def test_all_domain_profiles_exist(self):
         self.assertEqual(set(CASES), set(ROLE_PROFILES))
 
-    def test_domain_detector_and_mapper_use_ten_schema_families(self):
+    def test_domain_detector_and_mapper_use_all_schema_families(self):
         for expected, (tables, required_role) in CASES.items():
             with self.subTest(domain=expected):
                 schema = schema_from_tables(tables)
@@ -52,7 +57,11 @@ class SemanticDomainsTests(unittest.TestCase):
         schema = schema_from_tables(("foo_opaque", "bar_opaque"))
         discovered = detect_business_domains(schema)
         self.assertIsNone(discovered["primary_domain"])
-        self.assertEqual({}, build_semantic_model(schema, discovered)["entities"])
+        mapped = build_semantic_model(schema, discovered)
+        self.assertEqual("general", mapped["domain"])
+        self.assertEqual("insufficient", mapped["domain_confidence"])
+        self.assertEqual({"foo_opaque", "bar_opaque"},
+                         {e["table"] for e in mapped["entities"].values()})
 
 
 if __name__ == "__main__":

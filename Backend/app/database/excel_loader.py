@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, MetaData, String, Table, create_engine, insert
 
 from app.database.database_manager import database_manager
+from app.database.formula_engine import FormulaEvaluator, FormulaError
 
 
 MAX_FILE_SIZE = 25 * 1024 * 1024
@@ -51,7 +52,21 @@ def _infer_type(values: list[Any]) -> str:
         return "number"
     if all(isinstance(value, (datetime, date)) for value in clean):
         return "date"
+    # Business workbooks frequently store ISO dates as strings. Only
+    # promote a column when EVERY nonblank value is an unambiguous ISO date.
+    if all(isinstance(value, str) and
+           re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value.strip()) and
+           _is_iso_date(value.strip()) for value in clean):
+        return "date"
     return "text"
+
+
+def _is_iso_date(value: str) -> bool:
+    try:
+        date.fromisoformat(value)
+        return True
+    except ValueError:
+        return False
 
 
 def _looks_like_header(row: list[Any]) -> bool:
@@ -61,8 +76,19 @@ def _looks_like_header(row: list[Any]) -> bool:
     return len(filled) >= 2 and all(isinstance(v, str) and bool(v.strip()) for v in filled)
 
 
-def _normalize_sheet(sheet) -> dict:
-    rows = list(sheet.iter_rows(values_only=True))
+def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
+    rows = []
+    for cell_row in sheet.iter_rows():
+        values = []
+        for cell in cell_row:
+            if cell.data_type == "f" and evaluator is not None:
+                try:
+                    values.append(evaluator.value(sheet.title, cell.coordinate))
+                except (FormulaError, ValueError, TypeError, ArithmeticError):
+                    values.append(None)
+            else:
+                values.append(cell.value)
+        rows.append(tuple(values))
     non_empty = [row for row in rows if any(value not in (None, "") for value in row)]
     if not non_empty:
         return {"name": sheet.title, "table_name": _slug(sheet.title, "sheet"), "headers": [], "data_rows": [], "schema": [], "warnings": ["La hoja está vacía."]}
@@ -92,7 +118,40 @@ def _normalize_sheet(sheet) -> dict:
         headers.append(name)
 
     source_rows = non_empty[1:] if has_header else non_empty
+    # A common Excel layout ends a structured table with a grand-total
+    # footer. It is not a customer/reservation/maintenance record.
+    id_columns = [i for i, h in enumerate(headers)
+                  if _semantic_name(h) == "id" or _semantic_name(h).startswith("id_")
+                  or _semantic_name(h).endswith("_id")]
+    if has_header and id_columns:
+        retained = []
+        removed = 0
+        for row in source_rows:
+            has_identifier = any(i < len(row) and row[i] not in (None, "") for i in id_columns)
+            total_footer = any(
+                isinstance(v, str) and
+                re.match(r"^(?:gran\s+total|total|gasto\s+total)\b", v.strip(), re.I)
+                for v in row
+            )
+            if not has_identifier and total_footer:
+                removed += 1
+            else:
+                retained.append(row)
+        source_rows = retained
+        if removed:
+            warnings.append(
+                f"Se excluyeron {removed} fila(s) de totales para evitar contarlas como registros."
+            )
     data_rows = [list(row) + [None] * (width - len(row)) for row in source_rows]
+    # Track formula-derived columns. Formulas have already been evaluated to
+    # their actual numeric values before SQL type inference.
+    formula_counts = [sum(
+        cell.data_type == "f"
+        for column_cells in sheet.iter_cols(
+            min_col=index + 1, max_col=index + 1,
+            min_row=2 if has_header else 1,
+        ) for cell in column_cells
+    ) for index in range(width)]
     schema = []
     for index, header in enumerate(headers):
         values = [row[index] for row in data_rows]
@@ -105,6 +164,7 @@ def _normalize_sheet(sheet) -> dict:
             "nulls": len(values) - non_null,
             "unique_values": len({str(value) for value in values if value not in (None, "")}),
             "mixed_types": len({type(value).__name__ for value in values if value not in (None, "")}) > 1,
+            "formula_cells": formula_counts[index],
         })
     if any(col["mixed_types"] and col["type"] == "text" for col in schema):
         warnings.append("Hay columnas con tipos mezclados; se conservarán como texto para evitar pérdida de información.")
@@ -193,7 +253,7 @@ def _public_profile(sheet: dict) -> dict:
     return {"name": sheet["name"], "table_name": sheet["table_name"], "rows": len(sheet["data_rows"]), "columns": len(sheet["headers"]), "headers": sheet["headers"], "schema": sheet["schema"], "preview": preview, "warnings": sheet["warnings"], "semantic": _semantic_profile(sheet)}
 
 
-async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict]]:
+async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict], dict]:
     filename = file.filename or "workbook.xlsx"
     if Path(filename).suffix.lower() not in ALLOWED_EXTENSIONS:
         raise ValueError("Formato no compatible. Usa un archivo .xlsx o .xlsm.")
@@ -203,16 +263,26 @@ async def _read_workbook(file: UploadFile) -> tuple[str, bytes, list[dict]]:
     if len(content) > MAX_FILE_SIZE:
         raise ValueError("El archivo Excel supera el límite de 25 MB.")
     try:
-        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
-        sheets = [_normalize_sheet(sheet) for sheet in workbook.worksheets]
+        # data_only=True only reads saved caches; it NEVER calculates Excel
+        # formulas. Instead read the formula AST and evaluate a safe subset.
+        workbook = load_workbook(BytesIO(content), read_only=False, data_only=False, keep_links=False)
+        evaluator = FormulaEvaluator(workbook)
+        diagnostics = evaluator.calculate()
+        sheets = [_normalize_sheet(sheet, evaluator) for sheet in workbook.worksheets]
+        for sheet in sheets:
+            issues = [issue for issue in diagnostics["errors"] if issue["sheet"] == sheet["name"]]
+            if issues:
+                sheet["warnings"].append(
+                    f'{len(issues)} fórmula(s) no pudieron resolverse; sus celdas se importarán como NULL.'
+                )
         workbook.close()
     except Exception as exc:
         raise ValueError(f"No se pudo leer el libro de Excel: {exc}") from exc
-    return filename, content, sheets
+    return filename, content, sheets, diagnostics
 
 
 async def inspect_excel_upload(file: UploadFile) -> dict:
-    filename, content, sheets = await _read_workbook(file)
+    filename, content, sheets, formulas = await _read_workbook(file)
     profiles = [_public_profile(sheet) for sheet in sheets]
     populated = [sheet for sheet in profiles if sheet["rows"] > 0]
     total_rows = sum(sheet["rows"] for sheet in populated)
@@ -221,12 +291,33 @@ async def inspect_excel_upload(file: UploadFile) -> dict:
         "sheet_count": len(profiles), "populated_sheets": len(populated), "total_data_rows": total_rows,
         "total_columns": sum(sheet["columns"] for sheet in populated), "sheets": profiles,
         "suggested_relations": _suggest_relations(sheets),
+        "formula_diagnostics": formulas,
         "interpretation": {"summary": f"Se detectaron {len(populated)} hojas con datos y {total_rows} filas.", "ready_to_import": bool(populated)},
     }
 
 
 def _sql_type(kind: str):
     return {"boolean": Boolean, "integer": Integer, "number": Float, "date": DateTime}.get(kind, String)
+
+
+def _trusted_primary_key(sheet: dict) -> str | None:
+    """Infer PK only from complete, unique, ID-shaped business keys.
+
+    Do not invent surrogate IDs: original identifiers must remain joinable.
+    """
+    total = len(sheet["data_rows"])
+    if not total:
+        return None
+    for index, header in enumerate(sheet["headers"]):
+        key = _semantic_name(header)
+        if not (key == "id" or key.startswith("id_") or key.endswith("_id")):
+            continue
+        values = [row[index] for row in sheet["data_rows"]]
+        if any(value in (None, "") for value in values):
+            continue
+        if len({str(v) for v in values}) == total:
+            return header
+    return None
 
 
 def _db_value(value: Any, kind: str) -> Any:
@@ -237,6 +328,8 @@ def _db_value(value: Any, kind: str) -> Any:
             return value
         if isinstance(value, date):
             return datetime.combine(value, time.min)
+        if isinstance(value, str) and _is_iso_date(value.strip()):
+            return datetime.combine(date.fromisoformat(value.strip()), time.min)
         return str(value)
     if kind == "text" or kind == "empty":
         return str(value)
@@ -245,7 +338,7 @@ def _db_value(value: Any, kind: str) -> Any:
 
 async def activate_excel_upload(file: UploadFile) -> dict:
     """Convierte un Excel en SQLite local y lo activa como la fuente SQL del sistema."""
-    filename, content, sheets = await _read_workbook(file)
+    filename, content, sheets, formulas = await _read_workbook(file)
     populated = [sheet for sheet in sheets if sheet["data_rows"] and sheet["headers"]]
     if not populated:
         raise ValueError("El libro no contiene hojas con filas de datos utilizables.")
@@ -269,7 +362,11 @@ async def activate_excel_upload(file: UploadFile) -> dict:
             suffix += 1
         used_tables.add(table_name)
         sheet["table_name"] = table_name
-        columns = [Column(item["name"], _sql_type(item["type"]), nullable=True) for item in sheet["schema"]]
+        primary = _trusted_primary_key(sheet)
+        columns = [Column(item["name"], _sql_type(item["type"]),
+                          primary_key=item["name"] == primary,
+                          nullable=item["name"] != primary)
+                   for item in sheet["schema"]]
         tables[table_name] = Table(table_name, metadata, *columns)
 
     metadata.create_all(engine)
@@ -291,7 +388,17 @@ async def activate_excel_upload(file: UploadFile) -> dict:
         raise
 
     total_rows = sum(len(sheet["data_rows"]) for sheet in populated)
-    status = database_manager.configure_excel(engine=engine, filename=filename, tables=list(tables), rows=total_rows, database_path=str(db_path))
+    calculated_columns = {
+        sheet["table_name"]: [
+            item["name"] for item in sheet["schema"]
+            if item.get("formula_cells") and item["type"] in ("integer", "number")
+        ] for sheet in populated
+    }
+    status = database_manager.configure_excel(
+        engine=engine, filename=filename, tables=list(tables),
+        rows=total_rows, database_path=str(db_path),
+        formula_diagnostics=formulas, calculated_columns=calculated_columns,
+    )
     return {
         "uploaded": True,
         "activated": True,
@@ -301,5 +408,6 @@ async def activate_excel_upload(file: UploadFile) -> dict:
         "size_bytes": len(content),
         "tables": [_public_profile(sheet) for sheet in populated],
         "suggested_relations": _suggest_relations(populated),
+        "formula_diagnostics": formulas,
         "total_data_rows": total_rows,
     }

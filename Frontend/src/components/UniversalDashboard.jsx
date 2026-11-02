@@ -13,6 +13,7 @@ import {
 import {
   Building2,
   Bus,
+  CarFront,
   Database,
   GraduationCap,
   HeartPulse,
@@ -23,6 +24,11 @@ import {
   WalletCards,
   Wrench,
   Plus,
+  FileSpreadsheet,
+  House,
+  HardHat,
+  Sprout,
+  Truck,
 } from 'lucide-react';
 
 import { DashboardContext } from '../context/DashboardContext';
@@ -34,6 +40,12 @@ import { SavedVisualizations } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const DOMAIN_META = {
+  real_estate: { es: 'Inmobiliario', en: 'Real estate', Icon: House },
+  construction: { es: 'Construcción', en: 'Construction', Icon: HardHat },
+  agriculture: { es: 'Agricultura y ganadería', en: 'Agriculture and livestock', Icon: Sprout },
+  vehicle_rental: { es: 'Alquiler de vehículos', en: 'Vehicle rental', Icon: CarFront },
+  logistics: { es: 'Logística y entregas', en: 'Logistics and deliveries', Icon: Truck },
+  general: { es: 'Datos generales (sector sin identificar)', en: 'General data (unclassified sector)', Icon: Database },
   retail: { es: 'Comercio / Retail', en: 'Retail / Commerce', Icon: PackageSearch },
   education: { es: 'Educación', en: 'Education', Icon: GraduationCap },
   healthcare: { es: 'Salud / Hospital', en: 'Healthcare / Hospital', Icon: HeartPulse },
@@ -47,6 +59,24 @@ const DOMAIN_META = {
 };
 
 const ROLE_LABELS = {
+  properties: ['Inmuebles / Propiedades', 'Properties'],
+  leases: ['Arrendamientos', 'Leases'],
+  tenants: ['Inquilinos', 'Tenants'],
+  agents: ['Agentes inmobiliarios', 'Real estate agents'],
+  projects: ['Obras / Proyectos', 'Construction projects'],
+  budgets: ['Presupuestos de obra', 'Construction budgets'],
+  contractors: ['Contratistas', 'Contractors'],
+  fields: ['Parcelas / Fincas', 'Fields / farms'],
+  crops: ['Cultivos', 'Crops'],
+  harvests: ['Cosechas', 'Harvests'],
+  livestock: ['Ganado', 'Livestock'],
+  shipments: ['Envíos y entregas', 'Shipments and deliveries'],
+  packages: ['Paquetes', 'Parcels'],
+  carriers: ['Transportistas', 'Carriers'],
+  warehouses: ['Bodegas y almacenes', 'Warehouses'],
+  orders: ['Pedidos / Órdenes', 'Orders'],
+  rentals: ['Rentas y reservas', 'Rentals and reservations'],
+  maintenance: ['Mantenimientos', 'Maintenance'],
   patients: ['Pacientes', 'Patients'],
   doctors: ['Médicos', 'Doctors'],
   appointments: ['Citas / Consultas', 'Appointments / Visits'],
@@ -70,12 +100,10 @@ const ROLE_LABELS = {
   stays: ['Estadías', 'Stays'],
   menu_items: ['Platos / Menú', 'Menu items'],
   tables: ['Mesas', 'Tables'],
-  orders: ['Órdenes', 'Orders'],
   ingredients: ['Ingredientes', 'Ingredients'],
   services: ['Servicios', 'Services'],
   clients: ['Clientes', 'Clients'],
   customers: ['Clientes', 'Customers'],
-  projects: ['Proyectos', 'Projects'],
   invoices: ['Facturas', 'Invoices'],
   payments: ['Pagos', 'Payments'],
   sales: ['Ventas', 'Sales'],
@@ -93,6 +121,7 @@ const ROLE_LABELS = {
 
 const roleLabel = (role, language) => {
   const pair = ROLE_LABELS[role];
+  if (!pair && role?.startsWith('tabla_')) return role.slice(6).replaceAll('_', ' ');
   if (!pair) return role?.replaceAll('_', ' ') || '-';
   return language === 'es' ? pair[0] : pair[1];
 };
@@ -118,6 +147,26 @@ const BusinessDashboard = ({ data }) => {
   const meta = DOMAIN_META[data?.domain] || { es: data?.domain || 'Desconocido', en: data?.domain || 'Unknown', Icon: Database };
   const DomainIcon = meta.Icon;
   const statusRows = data?.status_distribution?.data || [];
+  const valueMetrics = data?.value_metrics || [];
+  const formulaDiagnostics = data?.formula_diagnostics;
+  const metricFieldLabel = (item) => {
+    if (item.role === 'rentals' && item.field === 'total') return language === 'es' ? 'Ingresos de rentas' : 'Rental revenue';
+    if (item.role === 'maintenance' && item.field === 'amount') return language === 'es' ? 'Gastos de mantenimiento' : 'Maintenance expenses';
+    if (item.role === 'rentals' && item.field === 'quantity') return language === 'es' ? 'Días de renta acumulados' : 'Total rental days';
+    const names = {
+      total: language === 'es' ? 'Total' : 'Total',
+      amount: language === 'es' ? 'Importe' : 'Amount',
+      balance: language === 'es' ? 'Saldo' : 'Balance',
+      quantity: language === 'es' ? 'Cantidad acumulada' : 'Total quantity',
+      value: language === 'es' ? 'Promedio' : 'Average',
+    };
+    return `${roleLabel(item.role, language)} — ${names[item.field] || item.field}`;
+  };
+  const formatMetric = (item) => Number(item.value || 0).toLocaleString(
+    language === 'es' ? 'es-GT' : 'en-US',
+    { minimumFractionDigits: item.unit === 'money' ? 2 : 0, maximumFractionDigits: 2 },
+  );
+
   const cardStyle = { backgroundColor: colors.card, borderColor: colors.border };
 
   const trendRows = useMemo(
@@ -141,7 +190,7 @@ const BusinessDashboard = ({ data }) => {
             <div>
               <p className="text-sm" style={{ color: colors.muted }}>{language === 'es' ? 'Tipo de negocio detectado' : 'Detected business domain'}</p>
               <h3 className="text-2xl font-extrabold" style={{ color: colors.text }}>{language === 'es' ? meta.es : meta.en}</h3>
-              <p className="text-xs mt-1" style={{ color: colors.muted }}>{data?.provider === 'postgresql' ? 'PostgreSQL' : 'SQL Server'}</p>
+              <p className="text-xs mt-1" style={{ color: colors.muted }}>{({ postgresql: 'PostgreSQL', sqlserver: 'SQL Server', sqlite: 'Excel / SQLite', excel: 'Excel', excel_sqlite: 'Excel / SQLite' })[data?.provider] || data?.provider || 'Fuente de datos'}</p>
             </div>
           </div>
           <div className="rounded-xl border px-4 py-2 text-sm" style={{ borderColor: colors.border, backgroundColor: colors.cardSoft, color: colors.text }}>
@@ -149,6 +198,21 @@ const BusinessDashboard = ({ data }) => {
           </div>
         </div>
       </section>
+
+      {data?.provider === 'excel' && formulaDiagnostics && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-sm"
+          style={{ borderColor: colors.border, backgroundColor: colors.cardSoft, color: colors.text }}>
+          <FileSpreadsheet size={19} style={{ color: theme.primary }} />
+          <strong>{language === 'es' ? 'Cálculo de Excel:' : 'Excel calculation:'}</strong>
+          <span>{formulaDiagnostics.formulas_calculated ?? 0} / {formulaDiagnostics.formulas_detected ?? 0}
+            {' '}{language === 'es' ? 'fórmulas resueltas' : 'formulas calculated'}</span>
+          {formulaDiagnostics.formulas_unresolved > 0 && (
+            <span className="font-semibold text-amber-600">
+              {language === 'es' ? 'Algunas fórmulas no pudieron calcularse; revisa la importación.' : 'Some formulas could not be calculated; review the import.'}
+            </span>
+          )}
+        </div>
+      )}
 
       <EditableDashboardGrid storageId="adaptive-kpis" columns="sm:grid-cols-2 xl:grid-cols-4" items={(data?.kpis || []).map((kpi) => ({
         id: `kpi-${kpi.role}`,
@@ -159,6 +223,40 @@ const BusinessDashboard = ({ data }) => {
           <div className="mt-1 text-xs" style={{ color: colors.muted }}>{language === 'es' ? 'Registros detectados' : 'Detected records'}</div>
         </section>,
       }))} />
+
+      {valueMetrics.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-lg font-bold" style={{ color: theme.primary }}>
+              {language === 'es' ? 'Indicadores numéricos' : 'Numeric indicators'}
+            </h3>
+            <p className="text-xs" style={{ color: colors.muted }}>
+              {language === 'es'
+                ? 'Sumas y promedios de columnas numéricas reales; incluye los resultados calculados de las fórmulas Excel.'
+                : 'Sums and averages of actual numeric columns, including computed Excel formula results.'}
+            </p>
+          </div>
+          <EditableDashboardGrid storageId="adaptive-value-metrics" columns="sm:grid-cols-2 xl:grid-cols-4"
+            items={valueMetrics.map((item) => ({
+              id: `metric-${item.id}`,
+              resizable: false,
+              node: <section className="h-full rounded-2xl border p-5 shadow-sm" style={cardStyle}>
+                <div className="text-sm font-semibold" style={{ color: colors.muted }}>{metricFieldLabel(item)}</div>
+                <div className="mt-1 text-2xl font-extrabold" style={{ color: theme.primary }}>{formatMetric(item)}</div>
+                <div className="mt-1 text-xs" style={{ color: colors.muted }}>
+                  {item.unit === 'money'
+                    ? (language === 'es' ? 'Valor monetario · moneda de origen' : 'Monetary amount · source currency')
+                    : (item.aggregation === 'avg' ? (language === 'es' ? 'Promedio' : 'Average') : (language === 'es' ? 'Suma' : 'Sum'))}
+                </div>
+                {item.from_formulas && (
+                  <div className="mt-2 text-xs font-semibold" style={{ color: theme.primary }}>
+                    {language === 'es' ? 'Incluye fórmulas calculadas' : 'Includes calculated formulas'}
+                  </div>
+                )}
+              </section>,
+            }))} />
+        </section>
+      )}
 
       <EditableDashboardGrid storageId="adaptive-charts" items={[
         { id: 'monthly-trend', node: <section className="rounded-2xl border p-5 shadow-sm h-80" style={cardStyle}>
@@ -275,7 +373,7 @@ export const UniversalDashboard = () => {
         if (active) setError(null);
       } catch (err) {
         console.error('Error cargando dashboard universal:', err);
-        if (active) setError(err.message);
+        if (active) setError(language === 'es' ? 'No fue posible cargar el dashboard. Verifica la conexión con el servidor o la fuente de datos en Configuración.' : 'The dashboard could not be loaded. Check the server or data source connection in Settings.');
       } finally {
         if (active) setLoading(false);
       }
