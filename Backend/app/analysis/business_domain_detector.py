@@ -306,7 +306,8 @@ def detect_business_domains(schema: DatabaseSchema) -> dict:
         # reference range; the new signals supplement evidence.
         max_score = sum(signal.weight for signal in (
             signals[2:7] if domain == "retail" else
-            signals[3:] if domain == "finance_accounting" else signals
+            signals[3:] if domain == "finance_accounting" else
+            signals[2:] if domain == "logistics" else signals
         )) + 1.75
         evidence: list[dict] = []
         domain_tables: set[str] = set()
