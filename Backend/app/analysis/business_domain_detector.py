@@ -17,6 +17,32 @@ class DomainSignal:
 # Los términos se buscan tanto en tablas como en columnas y soportan
 # español/inglés, snake_case, camelCase y separadores variados.
 DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
+    # Logistics is distinct from passenger transportation and from retail sales.
+    # One generic "pedido" is intentionally insufficient to classify it.
+    "logistics": [
+        DomainSignal(frozenset({"envio", "envios", "shipment", "shipments", "shipping",
+                                "entrega", "entregas", "delivery", "deliveries",
+                                "despacho", "despachos", "dispatch", "fulfillment"}), 4.0, "envíos y entregas"),
+        DomainSignal(frozenset({"guia", "guias", "numero_guia", "tracking", "tracking_number",
+                                "rastreo", "seguimiento", "remision", "remisiones",
+                                "waybill", "awb"}), 3.0, "guías y seguimiento"),
+        DomainSignal(frozenset({"paquete", "paquetes", "parcel", "parcels",
+                                "package", "packages", "bulto", "bultos"}), 2.0, "paquetería"),
+        DomainSignal(frozenset({"transportista", "transportistas", "carrier", "carriers",
+                                "courier", "couriers", "mensajero", "mensajeros",
+                                "repartidor", "repartidores"}), 1.8, "transportistas"),
+        DomainSignal(frozenset({"fecha_envio", "estado_envio", "fecha_entrega",
+                                "estado_entrega", "shipping_date", "shipped_at",
+                                "delivery_date", "delivery_status", "shipment_status",
+                                "delivered_at"}), 2.8, "fechas y estados logísticos"),
+        DomainSignal(frozenset({"destinatario", "destinatarios", "recipient", "recipients",
+                                "direccion_entrega", "delivery_address",
+                                "direccion_destino", "destination_address"}), 1.6, "destinos y destinatarios"),
+        DomainSignal(frozenset({"pedido", "pedidos", "order", "orders", "picking",
+                                "preparacion_pedido", "order_fulfillment"}), 1.2, "órdenes a despachar"),
+        DomainSignal(frozenset({"bodega", "bodegas", "warehouse", "warehouses",
+                                "almacen", "almacenes", "centro_distribucion"}), 1.1, "almacenamiento"),
+    ],
     "vehicle_rental": [
         DomainSignal(frozenset({"renta", "rentas", "alquiler", "alquileres", "rental", "rentals", "rentacar", "car_rental"}), 3.2, "contratos de renta"),
         DomainSignal(frozenset({"reserva", "reservas", "reservation", "reservations", "booking", "bookings"}), 2.5, "reservas de vehículos"),
@@ -26,8 +52,13 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
         DomainSignal(frozenset({"cliente", "clientes", "customer", "customers"}), 0.8, "clientes"),
     ],
     "retail": [
-        DomainSignal(frozenset({"producto", "productos", "product", "products", "item", "items", "articulo", "articulos", "sku"}), 2.0, "catálogo de productos"),
+        DomainSignal(frozenset({"producto", "productos", "product", "products", "item", "items", "articulo", "articulos", "sku", "catalogo", "catalog"}), 2.0, "catálogo de productos"),
         DomainSignal(frozenset({"venta", "ventas", "sale", "sales", "order", "orders", "pedido", "pedidos", "factura", "facturas", "invoice", "invoices"}), 2.0, "ventas/pedidos"),
+        DomainSignal(frozenset({"id_pedido", "pedido_id", "order_id", "fecha_pedido",
+                                "order_date", "estado_pedido", "order_status",
+                                "numero_pedido", "order_number", "orden_compra"}), 3.0, "operación de pedidos"),
+        DomainSignal(frozenset({"total_pedido", "order_total", "monto_pedido",
+                                "importe_pedido", "total_orden", "order_amount"}), 2.4, "importes de pedidos"),
         DomainSignal(frozenset({"inventario", "inventory", "stock", "existencia", "existencias", "warehouse"}), 1.8, "inventario"),
         DomainSignal(frozenset({"categoria", "categorias", "category", "categories", "marca", "brand", "brands", "talla", "size", "sizes", "color", "colors"}), 1.4, "atributos de catálogo"),
         DomainSignal(frozenset({"cliente", "clientes", "customer", "customers", "buyer", "buyers"}), 1.2, "clientes"),
@@ -41,7 +72,7 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
         DomainSignal(frozenset({"asistencia", "attendance", "aula", "aulas", "classroom", "classrooms", "periodo", "semester", "semestre"}), 1.2, "operación académica"),
     ],
     "healthcare": [
-        DomainSignal(frozenset({"paciente", "pacientes", "patient", "patients"}), 2.5, "pacientes"),
+        DomainSignal(frozenset({"paciente", "pacientes", "patient", "patients", "expediente", "expedientes", "historia_clinica", "medical_record", "medical_records"}), 2.5, "pacientes"),
         DomainSignal(frozenset({"doctor", "doctores", "doctors", "medico", "medicos", "physician", "physicians"}), 2.2, "personal médico"),
         DomainSignal(frozenset({"cita", "citas", "appointment", "appointments", "consulta", "consultas"}), 2.0, "citas/consultas"),
         DomainSignal(frozenset({"diagnostico", "diagnosticos", "diagnosis", "diagnoses", "diagnostic"}), 1.8, "diagnósticos"),
@@ -54,10 +85,10 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
         DomainSignal(frozenset({"viaje", "viajes", "trip", "trips", "journey", "journeys", "ride", "rides"}), 2.0, "viajes"),
         DomainSignal(frozenset({"conductor", "conductores", "driver", "drivers", "chofer", "choferes"}), 1.8, "conductores"),
         DomainSignal(frozenset({"pasajero", "pasajeros", "passenger", "passengers", "ticket", "tickets", "boleto", "boletos"}), 1.6, "pasajeros/boletos"),
-        DomainSignal(frozenset({"parada", "paradas", "stop", "stops", "horario", "schedule", "schedules", "shipment", "shipments", "envio", "envios"}), 1.3, "operación logística"),
+        DomainSignal(frozenset({"parada", "paradas", "stop", "stops", "horario", "schedule", "schedules", "terminal", "estacion"}), 1.3, "operación logística"),
     ],
     "hospitality": [
-        DomainSignal(frozenset({"hotel", "hotels", "habitacion", "habitaciones", "room", "rooms"}), 2.2, "habitaciones/alojamiento"),
+        DomainSignal(frozenset({"hotel", "hotels", "habitacion", "habitaciones", "room", "rooms", "alojamiento", "lodging"}), 2.2, "habitaciones/alojamiento"),
         DomainSignal(frozenset({"reserva", "reservas", "reservation", "reservations", "booking", "bookings"}), 2.2, "reservas"),
         DomainSignal(frozenset({"huesped", "huespedes", "guest", "guests"}), 1.8, "huéspedes"),
         DomainSignal(frozenset({"estadia", "estadias", "stay", "stays", "checkin", "checkout"}), 1.5, "estadías"),
@@ -91,7 +122,7 @@ DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
         DomainSignal(frozenset({"inventario", "inventory", "stock", "warehouse", "almacen"}), 1.0, "inventario"),
     ],
     "human_resources": [
-        DomainSignal(frozenset({"empleado", "empleados", "employee", "employees", "staff", "personal"}), 2.2, "empleados"),
+        DomainSignal(frozenset({"empleado", "empleados", "employee", "employees", "staff", "personal", "colaborador", "colaboradores", "worker", "workers"}), 2.2, "empleados"),
         DomainSignal(frozenset({"nomina", "payroll", "salario", "salary", "salaries"}), 2.0, "nómina"),
         DomainSignal(frozenset({"departamento", "departamentos", "department", "departments"}), 1.4, "departamentos"),
         DomainSignal(frozenset({"asistencia", "attendance", "turno", "turnos", "shift", "shifts"}), 1.4, "asistencia/turnos"),
