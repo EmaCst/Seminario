@@ -19,6 +19,13 @@ from app.services.assistant_router import MONTH_LABELS, months_in, normalize
 # Business words must be scoped by detected domain; "citas" can belong to
 # healthcare or professional services, and "productos" to retail or industry.
 ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
+    "vehicle_rental": {
+        "rentals": ("renta", "rentas", "alquiler", "alquileres", "reserva", "reservas", "contrato", "contratos"),
+        "vehicles": ("vehiculo", "vehiculos", "flota", "auto", "autos"),
+        "customers": ("cliente", "clientes"),
+        "maintenance": ("mantenimiento", "mantenimientos", "taller", "servicio de flota"),
+        "payments": ("pago", "pagos", "cobro", "cobros"),
+    },
     "retail": {
         "sales": ("venta", "ventas", "factura", "facturas"),
         "products": ("producto", "productos"),
