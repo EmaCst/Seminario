@@ -7,6 +7,7 @@ from app.database.schema import ColumnSchema, DatabaseSchema, TableSchema
 
 
 CASES = {
+    "logistics": (("envios", "guias", "paquetes", "transportistas", "pedidos"), "shipments"),
     "vehicle_rental": (("rentas", "flota_vehiculos", "clientes", "mantenimiento"), "rentals"),
     "retail": (("ventas", "productos", "inventario", "clientes"), "sales"),
     "education": (("estudiantes", "docentes", "cursos", "inscripciones"), "enrollments"),
@@ -53,7 +54,11 @@ class SemanticDomainsTests(unittest.TestCase):
         schema = schema_from_tables(("foo_opaque", "bar_opaque"))
         discovered = detect_business_domains(schema)
         self.assertIsNone(discovered["primary_domain"])
-        self.assertEqual({}, build_semantic_model(schema, discovered)["entities"])
+        mapped = build_semantic_model(schema, discovered)
+        self.assertEqual("general", mapped["domain"])
+        self.assertEqual("insufficient", mapped["domain_confidence"])
+        self.assertEqual({"foo_opaque", "bar_opaque"},
+                         {e["table"] for e in mapped["entities"].values()})
 
 
 if __name__ == "__main__":
