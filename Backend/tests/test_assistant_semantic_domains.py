@@ -7,6 +7,7 @@ from app.database.schema import ColumnSchema, DatabaseSchema, TableSchema
 
 
 CASES = {
+    "vehicle_rental": (("rentas", "flota_vehiculos", "clientes", "mantenimiento"), "rentals"),
     "retail": (("ventas", "productos", "inventario", "clientes"), "sales"),
     "education": (("estudiantes", "docentes", "cursos", "inscripciones"), "enrollments"),
     "healthcare": (("pacientes", "medicos", "citas", "diagnosticos"), "appointments"),
@@ -33,10 +34,10 @@ def schema_from_tables(table_names: tuple[str, ...]) -> DatabaseSchema:
 
 
 class SemanticDomainsTests(unittest.TestCase):
-    def test_ten_domain_profiles_exist(self):
+    def test_all_domain_profiles_exist(self):
         self.assertEqual(set(CASES), set(ROLE_PROFILES))
 
-    def test_domain_detector_and_mapper_use_ten_schema_families(self):
+    def test_domain_detector_and_mapper_use_all_schema_families(self):
         for expected, (tables, required_role) in CASES.items():
             with self.subTest(domain=expected):
                 schema = schema_from_tables(tables)
