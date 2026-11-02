@@ -52,7 +52,21 @@ def _infer_type(values: list[Any]) -> str:
         return "number"
     if all(isinstance(value, (datetime, date)) for value in clean):
         return "date"
+    # Business workbooks frequently store ISO dates as strings. Only
+    # promote a column when EVERY nonblank value is an unambiguous ISO date.
+    if all(isinstance(value, str) and
+           re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", value.strip()) and
+           _is_iso_date(value.strip()) for value in clean):
+        return "date"
     return "text"
+
+
+def _is_iso_date(value: str) -> bool:
+    try:
+        date.fromisoformat(value)
+        return True
+    except ValueError:
+        return False
 
 
 def _looks_like_header(row: list[Any]) -> bool:
@@ -260,6 +274,8 @@ def _db_value(value: Any, kind: str) -> Any:
             return value
         if isinstance(value, date):
             return datetime.combine(value, time.min)
+        if isinstance(value, str) and _is_iso_date(value.strip()):
+            return datetime.combine(date.fromisoformat(value.strip()), time.min)
         return str(value)
     if kind == "text" or kind == "empty":
         return str(value)
