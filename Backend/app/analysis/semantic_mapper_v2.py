@@ -24,6 +24,53 @@ COMMON_QUANTITY = ("cantidad", "quantity", "qty", "stock", "existencia")
 
 
 ROLE_PROFILES: dict[str, dict[str, RoleProfile]] = {
+    "vehicle_rental": {
+        "rentals": RoleProfile(
+            frozenset({"reservas_y_rentas", "reservas_rentas", "rentas", "renta", "alquileres", "alquiler", "rentals", "rental_agreements", "reservas_vehiculos", "car_rentals"}),
+            frozenset({"reserva", "renta", "alquiler", "inicio", "fin", "tarifa", "subtotal", "seguro", "descuento", "total"}),
+            (frozenset({"reserva", "renta", "rental", "alquiler"}),),
+            {"id": ("id_reserva", "id_renta", "rental_id", "reservation_id", "id"),
+             "date": ("fecha_inicio", "fecha_reserva", "rental_date", "start_date", "fecha"),
+             "end_date": ("fecha_fin", "end_date", "fecha_devolucion"),
+             "total": ("total_general", "total", "importe_total", "monto_total", "total_renta", "amount"),
+             "status": ("estado_reserva", "estado_renta", "rental_status", "status", "estado"),
+             "quantity": ("dias_renta", "dias_alquiler", "rental_days", "days"),
+             "price": ("tarifa_dia", "tarifa_diaria", "daily_rate", "precio_dia"),
+             "customer_id": ("id_cliente", "cliente_id", "customer_id"),
+             "vehicle_id": ("id_vehiculo", "vehiculo_id", "vehicle_id")}),
+        "vehicles": RoleProfile(
+            frozenset({"flota_vehiculos", "flota", "vehiculos", "vehiculo", "vehicles", "fleet", "cars", "autos"}),
+            frozenset({"placa", "marca", "modelo", "kilometraje", "combustible", "categoria", "tarifa"}),
+            (frozenset({"vehiculo", "vehiculos", "placa", "modelo"}),),
+            {"id": ("id_vehiculo", "vehiculo_id", "vehicle_id", "id"),
+             "name": ("placa", "modelo", "nombre", "name"),
+             "status": ("estado", "status", "disponibilidad"),
+             "price": ("tarifa_diaria", "tarifa", "daily_rate"),
+             "category": ("categoria", "category", "tipo_vehiculo")}),
+        "customers": RoleProfile(
+            frozenset({"clientes", "cliente", "customers", "customer", "clients", "client"}),
+            frozenset({"nombre", "apellido", "correo", "telefono", "licencia", "documento"}),
+            (frozenset({"cliente", "clientes", "nombre", "correo"}),),
+            {"id": ("id_cliente", "cliente_id", "customer_id", "id"),
+             "name": ("nombre_completo", "nombre", "name", "full_name"),
+             "date": ("fecha_registro", "registration_date", "created_at")}),
+        "maintenance": RoleProfile(
+            frozenset({"mantenimiento", "mantenimientos", "maintenance", "vehicle_maintenance", "servicios_flota"}),
+            frozenset({"mantenimiento", "servicio", "taller", "costo", "ingreso", "entrega"}),
+            (frozenset({"mantenimiento", "servicio", "taller"}),),
+            {"id": ("id_mantenimiento", "maintenance_id", "id"),
+             "date": ("fecha_ingreso", "service_date", "fecha_servicio", "fecha"),
+             "end_date": ("fecha_entrega", "end_date"),
+             "status": ("estado", "status", "estado_servicio"),
+             "amount": ("costo", "costo_total", "total_costo", "cost", "amount"),
+             "vehicle_id": ("id_vehiculo", "vehiculo_id", "vehicle_id")}),
+        "payments": RoleProfile(
+            frozenset({"pagos", "pago", "payments", "payment", "cobros"}),
+            frozenset({"monto", "metodo", "pago", "fecha"}),
+            (frozenset({"pago", "monto", "amount"}),),
+            {"id": COMMON_ID, "amount": COMMON_TOTAL,
+             "date": COMMON_DATE, "status": COMMON_STATUS}),
+    },
     "retail": {
         "sales": RoleProfile(
             frozenset({"venta", "ventas", "sale", "sales", "order", "orders", "pedido", "pedidos", "factura", "facturas", "invoice", "invoices"}),
