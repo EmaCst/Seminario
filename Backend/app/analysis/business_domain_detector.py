@@ -17,6 +17,58 @@ class DomainSignal:
 # Los términos se buscan tanto en tablas como en columnas y soportan
 # español/inglés, snake_case, camelCase y separadores variados.
 DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
+    # Distinct economic sectors (ISIC Rev.5 A, F, M). Avoid generic
+    # "project", "client", or "payment" as primary evidence.
+    "real_estate": [
+        DomainSignal(frozenset({"inmueble", "inmuebles", "propiedad", "propiedades",
+                                "property", "properties", "real_estate", "inmobiliaria"}), 3.4, "inmuebles"),
+        DomainSignal(frozenset({"arrendamiento", "arrendamientos", "arriendo", "arriendos",
+                                "lease", "leases", "leasing", "contrato_alquiler"}), 2.6, "arrendamientos"),
+        DomainSignal(frozenset({"inquilino", "inquilinos", "tenant", "tenants",
+                                "arrendatario", "arrendatarios"}), 2.3, "inquilinos"),
+        DomainSignal(frozenset({"agente_inmobiliario", "corredor_inmobiliario",
+                                "agentes_inmobiliarios", "real_estate_agent", "realtor",
+                                "property_manager"}), 1.8, "agentes inmobiliarios"),
+        DomainSignal(frozenset({"venta_inmueble", "compraventa", "venta_propiedad",
+                                "property_sale", "real_estate_sale", "escritura"}), 1.7, "operaciones inmobiliarias"),
+        DomainSignal(frozenset({"unidad_habitacional", "unidad_inmobiliaria",
+                                "apartamento", "apartamentos", "condominio",
+                                "lote_terreno", "parcelas_urbanas"}), 1.4, "unidades inmobiliarias"),
+    ],
+    "construction": [
+        DomainSignal(frozenset({"obra", "obras", "construccion", "construcciones",
+                                "construction", "construction_projects", "building_site",
+                                "site_work"}), 3.6, "obras"),
+        DomainSignal(frozenset({"presupuesto_obra", "presupuestos_obra",
+                                "presupuesto_construccion", "construction_budget",
+                                "budgeted_cost", "costo_obra"}), 2.4, "presupuestos de obra"),
+        DomainSignal(frozenset({"contratista", "contratistas", "subcontratista",
+                                "subcontratistas", "contractor", "contractors",
+                                "subcontractor", "subcontractors"}), 2.4, "contratistas"),
+        DomainSignal(frozenset({"avance_obra", "avance_fisico", "porcentaje_avance",
+                                "construction_progress", "progress_pct",
+                                "certificacion_obra"}), 2.1, "avance de obra"),
+        DomainSignal(frozenset({"materiales_obra", "consumo_materiales", "material_construccion",
+                                "building_materials", "requisicion_materiales"}), 1.4, "materiales de construcción"),
+        DomainSignal(frozenset({"planilla_obra", "etapas_obra", "cronograma_obra",
+                                "hitos_obra", "construction_schedule"}), 1.3, "etapas y planificación"),
+    ],
+    "agriculture": [
+        DomainSignal(frozenset({"cultivo", "cultivos", "crop", "crops", "siembra",
+                                "siembras", "plantacion", "plantaciones"}), 3.2, "cultivos"),
+        DomainSignal(frozenset({"cosecha", "cosechas", "harvest", "harvests",
+                                "rendimiento_cultivo", "yield_per_hectare"}), 2.8, "cosechas"),
+        DomainSignal(frozenset({"parcela", "parcelas", "lote_agricola", "lotes_agricolas",
+                                "farmland", "field", "fields", "finca", "fincas"}), 2.5, "parcelas agrícolas"),
+        DomainSignal(frozenset({"ganado", "ganaderia", "livestock", "rebaño",
+                                "rebanos", "animales_granja", "animal_farm"}), 2.8, "ganadería"),
+        DomainSignal(frozenset({"riego", "irrigacion", "irrigation", "fertilizante",
+                                "fertilizantes", "fertilizer", "fertilizers",
+                                "agroquimico", "agroquimicos"}), 1.5, "insumos agrícolas"),
+        DomainSignal(frozenset({"produccion_agricola", "produccion_pecuaria",
+                                "agricultural_output", "farm_production",
+                                "peso_cosechado", "toneladas_cosecha"}), 2.0, "producción primaria"),
+    ],
     # Logistics is distinct from passenger transportation and from retail sales.
     # One generic "pedido" is intentionally insufficient to classify it.
     "logistics": [

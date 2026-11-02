@@ -7,6 +7,9 @@ from app.database.schema import ColumnSchema, DatabaseSchema, TableSchema
 
 
 CASES = {
+    "real_estate": (("arrendamientos", "inmuebles", "inquilinos", "agentes_inmobiliarios"), "leases"),
+    "construction": (("obras", "presupuestos_obra", "contratistas", "materiales_obra"), "projects"),
+    "agriculture": (("cosechas", "cultivos", "parcelas", "ganado"), "harvests"),
     "logistics": (("envios", "guias", "paquetes", "transportistas", "pedidos"), "shipments"),
     "vehicle_rental": (("rentas", "flota_vehiculos", "clientes", "mantenimiento"), "rentals"),
     "retail": (("ventas", "productos", "inventario", "clientes"), "sales"),

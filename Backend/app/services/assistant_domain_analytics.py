@@ -19,6 +19,24 @@ from app.services.assistant_router import MONTH_LABELS, months_in, normalize
 # Business words must be scoped by detected domain; "citas" can belong to
 # healthcare or professional services, and "productos" to retail or industry.
 ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
+    "real_estate": {
+        "properties": ("inmueble", "inmuebles", "propiedad", "propiedades"),
+        "leases": ("arrendamiento", "arrendamientos", "arriendo", "arriendos", "alquiler inmobiliario"),
+        "tenants": ("inquilino", "inquilinos", "arrendatario", "arrendatarios"),
+        "agents": ("agente inmobiliario", "agentes inmobiliarios", "corredores inmobiliarios"),
+    },
+    "construction": {
+        "projects": ("obra", "obras", "proyecto de construccion", "proyectos de construccion"),
+        "budgets": ("presupuesto de obra", "presupuestos de obra", "presupuestos"),
+        "contractors": ("contratista", "contratistas", "subcontratista", "subcontratistas"),
+        "materials": ("material de construccion", "materiales de obra", "materiales"),
+    },
+    "agriculture": {
+        "fields": ("parcela", "parcelas", "finca", "fincas"),
+        "crops": ("cultivo", "cultivos", "siembra", "siembras"),
+        "harvests": ("cosecha", "cosechas", "recoleccion", "recolecciones"),
+        "livestock": ("ganado", "ganaderia", "rebanos", "animales de granja"),
+    },
     "logistics": {
         "shipments": ("envio", "envios", "entrega", "entregas", "despacho", "despachos", "shipment", "shipments"),
         "orders": ("pedido", "pedidos", "orden de compra", "ordenes de compra"),
@@ -111,6 +129,11 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
 
 # Human-friendly labels are for display only; SQL always uses schema-mapped names.
 ROLE_LABELS = {
+    "properties": "inmuebles", "leases": "arrendamientos",
+    "tenants": "inquilinos", "agents": "agentes inmobiliarios",
+    "budgets": "presupuestos de obra", "contractors": "contratistas",
+    "fields": "parcelas", "crops": "cultivos",
+    "harvests": "cosechas", "livestock": "ganado",
     "rentals": "rentas y reservas", "maintenance": "mantenimientos",
     "shipments": "envíos y entregas", "packages": "paquetes",
     "carriers": "transportistas", "warehouses": "almacenes",
@@ -141,6 +164,7 @@ ROLE_LABELS = {
 # In particular: current stock, account balances, grades and list prices MUST
 # NOT be treated as sums of sales/income.
 MONETARY_ROLES = {
+    ("real_estate", "leases"): ("total",),
     ("vehicle_rental", "rentals"): ("total",),
     ("vehicle_rental", "payments"): ("amount",),
     ("retail", "sales"): ("total",),
