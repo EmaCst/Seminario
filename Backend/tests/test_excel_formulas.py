@@ -65,7 +65,7 @@ class FormulaEvaluationTests(unittest.TestCase):
         info = asyncio.run(inspect_excel_upload(upload))
         self.assertEqual(info["formula_diagnostics"]["formulas_calculated"], 9)
         rentals = next(s for s in info["sheets"] if s["name"] == "Reservas_y_Rentas")
-        self.assertEqual(rentals["preview"][0]["d_as_renta"], 4)
+        self.assertEqual(rentals["preview"][0]["días_renta"], 4)
         self.assertEqual(rentals["preview"][0]["subtotal"], 180)
         self.assertEqual(rentals["preview"][0]["total"], 220)
 
