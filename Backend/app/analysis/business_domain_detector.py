@@ -17,6 +17,14 @@ class DomainSignal:
 # Los términos se buscan tanto en tablas como en columnas y soportan
 # español/inglés, snake_case, camelCase y separadores variados.
 DOMAIN_PROFILES: dict[str, list[DomainSignal]] = {
+    "vehicle_rental": [
+        DomainSignal(frozenset({"renta", "rentas", "alquiler", "alquileres", "rental", "rentals", "rentacar", "car_rental"}), 3.2, "contratos de renta"),
+        DomainSignal(frozenset({"reserva", "reservas", "reservation", "reservations", "booking", "bookings"}), 2.5, "reservas de vehículos"),
+        DomainSignal(frozenset({"vehiculo", "vehiculos", "vehicle", "vehicles", "flota", "fleet"}), 2.1, "flota de vehículos"),
+        DomainSignal(frozenset({"tarifa", "tarifas", "rental_rate", "diaria", "daily_rate", "kilometraje"}), 1.3, "tarifas y kilometraje"),
+        DomainSignal(frozenset({"mantenimiento", "maintenance", "taller", "servicio"}), 1.9, "mantenimiento de flota"),
+        DomainSignal(frozenset({"cliente", "clientes", "customer", "customers"}), 0.8, "clientes"),
+    ],
     "retail": [
         DomainSignal(frozenset({"producto", "productos", "product", "products", "item", "items", "articulo", "articulos", "sku"}), 2.0, "catálogo de productos"),
         DomainSignal(frozenset({"venta", "ventas", "sale", "sales", "order", "orders", "pedido", "pedidos", "factura", "facturas", "invoice", "invoices"}), 2.0, "ventas/pedidos"),

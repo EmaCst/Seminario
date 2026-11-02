@@ -6,6 +6,7 @@ from app.database.inspector import inspect_database
 
 
 ROLE_LABELS = {
+    "rentals": "Rentas y reservas", "vehicles": "Vehículos", "maintenance": "Mantenimiento",
     "sales": "Ventas", "sales_details": "Detalle de ventas", "products": "Productos",
     "inventory": "Inventario", "customers": "Clientes", "employees": "Empleados",
     "payments": "Pagos", "categories": "Categorías", "suppliers": "Proveedores",

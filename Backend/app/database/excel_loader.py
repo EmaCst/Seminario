@@ -52,7 +52,21 @@ def _infer_type(values: list[Any]) -> str:
         return "number"
     if all(isinstance(value, (datetime, date)) for value in clean):
         return "date"
+    # Business workbooks frequently store ISO dates as strings. Only
+    # promote a column when EVERY nonblank value is an unambiguous ISO date.
+    if all(isinstance(value, str) and
+           re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value.strip()) and
+           _is_iso_date(value.strip()) for value in clean):
+        return "date"
     return "text"
+
+
+def _is_iso_date(value: str) -> bool:
+    try:
+        date.fromisoformat(value)
+        return True
+    except ValueError:
+        return False
 
 
 def _looks_like_header(row: list[Any]) -> bool:
@@ -104,6 +118,30 @@ def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
         headers.append(name)
 
     source_rows = non_empty[1:] if has_header else non_empty
+    # A common Excel layout ends a structured table with a grand-total
+    # footer. It is not a customer/reservation/maintenance record.
+    id_columns = [i for i, h in enumerate(headers)
+                  if _semantic_name(h) == "id" or _semantic_name(h).startswith("id_")
+                  or _semantic_name(h).endswith("_id")]
+    if has_header and id_columns:
+        retained = []
+        removed = 0
+        for row in source_rows:
+            has_identifier = any(i < len(row) and row[i] not in (None, "") for i in id_columns)
+            total_footer = any(
+                isinstance(v, str) and
+                re.match(r"^(?:gran\\s+total|total|gasto\\s+total)\\b", v.strip(), re.I)
+                for v in row
+            )
+            if not has_identifier and total_footer:
+                removed += 1
+            else:
+                retained.append(row)
+        source_rows = retained
+        if removed:
+            warnings.append(
+                f"Se excluyeron {removed} fila(s) de totales para evitar contarlas como registros."
+            )
     data_rows = [list(row) + [None] * (width - len(row)) for row in source_rows]
     schema = []
     for index, header in enumerate(headers):
@@ -252,6 +290,26 @@ def _sql_type(kind: str):
     return {"boolean": Boolean, "integer": Integer, "number": Float, "date": DateTime}.get(kind, String)
 
 
+def _trusted_primary_key(sheet: dict) -> str | None:
+    """Infer PK only from complete, unique, ID-shaped business keys.
+
+    Do not invent surrogate IDs: original identifiers must remain joinable.
+    """
+    total = len(sheet["data_rows"])
+    if not total:
+        return None
+    for index, header in enumerate(sheet["headers"]):
+        key = _semantic_name(header)
+        if not (key == "id" or key.startswith("id_") or key.endswith("_id")):
+            continue
+        values = [row[index] for row in sheet["data_rows"]]
+        if any(value in (None, "") for value in values):
+            continue
+        if len({str(v) for v in values}) == total:
+            return header
+    return None
+
+
 def _db_value(value: Any, kind: str) -> Any:
     if value in (None, ""):
         return None
@@ -260,6 +318,8 @@ def _db_value(value: Any, kind: str) -> Any:
             return value
         if isinstance(value, date):
             return datetime.combine(value, time.min)
+        if isinstance(value, str) and _is_iso_date(value.strip()):
+            return datetime.combine(date.fromisoformat(value.strip()), time.min)
         return str(value)
     if kind == "text" or kind == "empty":
         return str(value)
@@ -268,7 +328,7 @@ def _db_value(value: Any, kind: str) -> Any:
 
 async def activate_excel_upload(file: UploadFile) -> dict:
     """Convierte un Excel en SQLite local y lo activa como la fuente SQL del sistema."""
-    filename, content, sheets = await _read_workbook(file)
+    filename, content, sheets, formulas = await _read_workbook(file)
     populated = [sheet for sheet in sheets if sheet["data_rows"] and sheet["headers"]]
     if not populated:
         raise ValueError("El libro no contiene hojas con filas de datos utilizables.")
@@ -292,7 +352,11 @@ async def activate_excel_upload(file: UploadFile) -> dict:
             suffix += 1
         used_tables.add(table_name)
         sheet["table_name"] = table_name
-        columns = [Column(item["name"], _sql_type(item["type"]), nullable=True) for item in sheet["schema"]]
+        primary = _trusted_primary_key(sheet)
+        columns = [Column(item["name"], _sql_type(item["type"]),
+                          primary_key=item["name"] == primary,
+                          nullable=item["name"] != primary)
+                   for item in sheet["schema"]]
         tables[table_name] = Table(table_name, metadata, *columns)
 
     metadata.create_all(engine)
