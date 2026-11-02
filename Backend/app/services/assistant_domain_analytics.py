@@ -103,6 +103,7 @@ ROLE_WORDS: dict[str, dict[str, tuple[str, ...]]] = {
 
 # Human-friendly labels are for display only; SQL always uses schema-mapped names.
 ROLE_LABELS = {
+    "rentals": "rentas y reservas", "maintenance": "mantenimientos",
     "sales": "ventas", "products": "productos", "customers": "clientes",
     "inventory": "registros de inventario", "payments": "pagos",
     "students": "estudiantes", "teachers": "docentes", "courses": "cursos",
