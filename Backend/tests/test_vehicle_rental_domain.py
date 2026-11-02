@@ -78,7 +78,7 @@ class VehicleRentalIntegrationTests(unittest.TestCase):
         self.assertEqual(12, self.info["formula_diagnostics"]["formulas_calculated"])
         cols = {c.name: c.type.lower() for c in self.schema.tables["reservas_y_rentas"].columns}
         self.assertIn("date", cols["fecha_inicio"])
-        self.assertIn("numeric", cols["total_general"] if "numeric" in cols["total_general"] else "numeric")
+        self.assertIn("float", cols["total_general"])
 
     def test_unique_business_ids_and_foreign_key_inference(self):
         self.assertEqual(["id_cliente"], self.schema.tables["clientes"].primary_key)
