@@ -146,10 +146,11 @@ def _normalize_sheet(sheet, evaluator: FormulaEvaluator | None = None) -> dict:
     # Track formula-derived columns. Formulas have already been evaluated to
     # their actual numeric values before SQL type inference.
     formula_counts = [sum(
-        cell.data_type == "f" for cell in sheet.iter_cols(
+        cell.data_type == "f"
+        for column_cells in sheet.iter_cols(
             min_col=index + 1, max_col=index + 1,
             min_row=2 if has_header else 1,
-        )
+        ) for cell in column_cells
     ) for index in range(width)]
     schema = []
     for index, header in enumerate(headers):
