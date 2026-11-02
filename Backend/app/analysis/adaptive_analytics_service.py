@@ -21,6 +21,11 @@ CATEGORICAL_COLUMN_TERMS = (
 DISPLAY_COLUMN_TERMS = ("nombre", "name", "descripcion", "description", "titulo", "title", "codigo", "code")
 
 DOMAIN_RANKING_SPECS = {
+    "vehicle_rental": [
+        ("customers", "rentals", "sum", "total", "Clientes por ingresos de rentas"),
+        ("vehicles", "rentals", "count", None, "Vehículos por número de rentas"),
+        ("vehicles", "maintenance", "sum", "amount", "Vehículos por costo de mantenimiento"),
+    ],
     "retail": [
         ("customers", "sales", "sum", "total", "Clientes por gasto"),
         ("products", "sales_details", "sum", "quantity", "Productos por unidades"),
