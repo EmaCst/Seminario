@@ -44,12 +44,17 @@ def rental_book():
                         f'=DATEVALUE("{end}")-DATEVALUE("{start}")',
                         price, f"=F{i}*G{i}", 20, 0, f"=H{i}+I{i}-J{i}",
                         "Tarjeta", status])
+    # Summary rows with formulas must not be imported as business records.
+    rentals.append([None, None, None, None, "Total General:", None,
+                    None, None, None, None, "=SUM(K2:K5)"])
     maintenance = w.create_sheet("Mantenimiento")
     maintenance.append(["ID Mantenimiento", "ID Vehículo", "Fecha Ingreso", "Fecha Entrega",
                         "Tipo Servicio", "Descripción del Trabajo", "Taller / Proveedor",
                         "Costo ($)", "Estado"])
     maintenance.append(["MNT-01", "VEH-101", "2026-02-07", "2026-02-08",
                         "Preventivo", "Cambio de aceite", "Taller Sur", 95, "Completado"])
+    maintenance.append([None, None, None, None, None, None,
+                        "Gasto Total en Mantenimiento:", "=SUM(H2:H2)"])
     return w
 
 
@@ -75,7 +80,7 @@ class VehicleRentalIntegrationTests(unittest.TestCase):
         self.assertEqual("total_general", self.semantic["entities"]["rentals"]["columns"]["total"])
 
     def test_formula_recalculation_and_iso_dates(self):
-        self.assertEqual(12, self.info["formula_diagnostics"]["formulas_calculated"])
+        self.assertEqual(14, self.info["formula_diagnostics"]["formulas_calculated"])
         cols = {c.name: c.type.lower() for c in self.schema.tables["reservas_y_rentas"].columns}
         self.assertIn("date", cols["fecha_inicio"])
         self.assertIn("float", cols["total_general"])
@@ -104,6 +109,20 @@ class VehicleRentalIntegrationTests(unittest.TestCase):
         self.assertTrue(analysis["distributions"])
         self.assertTrue(analysis["numeric_metrics"])
         self.assertTrue(analysis["rankings"])
+
+    def test_formula_values_are_visible_to_dashboard(self):
+        summary = get_adaptive_dashboard_summary()
+        metrics = {(m["role"], m["field"]): m for m in summary["value_metrics"]}
+        self.assertEqual(960.0, metrics[("rentals", "total")]["value"])
+        self.assertEqual(95.0, metrics[("maintenance", "amount")]["value"])
+        self.assertEqual(16.0, metrics[("rentals", "quantity")]["value"])
+        self.assertTrue(metrics[("rentals", "total")]["from_formulas"])
+        self.assertEqual("money", metrics[("rentals", "total")]["unit"])
+        self.assertEqual(14, summary["formula_diagnostics"]["formulas_calculated"])
+        self.assertEqual(0, summary["formula_diagnostics"]["formulas_unresolved"])
+        # Footer sums must not be counted or summed twice.
+        self.assertEqual(4, next(k["value"] for k in summary["kpis"] if k["role"] == "rentals"))
+        self.assertEqual(1, next(k["value"] for k in summary["kpis"] if k["role"] == "maintenance"))
 
     def test_assistant_forecasts_and_chart_catalog(self):
         self.assertEqual(("total",), MONETARY_ROLES[("vehicle_rental", "rentals")])
