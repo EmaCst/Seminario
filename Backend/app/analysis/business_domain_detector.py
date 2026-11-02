@@ -199,7 +199,12 @@ def detect_business_domains(schema: DatabaseSchema) -> dict:
 
     for domain, signals in DOMAIN_PROFILES.items():
         raw_score = 0.0
-        max_score = sum(signal.weight for signal in signals) + 1.75
+        # Do not dilute confidence in existing retail schemas merely because
+        # optional order aliases were added. Keep the original five-signal
+        # reference range; the new signals supplement evidence.
+        max_score = sum(signal.weight for signal in (
+            signals[:5] if domain == "retail" else signals
+        )) + 1.75
         evidence: list[dict] = []
         domain_tables: set[str] = set()
 
@@ -249,6 +254,17 @@ def detect_business_domains(schema: DatabaseSchema) -> dict:
                 )
             if has_shipping_entity:
                 score = max(score, 42.0)
+
+        if domain == "retail":
+            retail_context = any(
+                label in {item["signal"] for item in evidence}
+                for label in ("catálogo de productos", "inventario",
+                              "atributos de catálogo", "clientes")
+            )
+            if not retail_context:
+                # A standalone pedido/order table can still be recognized,
+                # but it does not prove a particular type of commerce.
+                score = min(score, 59.0)
 
         if score >= 65:
             confidence = "high"
