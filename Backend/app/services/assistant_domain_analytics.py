@@ -131,6 +131,8 @@ ROLE_LABELS = {
 # In particular: current stock, account balances, grades and list prices MUST
 # NOT be treated as sums of sales/income.
 MONETARY_ROLES = {
+    ("vehicle_rental", "rentals"): ("total",),
+    ("vehicle_rental", "payments"): ("amount",),
     ("retail", "sales"): ("total",),
     ("retail", "payments"): ("amount",),
     ("restaurant", "orders"): ("total",),
