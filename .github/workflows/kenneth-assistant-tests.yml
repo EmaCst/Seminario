@@ -41,6 +41,8 @@ jobs:
         run: python -m app.quality.run --report-dir quality_reports
       - name: Test complete vehicle-rental business domain
         run: python -m unittest discover -s tests -p "test_vehicle_rental_domain.py" -v
+      - name: Test semantic aliases, order-only books, logistics and generic fallback
+        run: python -m unittest discover -s tests -p "test_semantic_aliases_orders_logistics.py" -v
       - name: Test safe Excel formula evaluation and import preview
         run: python -m unittest discover -s tests -p "test_excel_formulas.py" -v
       - name: Test annual forecasting and robust ML
