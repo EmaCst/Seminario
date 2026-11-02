@@ -121,11 +121,25 @@ class DatabaseManager:
             raise
         return self._activate(new_engine, {"provider": "postgresql", "host": host, "port": port, "database": row["database_name"] if row else database, "username": username, "password": password, "sslmode": sslmode, "auth": "password"})
 
-    def configure_excel(self, engine: Engine, filename: str, tables: list[str], rows: int, database_path: str) -> dict:
+    def configure_excel(
+        self, engine: Engine, filename: str, tables: list[str],
+        rows: int, database_path: str,
+        formula_diagnostics: dict | None = None,
+        calculated_columns: dict[str, list[str]] | None = None,
+    ) -> dict:
         """Activa un libro Excel previamente materializado como SQLite."""
         with engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
-        return self._activate(engine, {"provider": "excel", "database": filename, "filename": filename, "tables": tables, "rows": rows, "database_path": database_path, "auth": "local"})
+        return self._activate(engine, {
+            "provider": "excel", "database": filename, "filename": filename,
+            "tables": tables, "rows": rows, "database_path": database_path,
+            "auth": "local",
+            "formula_diagnostics": {
+                key: (formula_diagnostics or {}).get(key, 0)
+                for key in ("formulas_detected", "formulas_calculated", "formulas_unresolved")
+            },
+            "calculated_columns": calculated_columns or {},
+        })
 
     def get_engine(self) -> Engine:
         with self._lock:
@@ -168,6 +182,8 @@ class DatabaseManager:
                 "filename": self._config.get("filename"),
                 "tables": self._config.get("tables"),
                 "rows": self._config.get("rows"),
+                "formula_diagnostics": self._config.get("formula_diagnostics") if provider == "excel" else None,
+                "calculated_columns": self._config.get("calculated_columns") if provider == "excel" else None,
             }
 
 
