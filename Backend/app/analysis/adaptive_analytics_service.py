@@ -21,6 +21,25 @@ CATEGORICAL_COLUMN_TERMS = (
 DISPLAY_COLUMN_TERMS = ("nombre", "name", "descripcion", "description", "titulo", "title", "codigo", "code")
 
 DOMAIN_RANKING_SPECS = {
+    "insurance": [
+        ("policies", "claims", "count", None, "Pólizas por número de siniestros"),
+        ("insured", "policies", "count", None, "Asegurados por pólizas"),
+    ],
+    "pharmacy": [
+        ("medicines", "dispensations", "sum", "quantity", "Medicamentos por unidades dispensadas"),
+        ("medicines", "batches", "count", None, "Medicamentos por lotes"),
+    ],
+    "saas": [
+        ("organizations", "subscriptions", "count", None, "Organizaciones por suscripciones"),
+    ],
+    "events": [
+        ("events", "tickets", "count", None, "Eventos por entradas"),
+        ("venues", "events", "count", None, "Sedes por eventos"),
+    ],
+    "fitness": [
+        ("members", "attendance", "count", None, "Socios por accesos"),
+        ("trainers", "classes", "count", None, "Entrenadores por clases"),
+    ],
     "real_estate": [
         ("properties", "leases", "count", None, "Inmuebles por número de arrendamientos"),
         ("tenants", "leases", "sum", "total", "Inquilinos por valor registrado de contratos"),
@@ -42,6 +61,7 @@ DOMAIN_RANKING_SPECS = {
         ("vehicles", "maintenance", "sum", "amount", "Vehículos por costo de mantenimiento"),
     ],
     "retail": [
+        ("customers", "returns", "count", None, "Clientes por devoluciones"),
         ("customers", "sales", "sum", "total", "Clientes por gasto"),
         ("customers", "orders", "sum", "total", "Clientes por importe de pedidos"),
         ("products", "sales_details", "sum", "quantity", "Productos por unidades"),

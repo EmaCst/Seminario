@@ -28,6 +28,11 @@ import {
   House,
   HardHat,
   Sprout,
+  ShieldCheck,
+  Pill,
+  MonitorCog,
+  Ticket,
+  Dumbbell,
   Truck,
 } from 'lucide-react';
 
@@ -40,6 +45,11 @@ import { SavedVisualizations } from './SavedVisualizations';
 import { EditableDashboardGrid } from './EditableDashboardGrid';
 
 const DOMAIN_META = {
+  insurance: { es: 'Seguros', en: 'Insurance', Icon: ShieldCheck },
+  pharmacy: { es: 'Farmacias', en: 'Pharmacies', Icon: Pill },
+  saas: { es: 'Tecnología / SaaS', en: 'Technology / SaaS', Icon: MonitorCog },
+  events: { es: 'Eventos y entretenimiento', en: 'Events and entertainment', Icon: Ticket },
+  fitness: { es: 'Gimnasios y fitness', en: 'Gyms and fitness', Icon: Dumbbell },
   real_estate: { es: 'Inmobiliario', en: 'Real estate', Icon: House },
   construction: { es: 'Construcción', en: 'Construction', Icon: HardHat },
   agriculture: { es: 'Agricultura y ganadería', en: 'Agriculture and livestock', Icon: Sprout },
@@ -59,6 +69,33 @@ const DOMAIN_META = {
 };
 
 const ROLE_LABELS = {
+  policies: ["Pólizas","Policies"],
+  claims: ["Siniestros","Claims"],
+  coverages: ["Coberturas","Coverages"],
+  insured: ["Asegurados","Insured clients"],
+  medicines: ["Medicamentos","Medicines"],
+  batches: ["Lotes farmacéuticos","Medicine batches"],
+  dispensations: ["Dispensaciones","Dispensations"],
+  prescriptions: ["Recetas","Prescriptions"],
+  subscriptions: ["Suscripciones","Subscriptions"],
+  plans: ["Planes","Plans"],
+  organizations: ["Organizaciones","Organizations"],
+  support_tickets: ["Tickets de soporte","Support tickets"],
+  events: ["Eventos","Events"],
+  attendees: ["Asistentes","Attendees"],
+  venues: ["Recintos","Venues"],
+  members: ["Socios","Members"],
+  memberships: ["Membresías","Memberships"],
+  trainers: ["Entrenadores","Trainers"],
+  classes: ["Clases","Classes"],
+  carts: ["Carritos","Shopping carts"],
+  returns: ["Devoluciones","Returns"],
+  stock_movements: ["Movimientos de inventario","Stock movements"],
+  purchase_orders: ["Compras a proveedores","Purchase orders"],
+  transfers: ["Transferencias","Transfers"],
+  loans: ["Préstamos","Loans"],
+  cards: ["Tarjetas bancarias","Bank cards"],
+  branches: ["Sucursales","Branches"],
   properties: ['Inmuebles / Propiedades', 'Properties'],
   leases: ['Arrendamientos', 'Leases'],
   tenants: ['Inquilinos', 'Tenants'],

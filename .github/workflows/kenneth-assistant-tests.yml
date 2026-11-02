@@ -41,6 +41,8 @@ jobs:
         run: python -m app.quality.run --report-dir quality_reports
       - name: Test complete vehicle-rental business domain
         run: python -m unittest discover -s tests -p "test_vehicle_rental_domain.py" -v
+      - name: Test insurance, pharmacy, SaaS, events, fitness and sector expansions
+        run: python -m unittest discover -s tests -p "test_five_sectors_extensions_excel.py" -v
       - name: Test real estate, construction and agriculture Excel data
         run: python -m unittest discover -s tests -p "test_three_new_economic_domains.py" -v
       - name: Test semantic aliases, order-only books, logistics and generic fallback
