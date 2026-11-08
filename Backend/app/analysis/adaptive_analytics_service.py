@@ -10,6 +10,7 @@ from app.analysis.adaptive_dashboard_service import (
 from app.analysis.semantic_mapper_v2 import inspect_semantic_model
 from app.database.connection import get_connection
 from app.database.inspector import inspect_database
+from app.database.source_cache import source_cached
 
 
 NUMERIC_ROLE_KEYS = ("total", "amount", "value", "price", "quantity", "stock", "credits")
@@ -533,6 +534,7 @@ def _build_insights(trend: dict, distributions: list[dict], entity_counts: list[
     return insights[:6]
 
 
+@source_cached(seconds=8)
 def get_adaptive_analytics() -> dict:
     dashboard = get_adaptive_dashboard_summary()
     analysis = inspect_semantic_model()

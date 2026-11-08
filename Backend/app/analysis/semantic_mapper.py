@@ -1,4 +1,5 @@
 from app.database.inspector import inspect_database
+from app.database.source_cache import source_cached
 from app.database.schema import DatabaseSchema
 
 
@@ -573,6 +574,7 @@ def build_semantic_map(
     return semantic_map
 
 
+@source_cached(seconds=120)
 def inspect_semantic_map() -> dict:
 
     schema = inspect_database()

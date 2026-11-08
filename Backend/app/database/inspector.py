@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 from sqlalchemy import inspect
+from app.database.source_cache import source_cached
 
 from app.database.connection import get_engine
 from app.database.schema import (
@@ -85,6 +86,7 @@ def _infer_identifier_relationships(schema: DatabaseSchema) -> None:
             existing.add((table.name, column.name))
 
 
+@source_cached(seconds=120)
 def inspect_database() -> DatabaseSchema:
     """Inspecciona dinámicamente la base de datos actualmente conectada."""
 
