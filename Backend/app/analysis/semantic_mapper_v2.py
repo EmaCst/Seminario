@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from app.analysis.business_domain_detector import detect_business_domains
 from app.database.inspector import inspect_database
+from app.database.source_cache import source_cached
 from app.database.schema import DatabaseSchema, TableSchema
 
 
@@ -843,6 +844,7 @@ def build_semantic_model(
     }
 
 
+@source_cached(seconds=120)
 def inspect_semantic_model() -> dict:
     schema = inspect_database()
     domain_result = detect_business_domains(schema)

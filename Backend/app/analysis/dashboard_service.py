@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.analysis.semantic_mapper import inspect_semantic_map
 from app.database.connection import get_connection
+from app.database.source_cache import source_cached
 
 
 def get_total_sales() -> dict:
@@ -261,6 +262,7 @@ def get_top_products(limit: int = 5) -> dict:
     }
 
 
+@source_cached(seconds=8)
 def get_dashboard_summary() -> dict:
     return {
         "total_sales": get_total_sales(),

@@ -1,3 +1,6 @@
+import logging
+from time import perf_counter
+
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -44,8 +47,23 @@ from app.visualizations.visualization_service import (
 )
 
 app = FastAPI(title="AI Business Assistant", description="Asistente empresarial para análisis de datos", version="0.13.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Kenneth-Source-Revision", "Content-Disposition"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Kenneth-Source-Revision", "X-Kenneth-Process-Ms", "Content-Disposition"])
 app.middleware("http")(source_revision_middleware)
+
+@app.middleware("http")
+async def measure_request_time(request: Request, call_next):
+    started = perf_counter()
+    try:
+        response = await call_next(request)
+    finally:
+        elapsed_ms = (perf_counter() - started) * 1000
+        if elapsed_ms >= 2000:
+            logging.getLogger("datalyx.performance").warning(
+                "Slow request: %s %s took %.0f ms",
+                request.method, request.url.path, elapsed_ms,
+            )
+    response.headers["X-Kenneth-Process-Ms"] = f"{elapsed_ms:.0f}"
+    return response
 
 class ChatMessage(BaseModel):
     role: str
