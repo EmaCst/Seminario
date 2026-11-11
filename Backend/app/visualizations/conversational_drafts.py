@@ -79,7 +79,8 @@ def is_visualization_creation_request(question: str) -> bool:
     action = any(_contains(text, word) for word in (
         "crea", "crear", "creame", "haz", "hacer", "genera", "generar",
         "grafica", "grafico", "muestrame", "visualiza", "visualizar",
-        "construye", "dibuja", "prepara", "create", "show", "plot", "make",
+        "construye", "dibuja", "prepara", "analiza", "analizar", "muestralo",
+        "create", "show", "plot", "make",
     ))
     target = any(_contains(text, word) for word in (
         "grafica", "grafico", "diagrama", "visualizacion", "chart",
@@ -854,7 +855,7 @@ def _retail_category_distribution(text: str, catalog: dict):
         aggregation="sum", group_by=name["key"],
         group_by_table=category["table"],
         group_by_identity=(category.get("primary_key") or [None])[0],
-        limit=100,
+        percentage_share=True, limit=100,
     )
     return definition, "Categoría", "Importe neto vendido"
 
