@@ -355,7 +355,7 @@ def _customer_rank_request(text: str) -> bool:
         any(_contains(text, word) for word in ("cliente", "clientes", "customers", "customer"))
         and any(_contains(text, word) for word in (
             "compra", "compras", "compran", "compraron", "gastaron", "gastan",
-            "gasto", "gastos", "spend", "spent", "buy", "purchases",
+            "gasto", "gastos", "gastado", "comprado", "spend", "spent", "buy", "purchases",
         ))
         and any(_contains(text, word) for word in (
             "menos", "menor", "menores", "mas", "mayor", "mayores",
@@ -414,7 +414,7 @@ def _rank_limit(text: str) -> int:
 def _customer_ranking(text: str, catalog: dict) -> tuple[VisualizationDefinition, str, str]:
     kind = _customer_metric_kind(text)
     entities = catalog.get("entities") or []
-    sales = [item for item in entities if item.get("semantic_role") == "sales"]
+    sales = [item for item in entities if item.get("semantic_role") in ("sales", "orders")]
     customers = [item for item in entities if item.get("semantic_role") == "customers"]
     if len(sales) != 1 or len(customers) != 1:
         raise ValueError(
