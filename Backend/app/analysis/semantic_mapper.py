@@ -138,6 +138,10 @@ def build_semantic_map(
             "invoice",
             "orders",
             "order",
+            "pedidos",
+            "pedido",
+            "ordenes",
+            "orden",
         ],
         excluded_words=[
             "detalle",
@@ -154,6 +158,14 @@ def build_semantic_map(
             "sale_detail",
             "invoice_detail",
             "order_detail",
+            "order_details",
+            "detallespedido",
+            "detallespedidos",
+            "detalle_pedido",
+            "detalles_pedido",
+            "detalle_orden",
+            "detalles_orden",
+            "lineas_pedido",
         ]
     )
 
@@ -242,7 +254,9 @@ def build_semantic_map(
                     "sale_price",
                     "selling_price",
                     "precio",
-                    "price"
+                    "price",
+                    "precio_lista",
+                    "list_price"
                 ]
             )
         )
