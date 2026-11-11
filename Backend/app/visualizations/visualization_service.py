@@ -51,6 +51,7 @@ class VisualizationDefinition(BaseModel):
     additional_metrics: list[AdditionalMetric] = Field(default_factory=list, max_length=6)
     period_growth: bool = False
     rank_periods: bool = False
+    percentage_share: bool = False
     sort_direction: Literal["asc", "desc"] = "desc"
     time_direction: Literal["asc", "desc"] = "asc"
     time_granularity: Literal["raw", "day", "month", "quarter", "year"] = "raw"
@@ -67,6 +68,8 @@ class VisualizationDefinition(BaseModel):
             raise ValueError("El segundo campo de nombre requiere una dimensión no temporal.")
         if self.period_growth and (self.time_granularity != "month" or self.visualization != "table"):
             raise ValueError("El crecimiento porcentual exige una tabla mensual.")
+        if self.percentage_share and self.visualization != "donut":
+            raise ValueError("Los porcentajes de participación requieren un gráfico de dona.")
         if self.rank_periods and not self.period_growth:
             raise ValueError("El ranking de períodos requiere calcular primero su crecimiento.")
         if self.aggregation != "count" and not self.metric and self.table_mode != "detail":
@@ -538,6 +541,13 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
             limit = f" LIMIT {definition.limit}"
 
     joins = _join_sql(schema, definition.table, paths)
+    if definition.percentage_share:
+        inner = f"SELECT {', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}"
+        top_share = f"TOP {definition.limit} " if provider == "sqlserver" else ""
+        limit_share = "" if provider == "sqlserver" else f" LIMIT {definition.limit}"
+        return (f"WITH shares AS ({inner}) SELECT {top_share}dimension, "
+                f"ROUND(value * 100.0 / NULLIF(SUM(value) OVER (), 0), 2) AS value "
+                f"FROM shares ORDER BY value DESC, dimension ASC{limit_share};")
     if definition.period_growth:
         # Compute growth across all months BEFORE applying top-N, otherwise
         # the previous month would be lost to the ranking filter.
