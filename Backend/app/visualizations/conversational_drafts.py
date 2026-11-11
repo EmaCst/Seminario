@@ -825,7 +825,7 @@ def _retail_product_ranking(text: str, catalog: dict):
                   names=("Nombre", "Name", "NombreProducto", "Title"))
     if not name or len(product.get("primary_key") or []) != 1:
         raise ValueError("No identifiqué un nombre y una clave de producto inequívocos.")
-    match = re.search(r"\\b(?:los|las|top)\\s+(\\d{1,3})\\b", text)
+    match = re.search(r"\b(?:los|las|top)\s+(\d{1,3})\b", text)
     limit = min(100, max(1, int(match.group(1)))) if match else 10
     definition = VisualizationDefinition(
         title=f"{limit} productos más vendidos por unidades",
