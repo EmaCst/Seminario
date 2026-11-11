@@ -380,15 +380,28 @@ def get_top_customers(limit: int = 5) -> dict:
     sales_customer_fk = customer_relationship["from_column"]
     customer_pk = customer_relationship["to_column"]
 
+    # Preserve surnames when customers store Nombre and Apellido separately.
+    from app.database.inspector import inspect_database
+    customer_schema = inspect_database().tables.get(customer_table)
+    surname_column = next(
+        (column.name for column in customer_schema.columns
+         if column.name.lower() in ("apellido", "apellidos", "last_name", "surname")),
+        None,
+    ) if customer_schema else None
+    customer_label = (
+        f"CONCAT(c.[{customer_name_column}], ' ', c.[{surname_column}])"
+        if surname_column else f"c.[{customer_name_column}]"
+    )
+
     sql = f"""
     SELECT TOP {int(limit)}
-        c.[{customer_name_column}] AS customer_name,
+        {customer_label} AS customer_name,
         SUM(v.[{total_column}]) AS total_spent
     FROM [{sales_table}] v
     INNER JOIN [{customer_table}] c
         ON v.[{sales_customer_fk}] = c.[{customer_pk}]
     GROUP BY
-        c.[{customer_name_column}]
+        {customer_label}
     ORDER BY
         total_spent DESC;
     """
@@ -466,29 +479,18 @@ def get_sales_by_category() -> dict:
             "data": []
         }
 
-    detail_total_column = None
-
-    preferred_columns = [
-        "total",
-        "subtotal",
-        "importe",
-        "amount"
-    ]
-
-    for preferred in preferred_columns:
-        for column in detail_schema.columns:
-            if column.name.lower() == preferred:
-                detail_total_column = column.name
-                break
-
-        if detail_total_column:
-            break
+    # Favor net revenue when a detail row exposes gross, discounts and net.
+    # Match exact names first so 'ImporteBruto' is not chosen for 'Importe'.
+    preferred_columns = (
+        "importe_neto", "importeneto", "net_amount", "net_total",
+        "total_neto", "subtotal_neto", "total", "subtotal",
+        "importe", "amount", "line_total", "line_amount",
+    )
+    by_name = {column.name.lower(): column.name for column in detail_schema.columns}
+    detail_total_column = next((by_name[name] for name in preferred_columns if name in by_name), None)
 
     if not detail_total_column:
-        return {
-            "available": False,
-            "data": []
-        }
+        return {"available": False, "data": []}
 
     detail_product_fk = product_relationship["from_column"]
     product_pk = product_relationship["to_column"]
