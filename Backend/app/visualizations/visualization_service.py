@@ -545,9 +545,9 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
         inner = f"SELECT {', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}"
         top_share = f"TOP {definition.limit} " if provider == "sqlserver" else ""
         limit_share = "" if provider == "sqlserver" else f" LIMIT {definition.limit}"
-        return (f"WITH shares AS ({inner}) SELECT {top_share}dimension, "
+        return (f"SELECT {top_share}dimension, "
                 f"ROUND(value * 100.0 / NULLIF(SUM(value) OVER (), 0), 2) AS value "
-                f"FROM shares ORDER BY value DESC, dimension ASC{limit_share};")
+                f"FROM ({inner}) AS shares ORDER BY value DESC, dimension ASC{limit_share};")
     if definition.period_growth:
         # Compute growth across all months BEFORE applying top-N, otherwise
         # the previous month would be lost to the ranking filter.
@@ -557,9 +557,9 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
         outer_top = f"TOP {definition.limit} " if provider == "sqlserver" else ""
         outer_limit = "" if provider == "sqlserver" else f" LIMIT {definition.limit}"
         ordering = "value DESC, dimension ASC" if definition.rank_periods else f"dimension {definition.time_direction.upper()}"
-        return (f"WITH monthly AS ({inner}), variations AS "
-                f"(SELECT dimension, value, {growth} AS growth_percent FROM monthly) "
-                f"SELECT {outer_top}dimension, value, growth_percent FROM variations "
+        return (f"SELECT {outer_top}dimension, value, growth_percent FROM ("
+                f"SELECT dimension, value, {growth} AS growth_percent "
+                f"FROM ({inner}) AS monthly) AS variations "
                 f"ORDER BY {ordering}{outer_limit};")
     return f"SELECT {top}{', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}{order}{limit};"
 
