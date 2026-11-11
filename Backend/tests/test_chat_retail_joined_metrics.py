@@ -170,7 +170,7 @@ class CommerceConversationTests(unittest.TestCase):
         self.assertEqual(3, definition["limit"])
         sql = self.sql(definition)
         self.assertIn("LAG(value) OVER (ORDER BY dimension)", sql)
-        self.assertIn("WITH monthly AS", sql)
+        self.assertIn("AS monthly", sql)
         self.assertIn("TOP 3", sql)
         self.assertIn("ORDER BY value DESC", sql)
 
