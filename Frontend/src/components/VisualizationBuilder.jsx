@@ -207,7 +207,29 @@ export const VisualizationBuilder = ({ open, onClose, onSaved, initialItem = nul
     setError('');
   };
 
+  // Preserve verified advanced measures from a conversational draft while its
+  // source, metric, grouping and chart type remain unchanged. The manual form
+  // cannot edit these measures yet; changing the core query safely drops them.
+  const originalDraft = initialItem?.definition;
+  const preserveAdvanced = Boolean(originalDraft && entity &&
+    originalDraft.table === entity.table &&
+    (originalDraft.metric || '') === metric &&
+    (originalDraft.group_by || '') === dimension &&
+    (originalDraft.metric_table || originalDraft.table) === (metricEntity?.table || entity.table) &&
+    (originalDraft.group_by_table || originalDraft.table) === (dimensionEntity?.table || entity.table) &&
+    originalDraft.aggregation === effectiveAggregation &&
+    originalDraft.visualization === visualization &&
+    (originalDraft.time_granularity || 'raw') === (dimensionIsDate ? timeGranularity : 'raw') &&
+    originalDraft.table_mode === (isDetailTable ? 'detail' : 'aggregate'));
+
   const definition = () => ({
+    ...(preserveAdvanced ? {
+      additional_metrics: originalDraft.additional_metrics || [],
+      group_by_extra: originalDraft.group_by_extra || null,
+      period_growth: Boolean(originalDraft.period_growth),
+      rank_periods: Boolean(originalDraft.rank_periods),
+      percentage_share: Boolean(originalDraft.percentage_share),
+    } : {}),
     title: title || (language === 'es' ? 'Análisis de ' : 'Analysis of ') + (entity?.label || ''),
     visualization, table: entity?.table,
     metric: isDetailTable ? null : (metric || null),

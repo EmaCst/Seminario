@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 
 from app.database.database_manager import database_manager
 from app.visualizations.semantic_catalog import get_semantic_visualization_catalog
 from app.visualizations.visualization_service import (
     VisualizationDefinition,
     VisualizationFilter,
+    AdditionalMetric,
     preview_visualization,
 )
 from app.visualizations.visualization_store import _source_key
@@ -78,7 +79,8 @@ def is_visualization_creation_request(question: str) -> bool:
     action = any(_contains(text, word) for word in (
         "crea", "crear", "creame", "haz", "hacer", "genera", "generar",
         "grafica", "grafico", "muestrame", "visualiza", "visualizar",
-        "construye", "dibuja", "prepara", "create", "show", "plot", "make",
+        "construye", "dibuja", "prepara", "analiza", "analizar", "muestralo",
+        "create", "show", "plot", "make",
     ))
     target = any(_contains(text, word) for word in (
         "grafica", "grafico", "diagrama", "visualizacion", "chart",
@@ -354,7 +356,7 @@ def _customer_rank_request(text: str) -> bool:
         any(_contains(text, word) for word in ("cliente", "clientes", "customers", "customer"))
         and any(_contains(text, word) for word in (
             "compra", "compras", "compran", "compraron", "gastaron", "gastan",
-            "gasto", "gastos", "spend", "spent", "buy", "purchases",
+            "gasto", "gastos", "gastado", "comprado", "spend", "spent", "buy", "purchases",
         ))
         and any(_contains(text, word) for word in (
             "menos", "menor", "menores", "mas", "mayor", "mayores",
@@ -381,7 +383,9 @@ def _customer_metric_kind(text: str) -> str:
         "cuantas compras", "compras realizadas", "purchase count",
         "number of purchases", "fewest purchases", "menos compras",
     ))
-    if spending and frequency:
+    if spending and frequency and not (
+        _contains(text, "tabla") and _contains(text, "total gastado")
+    ):
         raise ValueError(
             "Mencionaste tanto importe como frecuencia. ¿Quieres ordenar por "
             "dinero gastado o por cantidad de compras?"
@@ -411,7 +415,7 @@ def _rank_limit(text: str) -> int:
 def _customer_ranking(text: str, catalog: dict) -> tuple[VisualizationDefinition, str, str]:
     kind = _customer_metric_kind(text)
     entities = catalog.get("entities") or []
-    sales = [item for item in entities if item.get("semantic_role") == "sales"]
+    sales = [item for item in entities if item.get("semantic_role") in ("sales", "orders")]
     customers = [item for item in entities if item.get("semantic_role") == "customers"]
     if len(sales) != 1 or len(customers) != 1:
         raise ValueError(
@@ -466,6 +470,24 @@ def _customer_ranking(text: str, catalog: dict) -> tuple[VisualizationDefinition
     limit = _rank_limit(text)
     filters = _year_bounds(text, fact)
     measure_name = "importe" if kind == "amount" else "compras"
+    extras = []
+    surname = None
+    if _contains(text, "nombre completo") and _visual_type(text) == "table":
+        surname = _field(customer, names=("Apellido", "Apellidos", "Surname", "LastName"))
+        if surname is None:
+            raise ValueError("Se solicitó nombre completo, pero no hay un apellido verificable.")
+    if _visual_type(text) == "table":
+        if any(_contains(text, phrase) for phrase in ("cantidad de pedidos", "numero de pedidos", "numero de compras")):
+            extras.append(AdditionalMetric(aggregation="count", label="Cantidad de pedidos"))
+        if _contains(text, "ticket promedio"):
+            measure = _field(fact, semantics=("total", "amount"),
+                             names=("Total", "MontoTotal", "Amount"), kind="number")
+            if not measure:
+                raise ValueError("No existe un importe numérico inequívoco para el ticket promedio.")
+            extras.append(AdditionalMetric(column=measure["key"], aggregation="avg", label="Ticket promedio"))
+        if any(_contains(text, phrase) for phrase in ("ultima compra", "ultima venta")):
+            stamp = _choose_date(fact)
+            extras.append(AdditionalMetric(column=stamp["key"], aggregation="max", label="Última compra"))
     definition = VisualizationDefinition(
         title=(f"{limit} clientes con {'menor' if smaller else 'mayor'} {measure_name}")[:120],
         visualization=_visual_type(text),
@@ -476,6 +498,8 @@ def _customer_ranking(text: str, catalog: dict) -> tuple[VisualizationDefinition
         group_by=label["key"],
         group_by_table=customer["table"],
         group_by_identity=links[0]["to_column"],
+        group_by_extra=surname["key"] if surname else None,
+        additional_metrics=extras,
         sort_direction="asc" if smaller else "desc",
         filters=filters,
         limit=limit,
@@ -728,6 +752,162 @@ def _inventory_critical(text: str, catalog: dict) -> tuple[VisualizationDefiniti
     ]
 
 
+
+def _role_entities(catalog: dict, *roles: str) -> list[dict]:
+    return [entity for entity in catalog.get("entities") or []
+            if entity.get("semantic_role") in roles]
+
+
+def _field(entity: dict, *, semantics=(), names=(), kind=None) -> dict | None:
+    """Return a unique catalog-verified field, never a guessed identifier."""
+    fields = [f for f in entity.get("fields") or []
+              if (kind is None or f.get("kind") == kind)
+              and not f.get("is_identifier")]
+    for semantic in semantics:
+        found = [f for f in fields if f.get("semantic") == semantic]
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            return None
+    for name in names:
+        found = [f for f in fields if _normalize(f["key"]).replace(" ", "") ==
+                 _normalize(name).replace(" ", "")]
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            return None
+    return None
+
+
+def _named_parent(catalog: dict, source: dict, roles: tuple[str, ...]) -> dict | None:
+    parents = [entity for entity in _role_entities(catalog, *roles)
+               if sum(1 for link in catalog.get("relationships") or []
+                      if link["from_table"] == source["table"]
+                      and link["to_table"] == entity["table"]
+                      and link["to_column"] in (entity.get("primary_key") or [])) == 1]
+    return parents[0] if len(parents) == 1 else None
+
+
+def _retail_fact(catalog: dict, need_amount: bool) -> tuple[dict, dict, dict] | None:
+    """Choose an order-line fact through a verified FK to Products."""
+    possibilities = []
+    for detail in catalog.get("entities") or []:
+        quantity = _field(detail, semantics=("quantity",),
+                          names=("Cantidad", "Quantity", "Qty"), kind="number")
+        product = _named_parent(catalog, detail, ("products",))
+        if not quantity or not product:
+            continue
+        amount = _field(detail, names=(
+            "ImporteNeto", "Importe_Neto", "NetAmount", "NetTotal",
+            "TotalNeto", "SubtotalNeto", "Subtotal", "LineTotal",
+        ), kind="number")
+        if need_amount and not amount:
+            continue
+        if detail.get("semantic_role") not in ("sales_details", "order_details"):
+            # Unknown roles can be accepted only when there is a verified
+            # child→product relationship and a matching business column.
+            if not any(_contains(_normalize(detail.get("table", "")), term)
+                       for term in ("detalle", "detail", "line")):
+                continue
+        possibilities.append((detail, product, amount or quantity))
+    if len(possibilities) != 1:
+        raise ValueError(
+            "No identifiqué una única tabla de líneas de venta vinculada a Productos "
+            "con la métrica solicitada. Revisa las relaciones y los campos en el creador."
+        )
+    return possibilities[0]
+
+
+def _retail_product_ranking(text: str, catalog: dict):
+    detail, product, _ = _retail_fact(catalog, need_amount=False)
+    quantity = _field(detail, semantics=("quantity",),
+                      names=("Cantidad", "Quantity", "Qty"), kind="number")
+    name = _field(product, semantics=("name",),
+                  names=("Nombre", "Name", "NombreProducto", "Title"))
+    if not name or len(product.get("primary_key") or []) != 1:
+        raise ValueError("No identifiqué un nombre y una clave de producto inequívocos.")
+    match = re.search(r"\b(?:los|las|top)\s+(\d{1,3})\b", text)
+    limit = min(100, max(1, int(match.group(1)))) if match else 10
+    definition = VisualizationDefinition(
+        title=f"{limit} productos más vendidos por unidades",
+        visualization=_visual_type(text), table=detail["table"],
+        metric=quantity["key"], metric_table=detail["table"],
+        aggregation="sum", group_by=name["key"],
+        group_by_table=product["table"],
+        group_by_identity=product["primary_key"][0],
+        sort_direction="desc", limit=limit,
+    )
+    return definition, "Producto", "Unidades vendidas"
+
+
+def _retail_category_distribution(text: str, catalog: dict):
+    detail, product, amount = _retail_fact(catalog, need_amount=True)
+    category = _named_parent(catalog, product, ("categories",))
+    if not category:
+        raise ValueError("No encontré una relación verificable Productos → Categorías.")
+    name = _field(category, semantics=("name",), names=("Nombre", "Name"))
+    if not name:
+        raise ValueError("No encontré una columna inequívoca con los nombres de las categorías.")
+    definition = VisualizationDefinition(
+        title="Participación de ventas netas por categoría",
+        visualization="donut", table=detail["table"],
+        metric=amount["key"], metric_table=detail["table"],
+        aggregation="sum", group_by=name["key"],
+        group_by_table=category["table"],
+        group_by_identity=(category.get("primary_key") or [None])[0],
+        percentage_share=True, limit=100,
+    )
+    return definition, "Categoría", "Importe neto vendido"
+
+
+def _monthly_growth_rank(text: str, catalog: dict):
+    sources = _role_entities(catalog, "sales", "orders")
+    candidates = []
+    for fact in sources:
+        stamp = _field(fact, semantics=("date",),
+                       names=("FechaPedido", "FechaVenta", "Fecha", "CreatedAt"),
+                       kind="date")
+        total = _field(fact, semantics=("total",),
+                       names=("Total", "MontoTotal", "ImporteNeto"),
+                       kind="number")
+        if stamp and total:
+            candidates.append((fact, stamp, total))
+    if len(candidates) != 1:
+        raise ValueError("No identifiqué una sola tabla de ventas con fecha e importe total.")
+    fact, stamp, total = candidates[0]
+    filters = []
+    if any(_contains(text, phrase) for phrase in ("ultimos dos anos", "ultimos 2 anos", "last two years")):
+        filters = [VisualizationFilter(table=fact["table"], column=stamp["key"],
+                                       operator="gte", value=(date.today() - timedelta(days=730)).isoformat())]
+    else:
+        filters = _year_bounds(text, fact)
+    definition = VisualizationDefinition(
+        title="Tres meses con mayores ingresos y crecimiento mensual",
+        visualization="table", table=fact["table"],
+        metric=total["key"], aggregation="sum",
+        group_by=stamp["key"], group_by_table=fact["table"],
+        time_granularity="month", period_growth=True, rank_periods=True,
+        filters=filters, limit=3,
+    )
+    return definition, "Mes y año", "Ingresos y crecimiento mensual (%)"
+
+
+def _is_product_units_ranking(text: str) -> bool:
+    return (any(_contains(text, phrase) for phrase in ("productos mas vendidos", "productos mas comprados", "top productos"))
+            and any(_contains(text, unit) for unit in ("unidades", "cantidad", "unit")))
+
+
+def _is_category_net_sales(text: str) -> bool:
+    return (any(_contains(text, phrase) for phrase in ("por categoria", "por categorias", "cada categoria"))
+            and any(_contains(text, phrase) for phrase in ("venta", "ventas", "ingreso", "ingresos", "importe")))
+
+
+def _is_monthly_growth(text: str) -> bool:
+    return (any(_contains(text, word) for word in ("crecimiento porcentual", "variacion porcentual"))
+            and any(_contains(text, word) for word in ("mes", "mensual", "meses"))
+            and any(_contains(text, word) for word in ("venta", "ventas", "ingresos"))
+            and any(_contains(text, word) for word in ("mayores ingresos", "mayores ventas", "top")))
+
 def interpret_visualization_request(question: str) -> dict:
     """Return a verified preview + editable draft, without any write action."""
     normalized = _normalize(question)
@@ -737,7 +917,13 @@ def interpret_visualization_request(question: str) -> dict:
         raise ValueError("No encontré entidades disponibles en la fuente activa.")
     ranking = _customer_rank_request(normalized)
     extra_notes = []
-    if _inventory_critical_request(normalized):
+    if _is_product_units_ranking(normalized):
+        definition, x_label, y_label = _retail_product_ranking(normalized, catalog)
+    elif _is_category_net_sales(normalized):
+        definition, x_label, y_label = _retail_category_distribution(normalized, catalog)
+    elif _is_monthly_growth(normalized):
+        definition, x_label, y_label = _monthly_growth_rank(normalized, catalog)
+    elif _inventory_critical_request(normalized):
         definition, x_label, y_label, extra_notes = _inventory_critical(normalized, catalog)
     elif ranking:
         definition, x_label, y_label = _customer_ranking(normalized, catalog)

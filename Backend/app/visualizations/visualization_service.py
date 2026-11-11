@@ -30,6 +30,13 @@ class VisualizationFilter(BaseModel):
     value: str | int | float | bool | list[str | int | float]
 
 
+class AdditionalMetric(BaseModel):
+    column: str | None = None
+    table: str | None = None
+    aggregation: AggregationType = "count"
+    label: str = Field(min_length=1, max_length=80)
+
+
 class VisualizationDefinition(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     visualization: VisualizationType
@@ -40,6 +47,11 @@ class VisualizationDefinition(BaseModel):
     group_by: str | None = None
     group_by_table: str | None = None
     group_by_identity: str | None = None
+    group_by_extra: str | None = None
+    additional_metrics: list[AdditionalMetric] = Field(default_factory=list, max_length=6)
+    period_growth: bool = False
+    rank_periods: bool = False
+    percentage_share: bool = False
     sort_direction: Literal["asc", "desc"] = "desc"
     time_direction: Literal["asc", "desc"] = "asc"
     time_granularity: Literal["raw", "day", "month", "quarter", "year"] = "raw"
@@ -50,6 +62,16 @@ class VisualizationDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_shape(self):
+        if self.additional_metrics and (self.visualization != "table" or self.table_mode != "aggregate"):
+            raise ValueError("Las métricas adicionales solo están disponibles en tablas agrupadas.")
+        if self.group_by_extra and (not self.group_by or self.time_granularity != "raw"):
+            raise ValueError("El segundo campo de nombre requiere una dimensión no temporal.")
+        if self.period_growth and (self.time_granularity != "month" or self.visualization != "table"):
+            raise ValueError("El crecimiento porcentual exige una tabla mensual.")
+        if self.percentage_share and self.visualization != "donut":
+            raise ValueError("Los porcentajes de participación requieren un gráfico de dona.")
+        if self.rank_periods and not self.period_growth:
+            raise ValueError("El ranking de períodos requiere calcular primero su crecimiento.")
         if self.aggregation != "count" and not self.metric and self.table_mode != "detail":
             raise ValueError("Selecciona una métrica para esta agregación.")
         if self.visualization in {"bar", "line", "area", "donut"} and not self.group_by:
@@ -195,11 +217,17 @@ def _resolve_definition(definition: VisualizationDefinition):
         requested.append((metric_table, definition.metric))
     if definition.group_by:
         requested.append((group_table, definition.group_by))
+    if definition.group_by_extra:
+        requested.append((group_table, definition.group_by_extra))
     if definition.group_by_identity:
         requested.append((group_table, definition.group_by_identity))
         target = schema.tables.get(group_table)
         if target is None or definition.group_by_identity not in target.primary_key:
             raise ValueError("La identidad de agrupación debe ser una clave primaria verificada.")
+    requested.extend(
+        ((measure.table or definition.table, measure.column)
+         for measure in definition.additional_metrics if measure.column)
+    )
     requested.extend(
         ((column.table or definition.table), column.column)
         for column in definition.detail_columns
@@ -288,6 +316,16 @@ def _resolve_definition(definition: VisualizationDefinition):
                 "El mínimo/máximo de texto puede consultarse como tabla."
             )
 
+    for measure in definition.additional_metrics:
+        table_name = measure.table or definition.table
+        if not measure.column and measure.aggregation != "count":
+            raise ValueError("La métrica adicional requiere una columna real.")
+        if measure.column:
+            field = next(c for c in schema.tables[table_name].columns if c.name == measure.column)
+            if measure.aggregation in {"sum", "avg"} and _column_kind(field.type) != "number":
+                raise ValueError("No se puede sumar o promediar una columna no numérica.")
+        if measure.aggregation in {"sum", "avg"} and table_name != definition.table:
+            raise ValueError("No se deben sumar importes de una tabla padre sobre filas de detalle.")
     target_tables = {table for table, _ in requested}
     paths = {target: _find_join_path(schema, definition.table, target) for target in target_tables if target != definition.table}
     return schema, paths
@@ -438,6 +476,16 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
             _qualified(group_table, definition.group_by), definition.time_granularity
         )
         grouping = dimension
+        if definition.group_by_extra:
+            extra = _qualified(group_table, definition.group_by_extra)
+            provider = database_manager.status().get("provider")
+            cast = "NVARCHAR(200)" if provider == "sqlserver" else "VARCHAR(200)"
+            if provider == "excel":
+                dimension = (f"COALESCE(CAST({dimension} AS TEXT), '') || ' ' || "
+                             f"COALESCE(CAST({extra} AS TEXT), '')")
+            else:
+                dimension = f"CONCAT(COALESCE(CAST({dimension} AS {cast}), ''), ' ', COALESCE(CAST({extra} AS {cast}), ''))"
+            grouping += f", {extra}"
         if definition.group_by_identity:
             # Customer names can repeat. Preserve distinct primary keys and
             # display each name with its verified identity instead of merging
@@ -466,6 +514,11 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
             direction = definition.sort_direction.upper()
             order = f" ORDER BY value {direction}, dimension ASC"
     select.append(f"{expression} AS value")
+    for index, measure in enumerate(definition.additional_metrics):
+        field = "*" if measure.aggregation == "count" and not measure.column else _qualified(measure.table or definition.table, measure.column or "")
+        aggregate = (f"COUNT(DISTINCT {field})" if measure.aggregation == "distinct_count"
+                     else f"{measure.aggregation.upper()}({field})")
+        select.append(f"{aggregate} AS extra_{index}")
 
     restrictions = [
         _filter_sql(item, definition.table) for item in definition.filters
@@ -488,6 +541,26 @@ def build_visualization_query(definition: VisualizationDefinition) -> str:
             limit = f" LIMIT {definition.limit}"
 
     joins = _join_sql(schema, definition.table, paths)
+    if definition.percentage_share:
+        inner = f"SELECT {', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}"
+        top_share = f"TOP {definition.limit} " if provider == "sqlserver" else ""
+        limit_share = "" if provider == "sqlserver" else f" LIMIT {definition.limit}"
+        return (f"SELECT {top_share}dimension, "
+                f"ROUND(value * 100.0 / NULLIF(SUM(value) OVER (), 0), 2) AS value "
+                f"FROM ({inner}) AS shares ORDER BY value DESC, dimension ASC{limit_share};")
+    if definition.period_growth:
+        # Compute growth across all months BEFORE applying top-N, otherwise
+        # the previous month would be lost to the ranking filter.
+        inner = f"SELECT {', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}"
+        prev = "LAG(value) OVER (ORDER BY dimension)"
+        growth = f"ROUND(CASE WHEN {prev} IS NULL OR {prev} = 0 THEN NULL ELSE (value - {prev}) * 100.0 / {prev} END, 2)"
+        outer_top = f"TOP {definition.limit} " if provider == "sqlserver" else ""
+        outer_limit = "" if provider == "sqlserver" else f" LIMIT {definition.limit}"
+        ordering = "value DESC, dimension ASC" if definition.rank_periods else f"dimension {definition.time_direction.upper()}"
+        return (f"SELECT {outer_top}dimension, value, growth_percent FROM ("
+                f"SELECT dimension, value, {growth} AS growth_percent "
+                f"FROM ({inner}) AS monthly) AS variations "
+                f"ORDER BY {ordering}{outer_limit};")
     return f"SELECT {top}{', '.join(select)} FROM {_quote(definition.table)}{joins}{where}{group}{order}{limit};"
 
 
@@ -528,6 +601,10 @@ def _result_columns(definition: VisualizationDefinition) -> list[dict]:
         ([{"key": "dimension", "label": _humanize(definition.group_by)}]
          if definition.group_by else [])
         + [{"key": "value", "label": metric_label}]
+        + [{"key": f"extra_{index}", "label": measure.label}
+           for index, measure in enumerate(definition.additional_metrics)]
+        + ([{"key": "growth_percent", "label": "Crecimiento mensual (%)"}]
+           if definition.period_growth else [])
     )
 
 
